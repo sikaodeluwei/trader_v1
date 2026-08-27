@@ -27,6 +27,21 @@ class PriceLeg:
     distance: float
 
 
+@dataclass
+class MovementSummary:
+    """Measurements aggregated from an ordered sequence of price legs."""
+
+    first_side: MovementSide | None
+    first_distance: float
+    final_side: MovementSide | None
+    final_distance: float
+    largest_buyer_move: float
+    largest_seller_move: float
+    total_buyer_movement: float
+    total_seller_movement: float
+    final_retracement_ratio: float | None
+
+
 def get_price_legs(prices: Sequence[float]) -> list[PriceLeg]:
     """Split an ordered intrabar price sequence into directional legs.
 
@@ -72,3 +87,60 @@ def get_price_legs(prices: Sequence[float]) -> list[PriceLeg]:
         legs.append(current_leg)
 
     return legs
+
+
+def summarize_movements(legs: Sequence[PriceLeg]) -> MovementSummary:
+    """Aggregate measurable movement without interpreting market advantage.
+
+    The final retracement ratio compares the final leg's distance with the
+    immediately preceding opposing leg. It remains a raw measurement: no
+    threshold or buyer/seller/none conclusion is applied.
+    """
+
+    if not legs:
+        return MovementSummary(
+            first_side=None,
+            first_distance=0.0,
+            final_side=None,
+            final_distance=0.0,
+            largest_buyer_move=0.0,
+            largest_seller_move=0.0,
+            total_buyer_movement=0.0,
+            total_seller_movement=0.0,
+            final_retracement_ratio=None,
+        )
+
+    largest_buyer_move = 0.0
+    largest_seller_move = 0.0
+    total_buyer_movement = 0.0
+    total_seller_movement = 0.0
+
+    for leg in legs:
+        if leg.side is MovementSide.BUYER:
+            largest_buyer_move = max(largest_buyer_move, leg.distance)
+            total_buyer_movement += leg.distance
+        else:
+            largest_seller_move = max(largest_seller_move, leg.distance)
+            total_seller_movement += leg.distance
+
+    final_leg = legs[-1]
+    final_retracement_ratio: float | None = None
+    if len(legs) >= 2:
+        previous_leg = legs[-2]
+        if (
+            previous_leg.side is not final_leg.side
+            and previous_leg.distance != 0
+        ):
+            final_retracement_ratio = final_leg.distance / previous_leg.distance
+
+    return MovementSummary(
+        first_side=legs[0].side,
+        first_distance=legs[0].distance,
+        final_side=final_leg.side,
+        final_distance=final_leg.distance,
+        largest_buyer_move=largest_buyer_move,
+        largest_seller_move=largest_seller_move,
+        total_buyer_movement=total_buyer_movement,
+        total_seller_movement=total_seller_movement,
+        final_retracement_ratio=final_retracement_ratio,
+    )
