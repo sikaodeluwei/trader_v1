@@ -95,6 +95,22 @@ def analyze_intrabar_path(path: IntrabarPricePath) -> CandleAnalysis:
     return analyze_prices(path.prices)
 
 
+def analyze_intrabar_paths(
+    paths: Sequence[IntrabarPricePath],
+) -> list[CandleAnalysis]:
+    """Analyze valid historical paths and skip undersampled windows.
+
+    A one-price path remains intact but cannot form a valid candle analysis.
+    It is skipped without duplicating or interpolating its observed price.
+    """
+
+    return [
+        analyze_intrabar_path(path)
+        for path in paths
+        if len(path.prices) >= 2
+    ]
+
+
 def label_intrabar_path(
     path: IntrabarPricePath,
     advantage: Advantage,
