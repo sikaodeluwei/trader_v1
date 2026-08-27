@@ -1,8 +1,8 @@
 """Candle data, geometry, archetypes, and trading-side interpretations.
 
-OHLC values produce exact candle geometry. Mapping that geometry to one of the
-16 visual archetypes is intentionally deferred until the fuzzy shapes have
-been calibrated.
+OHLC values produce exact candle geometry. Mapping geometry and ordered
+intrabar price movement to one of the 16 visual archetypes is intentionally
+deferred until the fuzzy shapes have been calibrated.
 """
 
 from dataclasses import dataclass
@@ -150,8 +150,9 @@ def classify_candle(candle: Candle) -> CandleType:
     """Classify a candle once the visual/fuzzy archetypes are calibrated.
 
     Exact percentage cutoffs are deliberately not guessed here. A future
-    calibrated or learned classifier will consume exact ``CandleGeometry``
-    measurements and map them to a ``CandleType``.
+    calibrated or learned classifier may combine exact ``CandleGeometry``
+    measurements with ordered intrabar price movement and map that evidence
+    to a ``CandleType``.
     """
 
     raise NotImplementedError(
