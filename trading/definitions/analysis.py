@@ -16,7 +16,12 @@ from .candles import (
     get_geometry,
     get_side,
 )
-from .extremes import ExtremePath, get_extreme_path
+from .extremes import (
+    ExtremePath,
+    ExtremePathEvidence,
+    get_extreme_path,
+    summarize_extreme_path,
+)
 from .movements import (
     MovementSummary,
     PriceLeg,
@@ -35,6 +40,7 @@ class CandleAnalysis:
     control: CandleControl
     legs: list[PriceLeg]
     extreme_path: ExtremePath
+    extreme_evidence: ExtremePathEvidence
     movements: MovementSummary
 
 
@@ -59,6 +65,7 @@ def analyze_prices(prices: Sequence[float]) -> CandleAnalysis:
         close=prices[-1],
     )
     legs = get_price_legs(prices)
+    extreme_path = get_extreme_path(prices)
 
     return CandleAnalysis(
         candle=candle,
@@ -66,6 +73,7 @@ def analyze_prices(prices: Sequence[float]) -> CandleAnalysis:
         geometry=get_geometry(candle),
         control=get_control(candle),
         legs=legs,
-        extreme_path=get_extreme_path(prices),
+        extreme_path=extreme_path,
+        extreme_evidence=summarize_extreme_path(candle, extreme_path),
         movements=summarize_movements(legs),
     )

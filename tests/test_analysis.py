@@ -35,6 +35,14 @@ def test_analyze_prices_builds_complete_intrabar_analysis() -> None:
             PriceLeg(MovementSide.SELLER, 110, 101, 9),
         ],
     )
+    assert analysis.extreme_evidence.initial_side is MovementSide.SELLER
+    assert analysis.extreme_evidence.initial_ratio == pytest.approx(1 / 11)
+    assert analysis.extreme_evidence.main_side is MovementSide.BUYER
+    assert analysis.extreme_evidence.main_ratio == 1
+    assert analysis.extreme_evidence.final_side is MovementSide.SELLER
+    assert analysis.extreme_evidence.final_ratio == pytest.approx(9 / 11)
+    assert analysis.extreme_evidence.signed_displacement == 1
+    assert analysis.extreme_evidence.displacement_ratio == pytest.approx(1 / 11)
     assert analysis.movements.largest_buyer_move == 11
     assert analysis.movements.largest_seller_move == 9
     assert analysis.movements.total_buyer_movement == 11
