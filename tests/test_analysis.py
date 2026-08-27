@@ -17,6 +17,11 @@ def test_analyze_prices_builds_complete_intrabar_analysis() -> None:
     assert analysis.geometry.lower_wick_ratio == pytest.approx(1 / 11)
     assert analysis.geometry.open_position == pytest.approx(1 / 11)
     assert analysis.geometry.close_position == pytest.approx(2 / 11)
+    assert analysis.control.buyer_control == 2
+    assert analysis.control.seller_control == 9
+    assert analysis.control.buyer_control_ratio == pytest.approx(2 / 11)
+    assert analysis.control.seller_control_ratio == pytest.approx(9 / 11)
+    assert analysis.control.control_score == pytest.approx(-7 / 11)
     assert analysis.legs == [
         PriceLeg(MovementSide.SELLER, 100, 99, 1),
         PriceLeg(MovementSide.BUYER, 99, 110, 11),

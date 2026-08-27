@@ -7,7 +7,15 @@ archetypes, decide market advantage, or apply thresholds.
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from .candles import Candle, CandleGeometry, CandleSide, get_geometry, get_side
+from .candles import (
+    Candle,
+    CandleControl,
+    CandleGeometry,
+    CandleSide,
+    get_control,
+    get_geometry,
+    get_side,
+)
 from .extremes import ExtremePath, get_extreme_path
 from .movements import (
     MovementSummary,
@@ -24,6 +32,7 @@ class CandleAnalysis:
     candle: Candle
     side: CandleSide
     geometry: CandleGeometry
+    control: CandleControl
     legs: list[PriceLeg]
     extreme_path: ExtremePath
     movements: MovementSummary
@@ -55,6 +64,7 @@ def analyze_prices(prices: Sequence[float]) -> CandleAnalysis:
         candle=candle,
         side=get_side(candle),
         geometry=get_geometry(candle),
+        control=get_control(candle),
         legs=legs,
         extreme_path=get_extreme_path(prices),
         movements=summarize_movements(legs),

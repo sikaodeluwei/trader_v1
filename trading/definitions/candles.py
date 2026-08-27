@@ -30,6 +30,17 @@ class CandleGeometry:
     close_position: float
 
 
+@dataclass
+class CandleControl:
+    """Raw measurements of where price closed inside the candle range."""
+
+    buyer_control: float
+    seller_control: float
+    buyer_control_ratio: float
+    seller_control_ratio: float
+    control_score: float
+
+
 class CandleSide(Enum):
     """The direction of the candle body, also called its color."""
 
@@ -123,6 +134,37 @@ def get_geometry(candle: Candle) -> CandleGeometry:
         lower_wick_ratio=lower_wick / total_range,
         open_position=(candle.open - candle.low) / total_range,
         close_position=(candle.close - candle.low) / total_range,
+    )
+
+
+def get_control(candle: Candle) -> CandleControl:
+    """Measure how much of the candle range is retained around the close.
+
+    Buyer control is the range below the close and seller control is the range
+    above it. These closing-position measurements are distinct from total
+    intrabar buyer/seller movement. The score remains uninterpreted: this
+    function applies no advantage classification or thresholds.
+    """
+
+    total_range = candle.high - candle.low
+    if total_range == 0:
+        return CandleControl(
+            buyer_control=0.0,
+            seller_control=0.0,
+            buyer_control_ratio=0.5,
+            seller_control_ratio=0.5,
+            control_score=0.0,
+        )
+
+    buyer_control = candle.close - candle.low
+    seller_control = candle.high - candle.close
+
+    return CandleControl(
+        buyer_control=buyer_control,
+        seller_control=seller_control,
+        buyer_control_ratio=buyer_control / total_range,
+        seller_control_ratio=seller_control / total_range,
+        control_score=(buyer_control - seller_control) / total_range,
     )
 
 
