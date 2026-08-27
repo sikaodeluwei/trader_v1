@@ -2,6 +2,7 @@ import pytest
 
 from trading.definitions.analysis import CandleAnalysis, analyze_prices
 from trading.definitions.candles import Candle, CandleSide
+from trading.definitions.extremes import ExtremeOrder, ExtremePath
 from trading.definitions.movements import MovementSide, PriceLeg
 
 
@@ -21,6 +22,14 @@ def test_analyze_prices_builds_complete_intrabar_analysis() -> None:
         PriceLeg(MovementSide.BUYER, 99, 110, 11),
         PriceLeg(MovementSide.SELLER, 110, 101, 9),
     ]
+    assert analysis.extreme_path == ExtremePath(
+        order=ExtremeOrder.LOW_THEN_HIGH,
+        legs=[
+            PriceLeg(MovementSide.SELLER, 100, 99, 1),
+            PriceLeg(MovementSide.BUYER, 99, 110, 11),
+            PriceLeg(MovementSide.SELLER, 110, 101, 9),
+        ],
+    )
     assert analysis.movements.largest_buyer_move == 11
     assert analysis.movements.largest_seller_move == 9
     assert analysis.movements.total_buyer_movement == 11
