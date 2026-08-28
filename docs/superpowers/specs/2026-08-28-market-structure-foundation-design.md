@@ -138,7 +138,7 @@ class StructureRelationship(Enum):
     EQUAL_LOW = "equal_low"
 ```
 
-Equality is explicit and non-directional. It never counts as either a higher or lower relationship, and it breaks a consecutive directional run.
+Equality is explicit and non-directional. It never counts as either a higher or lower relationship, and it breaks directional continuity.
 
 ### MarketState
 
@@ -179,13 +179,27 @@ The comparison rejects points of different kinds and non-increasing same-kind in
 
 ## Consecutive Trend Definition
 
-The course requirement is interpreted literally:
+The course requirement counts structural points, not repeated relationships:
 
-- **UPTREND:** at least two consecutive higher highs and at least two consecutive higher lows;
-- **DOWNTREND:** at least two consecutive lower highs and at least two consecutive lower lows;
+- **UPTREND:** at least two chronological `HIGH` points where the later high is higher than the immediately previous high, and at least two chronological `LOW` points where the later low is higher than the immediately previous low;
+- **DOWNTREND:** at least two chronological `HIGH` points where the later high is lower than the immediately previous high, and at least two chronological `LOW` points where the later low is lower than the immediately previous low;
 - **NON_TREND:** neither complete definition is satisfied.
 
-“Two consecutive relationships” requires at least three comparable points. For example, highs `H1`, `H2`, and `H3` create two adjacent high relationships: `H1 → H2` and `H2 → H3`.
+The minimum trend structure therefore contains two highs and two lows. Two same-kind points create one relationship, which is sufficient for that kind at the minimum.
+
+Minimum uptrend:
+
+```text
+H1 -> H2 = HIGHER_HIGH
+L1 -> L2 = HIGHER_LOW
+```
+
+Minimum downtrend:
+
+```text
+H1 -> H2 = LOWER_HIGH
+L1 -> L2 = LOWER_LOW
+```
 
 To preserve chronology while comparing like with like:
 
@@ -197,18 +211,20 @@ To preserve chronology while comparing like with like:
 An uptrend requires both of the following across the selected segment:
 
 ```text
-HIGHER_HIGH, HIGHER_HIGH   (followed only by further HIGHER_HIGH relationships, if any)
-HIGHER_LOW,  HIGHER_LOW    (followed only by further HIGHER_LOW relationships, if any)
+at least one HIGHER_HIGH relationship
+at least one HIGHER_LOW relationship
 ```
 
 A downtrend requires both of the following across the selected segment:
 
 ```text
-LOWER_HIGH, LOWER_HIGH     (followed only by further LOWER_HIGH relationships, if any)
-LOWER_LOW,  LOWER_LOW      (followed only by further LOWER_LOW relationships, if any)
+at least one LOWER_HIGH relationship
+at least one LOWER_LOW relationship
 ```
 
-Every adjacent same-kind relationship in the selected segment must continue the claimed direction. An equality or an opposite relationship means that the segment as supplied does not satisfy that directional definition. Relationships are never made consecutive by skipping an intervening same-kind point.
+When the segment contains more than two highs or more than two lows, every adjacent same-kind relationship in that subsequence must continue the claimed direction. For an uptrend, all additional high relationships must remain `HIGHER_HIGH` and all additional low relationships must remain `HIGHER_LOW`. For a downtrend, all additional high relationships must remain `LOWER_HIGH` and all additional low relationships must remain `LOWER_LOW`.
+
+“Consecutive” means that each point is compared with the immediately previous point of the same kind in chronological order. An equality or an opposite relationship means that the segment as supplied does not satisfy that directional definition. The classifier never skips an intervening same-kind point to construct a preferred relationship.
 
 This whole-segment rule prevents the classifier from cherry-picking an earlier high run and an unrelated later low run. If a broader segment contains a reversal but a smaller subsegment has continuing structure, the caller must explicitly supply that smaller segment and only its in-segment structure points. The classifier does not choose the subsegment.
 
@@ -278,16 +294,18 @@ Implementation will follow red-to-green test-driven development, but this archit
 
 1. valid and invalid `MarketSegment` boundaries;
 2. each higher-high, lower-high, equal-high, higher-low, lower-low, and equal-low relationship;
-3. equality breaking a directional run;
-4. a valid consecutive uptrend;
-5. a valid consecutive downtrend;
-6. non-trend cases, including insufficient points and interrupted runs;
-7. explicit segment enforcement;
-8. rejection of points outside the segment;
-9. preservation and validation of chronological input order;
-10. rejection of contradictory complete directional structures;
-11. strict two-candle outside-bar behavior, including equality boundaries and color independence; and
-12. regression coverage proving the existing Chapter 1 inside-bar behavior remains unchanged, including multiple later candles checked against the same mother candle.
+3. equality breaking directional continuity;
+4. a minimum valid uptrend using exactly two highs and two lows;
+5. a minimum valid downtrend using exactly two highs and two lows;
+6. extended uptrend and downtrend segments whose additional same-kind points continue the claimed direction;
+7. non-trend cases, including fewer than two points of either required kind, equality, and a contradictory intermediate same-kind point;
+8. proof that an intervening same-kind point cannot be skipped to manufacture a trend;
+9. explicit segment enforcement;
+10. rejection of points outside the segment;
+11. preservation and validation of chronological input order;
+12. rejection of contradictory complete directional structures;
+13. strict two-candle outside-bar behavior, including equality boundaries and color independence; and
+14. regression coverage proving the existing Chapter 1 inside-bar behavior remains unchanged, including multiple later candles checked against the same mother candle.
 
 Tests must use explicitly supplied structure points. They must not invent an automatic candle-to-structure-point mapping.
 
