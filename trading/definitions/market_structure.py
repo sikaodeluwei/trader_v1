@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
+from .candles import Candle
+
 
 @dataclass(frozen=True)
 class MarketSegment:
@@ -152,3 +154,9 @@ def classify_market_state(
         StructureRelationship.LOWER_LOW,
     )
     return _resolve_market_state(uptrend, downtrend)
+
+
+def is_outside_bar(left: Candle, right: Candle) -> bool:
+    """Return whether the right candle strictly contains the left range."""
+
+    return right.high > left.high and right.low < left.low

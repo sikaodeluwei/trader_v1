@@ -3,6 +3,8 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from trading.definitions import market_structure
+from trading.definitions.candles import Candle
+from trading.definitions.isolated_point_deformations import is_inside_bar
 from trading.definitions.market_structure import (
     MarketSegment,
     MarketState,
@@ -11,6 +13,7 @@ from trading.definitions.market_structure import (
     StructureRelationship,
     classify_market_state,
     compare_structure_points,
+    is_outside_bar,
 )
 
 
@@ -267,3 +270,61 @@ def test_classify_market_state_allows_high_and_low_at_same_index() -> None:
 def test_market_state_resolution_rejects_contradictory_candidates() -> None:
     with pytest.raises(ValueError, match="contradictory"):
         market_structure._resolve_market_state(uptrend=True, downtrend=True)
+
+
+def make_candle(high_price: float, low_price: float, bullish: bool) -> Candle:
+    lower_body = low_price + (high_price - low_price) * 0.25
+    upper_body = low_price + (high_price - low_price) * 0.75
+    open_price, close_price = (
+        (lower_body, upper_body)
+        if bullish
+        else (upper_body, lower_body)
+    )
+    return Candle(open_price, high_price, low_price, close_price)
+
+
+@pytest.mark.parametrize("bullish", [True, False])
+def test_is_outside_bar_uses_strict_range_not_candle_color(bullish: bool) -> None:
+    left = make_candle(10.0, 5.0, bullish=not bullish)
+    right = make_candle(11.0, 4.0, bullish=bullish)
+
+    assert is_outside_bar(left, right) is True
+
+
+@pytest.mark.parametrize(
+    "right",
+    [
+        make_candle(10.0, 4.0, bullish=True),
+        make_candle(11.0, 5.0, bullish=False),
+        make_candle(10.0, 5.0, bullish=True),
+    ],
+)
+def test_is_outside_bar_rejects_equal_boundary(right: Candle) -> None:
+    assert is_outside_bar(make_candle(10.0, 5.0, bullish=True), right) is False
+
+
+@pytest.mark.parametrize(
+    "right",
+    [
+        make_candle(9.0, 4.0, bullish=True),
+        make_candle(11.0, 6.0, bullish=False),
+        make_candle(9.0, 6.0, bullish=True),
+    ],
+)
+def test_is_outside_bar_requires_both_extremes_to_break(right: Candle) -> None:
+    assert is_outside_bar(make_candle(10.0, 5.0, bullish=False), right) is False
+
+
+def test_multiple_later_candles_can_share_one_inside_bar_mother() -> None:
+    mother = make_candle(12.0, 7.0, bullish=True)
+    later_candles = [
+        make_candle(11.0, 8.0, bullish=True),
+        make_candle(12.0, 8.0, bullish=False),
+        make_candle(11.0, 7.0, bullish=True),
+    ]
+
+    assert [is_inside_bar(mother, candle) for candle in later_candles] == [
+        True,
+        True,
+        True,
+    ]
