@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement Chapter 2, Lesson 2 pullback/BMS evaluation from an explicit parent trend and a complete dense sequence of later OHLC observations, then prove the Lesson 1 and Lesson 2 layers work together through the mandatory course-scenario gate.
+**Goal:** Implement Chapter 2, Lesson 2 pullback/BMS evaluation from an explicit parent trend and a complete dense sequence of later OHLC observations, then prove the Lesson 1 and Lesson 2 interfaces compose through a small focused integration check.
 
 **Architecture:** Add one focused `trading.definitions.pullback_structure` module that reuses the existing `MarketSegment`, `MarketState`, `StructurePoint`, and `StructurePointKind` definitions without reclassifying the parent structure. An immutable `PullbackContext` validates the explicit parent boundary, while the stateless `evaluate_bms()` function validates a complete ordered observation sequence and resolves the first strict origin or BMS boundary event.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Implement only Chapter 2, Lesson 2: BMS Pullback Structure.
-- Add only `PullbackContext`, `PullbackStructureStatus`, `BMSObservation`, `BMSResult`, `evaluate_bms()`, focused unit tests, and the mandatory Level 2 course-scenario tests.
+- Add only `PullbackContext`, `PullbackStructureStatus`, `BMSObservation`, `BMSResult`, `evaluate_bms()`, focused unit tests, and a small Lesson 1 + Lesson 2 integration smoke test.
 - Reuse `MarketSegment`, `MarketState`, `StructurePoint`, `StructurePointKind`, and `classify_market_state()` from `trading/definitions/market_structure.py`; do not duplicate or modify their behavior.
 - `PullbackContext` receives an already-established directional `parent_state`; it must not accept the full parent point sequence or call `classify_market_state()`.
 - The parent segment ends exactly at the previous trend extreme: `parent_segment.end_index == previous_extreme.index`.
@@ -33,13 +33,14 @@
 - Do not add automatic swing detection, zig-zag extraction, structure-point discovery, pullback discovery, trend/segment/timeframe selection, hierarchy inference, or isolated-point-to-structure-point mapping.
 - Do not add SMS, reversal structure, BOS, CHOCH, strategy, signals, entries, exits, stop loss, take profit, position sizing, or broker execution.
 - Do not modify existing production files unless a spec-supported compatibility issue is proven during implementation. The approved design requires no such edit.
-- Chapter 2 Lesson 3 must not begin until Level 1 unit tests, the mandatory Level 2 course-scenario tests, and the full regression suite all pass.
+- BMS completion requires its Level 1 unit tests, the focused Lesson 1 + Lesson 2 integration tests, and the full regression suite to pass. Chapter 2 may then continue to Lesson 3.
+- Formal Level 2 course-scenario validation is deferred until every Chapter 2 market-structure lesson is implemented.
 
 ## File Map
 
 - Create `trading/definitions/pullback_structure.py`: immutable Lesson 2 domain records, context validation, dense observation validation, and chronological BMS evaluation.
 - Create `tests/test_pullback_structure.py`: focused Level 1 domain, validation, pullback, observation, boundary, ambiguity, and composability tests.
-- Create `tests/test_course_market_structure_scenarios.py`: mandatory Level 2 scenarios composing `classify_market_state()` with the new Lesson 2 API.
+- Create `tests/test_pullback_structure_integration.py`: a small smoke suite composing `classify_market_state()` with the new Lesson 2 API.
 - Keep `trading/definitions/market_structure.py` unchanged as the Lesson 1 source of truth.
 - No package-level re-export is needed because this repository imports definition modules directly.
 
@@ -968,30 +969,28 @@ git commit -m "Complete BMS boundary semantics"
 
 ---
 
-### Task 5: Mandatory Level 2 Course-Scenario Integration Gate
+### Task 5: Focused Lesson 1 + Lesson 2 Cross-Layer Integration
 
 **Files:**
-- Create: `tests/test_course_market_structure_scenarios.py`
+- Create: `tests/test_pullback_structure_integration.py`
 - Do not modify: `trading/definitions/market_structure.py`
-- Do not modify: `trading/definitions/pullback_structure.py` unless a scenario exposes a genuine spec violation; any such correction must repeat RED→GREEN verification and remain within the approved API.
+- Do not create: `tests/test_course_market_structure_scenarios.py`
 
 **Interfaces:**
 - Consumes: existing `classify_market_state(segment: MarketSegment, points: Sequence[StructurePoint]) -> MarketState` plus all approved Lesson 2 interfaces completed in Tasks 1-4.
-- Produces: the mandatory Level 2 evidence that explicit Lesson 1 parent classification composes with `PullbackContext` and complete `BMSObservation` sequences.
+- Produces: focused smoke evidence that an explicit Lesson 1 parent state composes with `PullbackContext`, a complete `BMSObservation` sequence, and `evaluate_bms()`.
 
-- [ ] **Step 1: Verify the mandatory integration gate is currently absent (RED)**
+- [ ] **Step 1: Verify the focused integration artifact is currently absent (RED)**
 
-Run: `pytest tests/test_course_market_structure_scenarios.py -v`
+Run: `pytest tests/test_pullback_structure_integration.py -v`
 
-Expected: pytest exits with `ERROR: file or directory not found: tests/test_course_market_structure_scenarios.py`. This is a validation-gate RED: the required cross-layer test artifact does not yet exist.
+Expected: pytest exits with `ERROR: file or directory not found: tests/test_pullback_structure_integration.py`. This is an integration-artifact RED: the required cross-layer smoke check does not yet exist.
 
-- [ ] **Step 2: Create the complete course-scenario integration test file**
+- [ ] **Step 2: Create the four-case cross-layer smoke test**
 
-Create `tests/test_course_market_structure_scenarios.py` with:
+Create `tests/test_pullback_structure_integration.py` with:
 
 ```python
-import pytest
-
 from trading.definitions.candles import Candle
 from trading.definitions.market_structure import (
     MarketSegment,
@@ -1002,7 +1001,6 @@ from trading.definitions.market_structure import (
 )
 from trading.definitions.pullback_structure import (
     BMSObservation,
-    BMSResult,
     PullbackContext,
     PullbackStructureStatus,
     evaluate_bms,
@@ -1025,7 +1023,7 @@ def observed(index: int, *, high_price: float, low_price: float) -> BMSObservati
     )
 
 
-def minimum_uptrend_context(
+def classified_uptrend_context(
     *,
     pullback: StructurePoint = low(4, 100.0),
 ) -> PullbackContext:
@@ -1047,10 +1045,7 @@ def minimum_uptrend_context(
     )
 
 
-def minimum_downtrend_context(
-    *,
-    pullback: StructurePoint = high(4, 100.0),
-) -> PullbackContext:
+def classified_downtrend_context() -> PullbackContext:
     segment = MarketSegment(0, 3)
     points = [
         high(0, 110.0),
@@ -1065,255 +1060,95 @@ def minimum_downtrend_context(
         parent_state,
         trend_origin=high(2, 105.0),
         previous_extreme=low(3, 90.0),
-        pullback_extreme=pullback,
+        pullback_extreme=high(4, 100.0),
     )
 
 
-def test_minimum_uptrend_valid_pullback_without_bms() -> None:
-    context = minimum_uptrend_context()
-    observations = [observed(5, high_price=109.0, low_price=98.0)]
+def test_classified_uptrend_composes_with_confirmed_bms() -> None:
+    context = classified_uptrend_context()
+    observations = [observed(5, high_price=111.0, low_price=98.0)]
 
-    assert evaluate_bms(context, observations) == BMSResult(
-        PullbackStructureStatus.PULLBACK_ONLY
-    )
-
-
-def test_minimum_uptrend_wick_breaks_previous_high() -> None:
-    context = minimum_uptrend_context()
-    wick_break = BMSObservation(5, Candle(106.0, 111.0, 98.0, 107.0))
-
-    assert evaluate_bms(context, [wick_break]) == BMSResult(
-        PullbackStructureStatus.BMS_CONFIRMED,
-        broken_extreme=high(3, 110.0),
-        breakout_index=5,
-    )
-
-
-def test_minimum_downtrend_wick_breaks_previous_low() -> None:
-    context = minimum_downtrend_context()
-    wick_break = BMSObservation(5, Candle(99.0, 102.0, 89.0, 98.0))
-
-    assert evaluate_bms(context, [wick_break]) == BMSResult(
-        PullbackStructureStatus.BMS_CONFIRMED,
-        broken_extreme=low(3, 90.0),
-        breakout_index=5,
-    )
-
-
-def test_exact_bms_level_touch_remains_pullback_only() -> None:
-    context = minimum_uptrend_context()
-    touch = observed(5, high_price=110.0, low_price=98.0)
-
-    assert evaluate_bms(context, [touch]).status is (
-        PullbackStructureStatus.PULLBACK_ONLY
-    )
-
-
-def test_uptrend_parent_origin_invalidation_is_not_a_pullback() -> None:
-    context = minimum_uptrend_context(pullback=low(4, 94.0))
-
-    assert evaluate_bms(context, ()) == BMSResult(
-        PullbackStructureStatus.NOT_A_PULLBACK
-    )
-
-
-def test_downtrend_parent_origin_invalidation_is_not_a_pullback() -> None:
-    context = minimum_downtrend_context(pullback=high(4, 106.0))
-
-    assert evaluate_bms(context, ()) == BMSResult(
-        PullbackStructureStatus.NOT_A_PULLBACK
-    )
-
-
-def test_extended_trend_supports_repeated_explicit_bms_contexts() -> None:
-    first_segment = MarketSegment(0, 4)
-    first_points = [
-        high(0, 100.0),
-        low(1, 90.0),
-        high(2, 110.0),
-        low(3, 95.0),
-        high(4, 120.0),
-    ]
-    first_state = classify_market_state(first_segment, first_points)
-    assert first_state is MarketState.UPTREND
-    first_context = PullbackContext(
-        first_segment,
-        first_state,
-        low(3, 95.0),
-        high(4, 120.0),
-        low(5, 110.0),
-    )
-    first_result = evaluate_bms(
-        first_context,
-        [observed(6, high_price=121.0, low_price=111.0)],
-    )
-
-    second_segment = MarketSegment(0, 6)
-    second_points = [
-        high(0, 100.0),
-        low(1, 90.0),
-        high(2, 110.0),
-        low(3, 95.0),
-        high(4, 120.0),
-        low(5, 110.0),
-        high(6, 121.0),
-    ]
-    second_state = classify_market_state(second_segment, second_points)
-    assert second_state is MarketState.UPTREND
-    second_context = PullbackContext(
-        second_segment,
-        second_state,
-        low(5, 110.0),
-        high(6, 121.0),
-        low(7, 115.0),
-    )
-    second_result = evaluate_bms(
-        second_context,
-        [observed(8, high_price=122.0, low_price=116.0)],
-    )
-
-    assert first_result.status is PullbackStructureStatus.BMS_CONFIRMED
-    assert second_result.status is PullbackStructureStatus.BMS_CONFIRMED
-    assert (first_result.breakout_index, second_result.breakout_index) == (6, 8)
-
-
-def test_outer_and_nested_explicit_contexts_use_the_same_api() -> None:
-    outer = minimum_uptrend_context(pullback=low(8, 99.0))
-
-    inner_segment = MarketSegment(4, 7)
-    inner_points = [
-        high(4, 108.0),
-        low(5, 104.0),
-        high(6, 106.0),
-        low(7, 100.0),
-    ]
-    inner_state = classify_market_state(inner_segment, inner_points)
-    assert inner_state is MarketState.DOWNTREND
-    inner = PullbackContext(
-        inner_segment,
-        inner_state,
-        high(6, 106.0),
-        low(7, 100.0),
-        high(8, 103.0),
-    )
-    shared_observation = observed(9, high_price=105.0, low_price=99.0)
-
-    assert evaluate_bms(outer, [shared_observation]).status is (
-        PullbackStructureStatus.PULLBACK_ONLY
-    )
-    assert evaluate_bms(inner, [shared_observation]).status is (
+    assert evaluate_bms(context, observations).status is (
         PullbackStructureStatus.BMS_CONFIRMED
     )
 
 
-def test_classified_parent_state_is_passed_into_context_unchanged() -> None:
-    segment = MarketSegment(0, 3)
-    points = [
-        high(0, 100.0),
-        low(1, 90.0),
-        low(2, 95.0),
-        high(3, 110.0),
-    ]
-    parent_state = classify_market_state(segment, points)
-    assert parent_state is MarketState.UPTREND
+def test_classified_downtrend_composes_with_confirmed_bms() -> None:
+    context = classified_downtrend_context()
+    observations = [observed(5, high_price=102.0, low_price=89.0)]
 
-    context = PullbackContext(
-        segment,
-        parent_state,
-        low(2, 95.0),
-        high(3, 110.0),
-        low(4, 100.0),
-    )
-
-    assert context.parent_state is parent_state
-
-
-def test_later_dual_boundary_candle_is_refused() -> None:
-    context = minimum_uptrend_context()
-    dual_crossing = observed(5, high_price=111.0, low_price=94.0)
-
-    with pytest.raises(
-        ValueError,
-        match="OHLC cannot determine the intrabar boundary order",
-    ):
-        evaluate_bms(context, [dual_crossing])
-
-
-def test_first_boundary_event_wins_across_later_candles() -> None:
-    context = minimum_uptrend_context()
-    observations = [
-        observed(5, high_price=111.0, low_price=98.0),
-        observed(6, high_price=109.0, low_price=94.0),
-    ]
-
-    assert evaluate_bms(context, observations) == BMSResult(
-        PullbackStructureStatus.BMS_CONFIRMED,
-        broken_extreme=high(3, 110.0),
-        breakout_index=5,
+    assert evaluate_bms(context, observations).status is (
+        PullbackStructureStatus.BMS_CONFIRMED
     )
 
 
-def test_skipped_post_pullback_candle_is_rejected() -> None:
-    context = minimum_uptrend_context()
-    incomplete_observations = [
-        observed(5, high_price=109.0, low_price=98.0),
-        observed(7, high_price=111.0, low_price=98.0),
-    ]
+def test_classified_parent_without_later_break_remains_pullback_only() -> None:
+    context = classified_uptrend_context()
+    observations = [observed(5, high_price=109.0, low_price=98.0)]
 
-    with pytest.raises(ValueError, match="complete dense chronology"):
-        evaluate_bms(context, incomplete_observations)
+    assert evaluate_bms(context, observations).status is (
+        PullbackStructureStatus.PULLBACK_ONLY
+    )
+
+
+def test_classified_parent_origin_invalidation_is_not_a_pullback() -> None:
+    context = classified_uptrend_context(pullback=low(4, 94.0))
+
+    assert evaluate_bms(context, ()).status is (
+        PullbackStructureStatus.NOT_A_PULLBACK
+    )
 ```
 
-- [ ] **Step 3: Run the mandatory Level 2 scenarios and verify GREEN**
+- [ ] **Step 3: Run the focused cross-layer integration check and verify GREEN**
 
-Run: `pytest tests/test_course_market_structure_scenarios.py -v`
+Run: `pytest tests/test_pullback_structure_integration.py -v`
 
-Expected: all 12 complete course scenarios pass. If any scenario fails, treat it as a real integration defect: diagnose it against the approved spec, make the minimum in-scope correction, rerun the failing scenario, and then rerun the complete file before continuing.
+Expected: all four Lesson 1 + Lesson 2 composition tests pass.
 
-- [ ] **Step 4: Run the complete Level 1 and Level 2 Lesson 2 validation**
+- [ ] **Step 4: Run Level 1 and focused integration together**
 
-Run: `pytest tests/test_pullback_structure.py tests/test_course_market_structure_scenarios.py -v`
+Run: `pytest tests/test_pullback_structure.py tests/test_pullback_structure_integration.py -v`
 
-Expected: every focused unit and course-scenario integration test passes.
+Expected: all focused BMS unit and cross-layer smoke tests pass.
 
-- [ ] **Step 5: Run the Lesson 1 market-structure regression alongside the new gate**
+- [ ] **Step 5: Run the Lesson 1 regression beside the new smoke check**
 
-Run: `pytest tests/test_market_structure.py tests/test_course_market_structure_scenarios.py -v`
+Run: `pytest tests/test_market_structure.py tests/test_pullback_structure_integration.py -v`
 
-Expected: existing Lesson 1 behavior and all new cross-layer scenarios pass together.
+Expected: all existing Lesson 1 tests and the four composition tests pass.
 
-- [ ] **Step 6: Commit the mandatory integration gate**
+- [ ] **Step 6: Commit the focused integration task**
 
 ```bash
-git add tests/test_course_market_structure_scenarios.py
-git commit -m "Add course market structure scenario gate"
+git add tests/test_pullback_structure_integration.py
+git commit -m "Add BMS cross-layer integration tests"
 ```
 
 ---
 
-### Task 6: Full Regression, Scope, and Lesson 3 Gate Verification
+### Task 6: Full BMS Regression, Scope, and Continuation Gate Verification
 
 **Files:**
 - Verify: `trading/definitions/pullback_structure.py`
 - Verify: `tests/test_pullback_structure.py`
-- Verify: `tests/test_course_market_structure_scenarios.py`
+- Verify: `tests/test_pullback_structure_integration.py`
 - Verify unchanged: `trading/definitions/market_structure.py`
 
 **Interfaces:**
 - Consumes: all Task 1-5 implementation commits.
-- Produces: fresh evidence that Level 1, mandatory Level 2, and the complete repository regression suite pass with design-limited scope.
+- Produces: fresh evidence that BMS Level 1 tests, the focused Lesson 1 + Lesson 2 integration check, and the complete repository regression suite pass with design-limited scope.
 
-- [ ] **Step 1: Run the complete Level 1 unit suite**
+- [ ] **Step 1: Run the complete Level 1 BMS unit suite**
 
 Run: `pytest tests/test_pullback_structure.py -v`
 
 Expected: all focused BMS pullback unit tests pass.
 
-- [ ] **Step 2: Run the mandatory Level 2 course-scenario gate**
+- [ ] **Step 2: Run the focused Lesson 1 + Lesson 2 integration check**
 
-Run: `pytest tests/test_course_market_structure_scenarios.py -v`
+Run: `pytest tests/test_pullback_structure_integration.py -v`
 
-Expected: all 12 course-scenario integration tests pass. Do not proceed toward Lesson 3 if this command fails.
+Expected: all four cross-layer smoke tests pass.
 
 - [ ] **Step 3: Run the complete repository test suite**
 
@@ -1323,54 +1158,78 @@ Expected: the entire test suite passes with zero failures.
 
 - [ ] **Step 4: Check formatting and whitespace**
 
-Run: `git diff --check 3612b061864ce4cc4e1e6eb293055505b77e04e0..HEAD`
+Run: `git diff --check 1da60f33165740ab3300b7fe5eb5c159cbcdc353..HEAD`
 
 Expected: exit code 0 with no whitespace errors.
 
 - [ ] **Step 5: Verify the complete implementation scope**
 
-Run: `git diff --name-only 3612b061864ce4cc4e1e6eb293055505b77e04e0..HEAD`
+Run: `git diff --name-only 1da60f33165740ab3300b7fe5eb5c159cbcdc353..HEAD`
 
 Expected paths only:
 
 ```text
 docs/superpowers/plans/2026-08-29-bms-pullback-structure.md
-tests/test_course_market_structure_scenarios.py
+docs/superpowers/specs/2026-08-29-bms-pullback-structure-design.md
 tests/test_pullback_structure.py
+tests/test_pullback_structure_integration.py
 trading/definitions/pullback_structure.py
 ```
 
-The plan path appears because the approved design commit is the comparison base and this plan is committed before implementation.
+The two documentation paths contain this approved validation-timing revision. The three implementation paths contain only BMS production, Level 1 unit, and focused integration work.
 
 - [ ] **Step 6: Prove Lesson 1 production behavior was not edited**
 
-Run: `git diff --exit-code 3612b061864ce4cc4e1e6eb293055505b77e04e0..HEAD -- trading/definitions/market_structure.py`
+Run: `git diff --exit-code 1da60f33165740ab3300b7fe5eb5c159cbcdc353..HEAD -- trading/definitions/market_structure.py`
 
 Expected: exit code 0 and no diff.
 
 - [ ] **Step 7: Inspect the implementation commits**
 
-Run: `git log --oneline 3612b061864ce4cc4e1e6eb293055505b77e04e0..HEAD`
+Run: `git log --oneline 1da60f33165740ab3300b7fe5eb5c159cbcdc353..HEAD`
 
-Expected: the plan commit plus the five focused implementation/test commits from Tasks 1-5. Review any additional fix commit rather than rewriting or hiding valid history.
+Expected: the validation-timing documentation revision plus the five focused implementation/test commits from Tasks 1-5. Review any additional fix commit rather than rewriting or hiding valid history.
 
-- [ ] **Step 8: Enforce the Lesson 3 quality gate**
+- [ ] **Step 8: Enforce the BMS completion gate**
 
-Record completion only when all three conditions are true:
+Record BMS completion only when all three conditions are true:
 
 ```text
 Level 1 BMS unit tests: PASS
-Level 2 course-scenario integration tests: PASS
+Lesson 1 + Lesson 2 integration smoke tests: PASS
 Full repository regression suite: PASS
 ```
 
-Chapter 2 Lesson 3 must not begin if any condition is not satisfied. This is a mandatory project quality gate, not optional follow-up work.
+After these conditions, Chapter 2 may continue to Lesson 3. Do not claim that the complete Chapter 2 market-structure model has been validated.
 
 No Task 6 commit is expected when verification is clean because this task changes no files. If verification exposes an in-scope defect, return to the relevant earlier task, reproduce RED, make the minimum correction, rerun its targeted and regression commands, and commit the correction with a message describing the actual behavior fixed.
 
-## Deferred Level 3 Validation Milestone
 
-Do not implement this milestone in Lesson 2. Once the course legitimately defines automatic structure extraction, pause development for end-to-end validation of:
+## Future Mandatory Level 2 Chapter-Completion Gate
+
+Formal Level 2 course-scenario validation is not part of BMS implementation. After every Chapter 2 market-structure lesson is implemented:
+
+1. review the complete Chapter 2 course material;
+2. design comprehensive hand-labelled scenarios using only concepts actually taught;
+3. create or update `tests/test_course_market_structure_scenarios.py`;
+4. test all relevant Chapter 2 structure layers together;
+5. run the full regression suite; and
+6. only then call the Chapter 2 market-structure foundation validated.
+
+The future suite may cover trend/non-trend, pullbacks, BMS, later reversal structures, short-, medium-, and long-term structure, cycles/timeframes, levels/hierarchy, nested structures, and other relationships actually defined by the completed chapter. Do not invent their behavior or detailed scenarios in this Lesson 2 plan.
+
+## Conditional Level 3 Validation Milestone
+
+At the end of Chapter 2, reassess whether the course has supplied legitimate rules for automatically extracting:
+
+- short-term structure;
+- medium-term structure;
+- long-term structure;
+- cycles/timeframes;
+- levels/hierarchy; and
+- structural points and zig-zags.
+
+If the rules are sufficient, design a later end-to-end validation phase:
 
 ```text
 raw historical candles
@@ -1391,4 +1250,4 @@ BMS and later market structures
 comparison with manually labelled teacher/course examples
 ```
 
-Until those extraction rules exist, do not invent swing logic or treat isolated unit success as raw-chart recognition evidence.
+If the course still lacks sufficient extraction rules, keep Level 3 deferred. Do not invent swing or hierarchy logic to force this milestone.

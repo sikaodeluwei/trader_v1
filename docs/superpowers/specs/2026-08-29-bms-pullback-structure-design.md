@@ -90,7 +90,7 @@ trading/definitions/pullback_structure.py
 
 It receives the already-established `parent_state`. `PullbackContext` does not accept the full parent point sequence and does not call, reimplement, or second-guess `classify_market_state()`.
 
-The mandatory integration scenarios will demonstrate that callers can classify the explicit parent structure first and then pass the resulting directional state into the Lesson 2 layer.
+The focused BMS cross-layer integration check will demonstrate that callers can classify the explicit parent structure first and then pass the resulting directional state into the Lesson 2 layer.
 
 ## Index Semantics
 
@@ -386,15 +386,15 @@ Unit coverage must include:
 18. `BMSResult` field invariants; and
 19. separate repeated and nested contexts.
 
-### Level 2 — Mandatory course-scenario integration gate
+### Intermediate Lesson 1 + Lesson 2 cross-layer integration
 
-Immediately after BMS implementation and before Chapter 2 Lesson 3, the project must add and pass:
+BMS implementation must include a small focused integration check such as:
 
 ```text
-tests/test_course_market_structure_scenarios.py
+tests/test_pullback_structure_integration.py
 ```
 
-Each scenario must demonstrate the intended cross-layer composition:
+It proves only the composition already taught through Lesson 2:
 
 ```text
 explicit parent segment + explicit parent structure points
@@ -412,28 +412,37 @@ complete ordered BMSObservation sequence
 evaluate_bms()
 ```
 
-Required scenarios are:
+Representative smoke cases are:
 
-1. minimum valid uptrend, valid pullback, and no previous-high break producing `PULLBACK_ONLY`;
-2. minimum valid uptrend and a wick breaking the previous high producing `BMS_CONFIRMED`;
-3. the minimum valid downtrend mirror producing `BMS_CONFIRMED`;
-4. exact contact with the BMS level producing no BMS;
-5. an uptrend pullback breaking below its parent origin producing `NOT_A_PULLBACK`;
-6. the mirrored downtrend invalidation;
-7. an extended continuing trend with repeated explicit contexts whose valid BMS events remain independently valid;
-8. separate outer and nested explicit contexts evaluated without automatic hierarchy inference;
-9. parent state proven through `classify_market_state()` before each pullback/BMS evaluation;
-10. a dual-boundary OHLC candle rejected instead of guessed;
-11. first-event precedence across multiple later candles; and
-12. rejection of an observation sequence that omits an earlier post-pullback candle.
+1. a valid uptrend parent, valid pullback, and later high break producing `BMS_CONFIRMED`;
+2. the valid downtrend mirror producing `BMS_CONFIRMED`;
+3. a valid parent trend and pullback with no later break producing `PULLBACK_ONLY`; and
+4. parent-origin invalidation producing `NOT_A_PULLBACK`.
 
-The Level 2 checkpoint answers whether the implemented course layers reach the same conclusion as complete hand-defined lesson scenarios. Passing isolated unit tests is not sufficient to begin Lesson 3. The Level 2 scenarios and the full regression suite must pass first.
+This is interface and composition evidence, not formal comprehensive Chapter 2 validation. It must not introduce tests for later lessons that have not yet been taught.
 
-These scenarios still use explicitly supplied segments and structure points. They are not raw-chart recognition tests.
+BMS is complete when its Level 1 unit tests, this focused integration check, and the full repository regression suite pass. Chapter 2 may then continue to Lesson 3.
 
-### Level 3 — Future raw-chart end-to-end validation
+### Level 2 — Mandatory validation after Chapter 2 completion
 
-Only after the course defines legitimate automatic structure-point and zig-zag extraction rules will development pause for a higher-level validation phase:
+Formal Level 2 course-scenario validation occurs only after every Chapter 2 market-structure lesson has been implemented. It is not part of BMS completion and does not block the start of Lesson 3.
+
+At that future checkpoint, the project must:
+
+1. review the complete Chapter 2 course material;
+2. design comprehensive hand-labelled scenarios from concepts actually taught;
+3. create or update `tests/test_course_market_structure_scenarios.py`;
+4. test all relevant Chapter 2 structure layers together;
+5. run the full regression suite; and
+6. only then call the Chapter 2 market-structure foundation validated.
+
+The final Level 2 suite may cover trend/non-trend, pullbacks, BMS, later reversal structures, short-term structure, medium-term structure, long-term structure, cycles/timeframes, levels/hierarchy, nested structures, and other relationships actually defined by the completed chapter. This list records possible coverage areas; it does not define their future behavior or invent their tests now.
+
+### Level 3 — Conditional future raw-chart end-to-end validation
+
+At the end of Chapter 2, reassess whether the completed course material provides legitimate rules for automatically extracting structural points and zig-zags, short-, medium-, and long-term structures, cycles/timeframes, and levels/hierarchy.
+
+If the rules are sufficient, design a later end-to-end validation phase:
 
 ```text
 raw historical candles
@@ -448,7 +457,7 @@ trend -> pullback -> BMS and later structures
 comparison with manually labelled teacher/course examples
 ```
 
-This future milestone must verify connected behavior rather than merely accumulating individually correct helper tests. It is documented now but must not be approximated with invented swing logic, direct isolated-point mapping, or guessed hierarchy rules.
+If the course still has not defined enough extraction behavior, Level 3 remains deferred. This milestone must never be approximated with invented swing logic, direct isolated-point mapping, or guessed hierarchy rules.
 
 ## Explicitly Deferred Work
 
@@ -486,7 +495,9 @@ The implementation plan and later code must preserve these invariants:
 10. OHLC dual-boundary order is rejected as ambiguous.
 11. Repeated and nested structures remain explicitly composable without inferred hierarchy.
 12. No future-course or strategy behavior is introduced.
-13. The Level 2 course-scenario gate is mandatory before Lesson 3.
+13. BMS requires Level 1 tests, a focused Lesson 1 + Lesson 2 integration check, and full regression before Lesson 3 may begin.
+14. Formal Level 2 course-scenario validation is mandatory only after all Chapter 2 lessons are complete.
+15. Level 3 remains conditional on the course defining legitimate automatic extraction rules.
 
 ## Remaining Course Ambiguity
 
