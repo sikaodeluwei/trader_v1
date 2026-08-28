@@ -1,5 +1,6 @@
 """Explicit Chapter 2 pullback and BMS structure definitions."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
@@ -81,3 +82,30 @@ class BMSResult:
     status: PullbackStructureStatus
     broken_extreme: StructurePoint | None = None
     breakout_index: int | None = None
+
+
+def evaluate_bms(
+    context: PullbackContext,
+    observations: Sequence[BMSObservation],
+) -> BMSResult:
+    """Evaluate one explicit pullback through supplied later observations."""
+
+    if context.parent_state is MarketState.UPTREND:
+        no_pullback = (
+            context.pullback_extreme.price >= context.previous_extreme.price
+        )
+        origin_invalidated = (
+            context.pullback_extreme.price < context.trend_origin.price
+        )
+    else:
+        no_pullback = (
+            context.pullback_extreme.price <= context.previous_extreme.price
+        )
+        origin_invalidated = (
+            context.pullback_extreme.price > context.trend_origin.price
+        )
+
+    if no_pullback or origin_invalidated:
+        return BMSResult(PullbackStructureStatus.NOT_A_PULLBACK)
+
+    return BMSResult(PullbackStructureStatus.PULLBACK_ONLY)

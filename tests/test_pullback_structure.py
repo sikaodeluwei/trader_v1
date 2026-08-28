@@ -14,6 +14,7 @@ from trading.definitions.pullback_structure import (
     BMSResult,
     PullbackContext,
     PullbackStructureStatus,
+    evaluate_bms,
 )
 
 
@@ -84,3 +85,41 @@ def test_context_rejects_invalid_chronology(origin: StructurePoint, previous: St
 def test_context_rejects_incoherent_origin_and_extreme_prices(context_factory: object) -> None:
     with pytest.raises(ValueError, match="boundary prices"):
         context_factory()  # type: ignore[operator]
+
+
+@pytest.mark.parametrize(
+    ("context", "expected"),
+    [
+        (uptrend_context(), PullbackStructureStatus.PULLBACK_ONLY),
+        (downtrend_context(), PullbackStructureStatus.PULLBACK_ONLY),
+        (
+            uptrend_context(pullback=low(4, 110.0)),
+            PullbackStructureStatus.NOT_A_PULLBACK,
+        ),
+        (
+            downtrend_context(pullback=high(4, 90.0)),
+            PullbackStructureStatus.NOT_A_PULLBACK,
+        ),
+        (
+            uptrend_context(pullback=low(4, 89.0)),
+            PullbackStructureStatus.NOT_A_PULLBACK,
+        ),
+        (
+            downtrend_context(pullback=high(4, 111.0)),
+            PullbackStructureStatus.NOT_A_PULLBACK,
+        ),
+        (
+            uptrend_context(pullback=low(4, 90.0)),
+            PullbackStructureStatus.PULLBACK_ONLY,
+        ),
+        (
+            downtrend_context(pullback=high(4, 110.0)),
+            PullbackStructureStatus.PULLBACK_ONLY,
+        ),
+    ],
+)
+def test_empty_observations_return_context_level_pullback_outcome(
+    context: PullbackContext,
+    expected: PullbackStructureStatus,
+) -> None:
+    assert evaluate_bms(context, ()) == BMSResult(expected)
