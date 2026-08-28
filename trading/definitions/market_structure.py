@@ -1,5 +1,6 @@
 """Explicit, segment-relative Chapter 2 market-structure definitions."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
@@ -74,3 +75,80 @@ def compare_structure_points(
     if later.price < previous.price:
         return StructureRelationship.LOWER_LOW
     return StructureRelationship.EQUAL_LOW
+
+
+def _validate_segment_points(
+    segment: MarketSegment,
+    points: Sequence[StructurePoint],
+) -> None:
+    previous_index: int | None = None
+    seen_same_kind_indexes: set[tuple[int, StructurePointKind]] = set()
+
+    for point in points:
+        if not segment.start_index <= point.index <= segment.end_index:
+            raise ValueError("structure point is outside segment")
+        if previous_index is not None and point.index < previous_index:
+            raise ValueError("structure points must be chronological")
+
+        point_identity = (point.index, point.kind)
+        if point_identity in seen_same_kind_indexes:
+            raise ValueError("duplicate same-kind structure-point index")
+        seen_same_kind_indexes.add(point_identity)
+        previous_index = point.index
+
+
+def _relationships_for_kind(
+    points: Sequence[StructurePoint],
+    kind: StructurePointKind,
+) -> list[StructureRelationship]:
+    same_kind_points = [point for point in points if point.kind is kind]
+    return [
+        compare_structure_points(previous, later)
+        for previous, later in zip(same_kind_points, same_kind_points[1:])
+    ]
+
+
+def _all_relationships_are(
+    relationships: Sequence[StructureRelationship],
+    expected: StructureRelationship,
+) -> bool:
+    return bool(relationships) and all(
+        relationship is expected for relationship in relationships
+    )
+
+
+def _resolve_market_state(uptrend: bool, downtrend: bool) -> MarketState:
+    if uptrend and downtrend:
+        raise ValueError("contradictory market-state candidates")
+    if uptrend:
+        return MarketState.UPTREND
+    if downtrend:
+        return MarketState.DOWNTREND
+    return MarketState.NON_TREND
+
+
+def classify_market_state(
+    segment: MarketSegment,
+    points: Sequence[StructurePoint],
+) -> MarketState:
+    """Classify one explicit segment from supplied chronological points."""
+
+    _validate_segment_points(segment, points)
+    high_relationships = _relationships_for_kind(points, StructurePointKind.HIGH)
+    low_relationships = _relationships_for_kind(points, StructurePointKind.LOW)
+
+    uptrend = _all_relationships_are(
+        high_relationships,
+        StructureRelationship.HIGHER_HIGH,
+    ) and _all_relationships_are(
+        low_relationships,
+        StructureRelationship.HIGHER_LOW,
+    )
+    downtrend = _all_relationships_are(
+        high_relationships,
+        StructureRelationship.LOWER_HIGH,
+    ) and _all_relationships_are(
+        low_relationships,
+        StructureRelationship.LOWER_LOW,
+    )
+    return _resolve_market_state(uptrend, downtrend)

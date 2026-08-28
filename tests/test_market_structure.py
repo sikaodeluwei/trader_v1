@@ -2,12 +2,14 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+from trading.definitions import market_structure
 from trading.definitions.market_structure import (
     MarketSegment,
     MarketState,
     StructurePoint,
     StructurePointKind,
     StructureRelationship,
+    classify_market_state,
     compare_structure_points,
 )
 
@@ -97,3 +99,171 @@ def test_compare_structure_points_rejects_non_increasing_chronology(
 ) -> None:
     with pytest.raises(ValueError, match="chronological"):
         compare_structure_points(high(3, 100.0), high(later_index, 110.0))
+
+
+def test_classify_market_state_accepts_minimum_uptrend() -> None:
+    points = [
+        high(0, 100.0),
+        low(1, 90.0),
+        high(2, 110.0),
+        low(3, 95.0),
+    ]
+
+    assert classify_market_state(MarketSegment(0, 3), points) is MarketState.UPTREND
+
+
+def test_classify_market_state_accepts_minimum_downtrend() -> None:
+    points = [
+        high(0, 110.0),
+        low(1, 100.0),
+        high(2, 105.0),
+        low(3, 90.0),
+    ]
+
+    assert classify_market_state(MarketSegment(0, 3), points) is MarketState.DOWNTREND
+
+
+@pytest.mark.parametrize(
+    ("points", "expected"),
+    [
+        (
+            [
+                high(0, 100.0),
+                low(1, 90.0),
+                high(2, 110.0),
+                low(3, 95.0),
+                high(4, 120.0),
+                low(5, 100.0),
+            ],
+            MarketState.UPTREND,
+        ),
+        (
+            [
+                high(0, 120.0),
+                low(1, 100.0),
+                high(2, 110.0),
+                low(3, 90.0),
+                high(4, 105.0),
+                low(5, 80.0),
+            ],
+            MarketState.DOWNTREND,
+        ),
+    ],
+)
+def test_classify_market_state_accepts_extended_continuous_trends(
+    points: list[StructurePoint],
+    expected: MarketState,
+) -> None:
+    assert classify_market_state(MarketSegment(0, 5), points) is expected
+
+
+@pytest.mark.parametrize(
+    "points",
+    [
+        [],
+        [high(0, 100.0), low(1, 90.0), low(2, 95.0)],
+        [high(0, 100.0), high(1, 110.0), low(2, 90.0)],
+    ],
+)
+def test_classify_market_state_returns_non_trend_for_insufficient_points(
+    points: list[StructurePoint],
+) -> None:
+    assert classify_market_state(MarketSegment(0, 2), points) is MarketState.NON_TREND
+
+
+@pytest.mark.parametrize(
+    "points",
+    [
+        [high(0, 100.0), low(1, 90.0), high(2, 100.0), low(3, 95.0)],
+        [high(0, 100.0), low(1, 90.0), high(2, 110.0), low(3, 90.0)],
+    ],
+)
+def test_classify_market_state_returns_non_trend_for_equality(
+    points: list[StructurePoint],
+) -> None:
+    assert classify_market_state(MarketSegment(0, 3), points) is MarketState.NON_TREND
+
+
+def test_classify_market_state_rejects_interrupted_direction_as_non_trend() -> None:
+    points = [
+        high(0, 100.0),
+        low(1, 90.0),
+        high(2, 110.0),
+        low(3, 95.0),
+        high(4, 105.0),
+        low(5, 100.0),
+    ]
+
+    assert classify_market_state(MarketSegment(0, 5), points) is MarketState.NON_TREND
+
+
+def test_classify_market_state_does_not_skip_intermediate_same_kind_point() -> None:
+    points = [
+        high(0, 100.0),
+        low(1, 90.0),
+        high(2, 95.0),
+        low(3, 100.0),
+        high(4, 110.0),
+        low(5, 105.0),
+    ]
+
+    assert classify_market_state(MarketSegment(0, 5), points) is MarketState.NON_TREND
+
+
+def test_classify_market_state_requires_explicit_segment() -> None:
+    points = [high(0, 100.0), low(1, 90.0), high(2, 110.0), low(3, 95.0)]
+
+    with pytest.raises(TypeError):
+        classify_market_state(points)  # type: ignore[call-arg]
+
+
+def test_classify_market_state_includes_segment_boundaries() -> None:
+    points = [high(10, 100.0), low(11, 90.0), high(12, 110.0), low(13, 95.0)]
+
+    assert classify_market_state(MarketSegment(10, 13), points) is MarketState.UPTREND
+
+
+@pytest.mark.parametrize(
+    ("segment", "points"),
+    [
+        (
+            MarketSegment(0, 3),
+            [high(-1, 100.0), low(0, 90.0), high(1, 110.0), low(2, 95.0)],
+        ),
+        (
+            MarketSegment(0, 2),
+            [high(0, 100.0), low(1, 90.0), high(2, 110.0), low(3, 95.0)],
+        ),
+    ],
+)
+def test_classify_market_state_rejects_out_of_segment_points(
+    segment: MarketSegment,
+    points: list[StructurePoint],
+) -> None:
+    with pytest.raises(ValueError, match="outside segment"):
+        classify_market_state(segment, points)
+
+
+def test_classify_market_state_rejects_decreasing_caller_order() -> None:
+    points = [high(0, 100.0), low(2, 90.0), high(1, 110.0), low(3, 95.0)]
+
+    with pytest.raises(ValueError, match="chronological"):
+        classify_market_state(MarketSegment(0, 3), points)
+
+
+def test_classify_market_state_rejects_duplicate_same_kind_index() -> None:
+    points = [high(0, 100.0), low(0, 90.0), high(0, 110.0), low(1, 95.0)]
+
+    with pytest.raises(ValueError, match="same-kind"):
+        classify_market_state(MarketSegment(0, 1), points)
+
+
+def test_classify_market_state_allows_high_and_low_at_same_index() -> None:
+    points = [high(0, 100.0), low(0, 90.0), high(1, 110.0), low(1, 95.0)]
+
+    assert classify_market_state(MarketSegment(0, 1), points) is MarketState.UPTREND
+
+
+def test_market_state_resolution_rejects_contradictory_candidates() -> None:
+    with pytest.raises(ValueError, match="contradictory"):
+        market_structure._resolve_market_state(uptrend=True, downtrend=True)
