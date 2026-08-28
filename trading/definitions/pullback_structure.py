@@ -84,11 +84,33 @@ class BMSResult:
     breakout_index: int | None = None
 
 
+def _validate_observations(
+    context: PullbackContext,
+    observations: Sequence[BMSObservation],
+) -> None:
+    expected_index = context.pullback_extreme.index + 1
+    for position, observation in enumerate(observations):
+        if (
+            position == 0
+            and observation.index == context.pullback_extreme.index
+        ):
+            raise ValueError(
+                "OHLC cannot determine same-candle pullback/BMS order"
+            )
+        if observation.index != expected_index:
+            raise ValueError(
+                "observations must use complete dense chronology after pullback"
+            )
+        expected_index += 1
+
+
 def evaluate_bms(
     context: PullbackContext,
     observations: Sequence[BMSObservation],
 ) -> BMSResult:
-    """Evaluate one explicit pullback through supplied later observations."""
+    """Evaluate the first boundary event after one explicit pullback."""
+
+    _validate_observations(context, observations)
 
     if context.parent_state is MarketState.UPTREND:
         no_pullback = (
@@ -107,5 +129,24 @@ def evaluate_bms(
 
     if no_pullback or origin_invalidated:
         return BMSResult(PullbackStructureStatus.NOT_A_PULLBACK)
+
+    for observation in observations:
+        if context.parent_state is MarketState.UPTREND:
+            origin_crossed = observation.candle.low < context.trend_origin.price
+            bms_crossed = (
+                observation.candle.high > context.previous_extreme.price
+            )
+        else:
+            origin_crossed = observation.candle.high > context.trend_origin.price
+            bms_crossed = observation.candle.low < context.previous_extreme.price
+
+        if origin_crossed:
+            return BMSResult(PullbackStructureStatus.NOT_A_PULLBACK)
+        if bms_crossed:
+            return BMSResult(
+                PullbackStructureStatus.BMS_CONFIRMED,
+                broken_extreme=context.previous_extreme,
+                breakout_index=observation.index,
+            )
 
     return BMSResult(PullbackStructureStatus.PULLBACK_ONLY)

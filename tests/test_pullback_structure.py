@@ -123,3 +123,109 @@ def test_empty_observations_return_context_level_pullback_outcome(
     expected: PullbackStructureStatus,
 ) -> None:
     assert evaluate_bms(context, ()) == BMSResult(expected)
+
+
+def observed(index: int, *, high_price: float, low_price: float) -> BMSObservation:
+    midpoint = (high_price + low_price) / 2
+    return BMSObservation(
+        index,
+        Candle(midpoint, high_price, low_price, midpoint),
+    )
+
+
+@pytest.mark.parametrize(
+    ("context", "observation", "expected_extreme"),
+    [
+        (
+            uptrend_context(),
+            observed(5, high_price=111.0, low_price=95.0),
+            high(3, 110.0),
+        ),
+        (
+            downtrend_context(),
+            observed(5, high_price=105.0, low_price=89.0),
+            low(3, 90.0),
+        ),
+    ],
+)
+def test_immediate_strict_bms_break_is_confirmed(
+    context: PullbackContext,
+    observation: BMSObservation,
+    expected_extreme: StructurePoint,
+) -> None:
+    assert evaluate_bms(context, [observation]) == BMSResult(
+        PullbackStructureStatus.BMS_CONFIRMED,
+        broken_extreme=expected_extreme,
+        breakout_index=5,
+    )
+
+
+def test_multi_candle_scan_returns_first_later_bms() -> None:
+    observations = [
+        observed(5, high_price=109.0, low_price=95.0),
+        observed(6, high_price=110.0, low_price=94.0),
+        observed(7, high_price=111.0, low_price=96.0),
+    ]
+
+    assert evaluate_bms(uptrend_context(), observations) == BMSResult(
+        PullbackStructureStatus.BMS_CONFIRMED,
+        broken_extreme=high(3, 110.0),
+        breakout_index=7,
+    )
+
+
+def test_first_bms_event_is_not_overwritten_by_later_origin_crossing() -> None:
+    observations = [
+        observed(5, high_price=111.0, low_price=96.0),
+        observed(6, high_price=109.0, low_price=89.0),
+    ]
+
+    assert evaluate_bms(uptrend_context(), observations) == BMSResult(
+        PullbackStructureStatus.BMS_CONFIRMED,
+        broken_extreme=high(3, 110.0),
+        breakout_index=5,
+    )
+
+
+def test_first_origin_event_is_not_overwritten_by_later_bms_crossing() -> None:
+    observations = [
+        observed(5, high_price=109.0, low_price=89.0),
+        observed(6, high_price=111.0, low_price=95.0),
+    ]
+
+    assert evaluate_bms(uptrend_context(), observations) == BMSResult(
+        PullbackStructureStatus.NOT_A_PULLBACK
+    )
+
+
+@pytest.mark.parametrize(
+    "observations",
+    [
+        [observed(6, high_price=109.0, low_price=95.0)],
+        [
+            observed(5, high_price=109.0, low_price=95.0),
+            observed(5, high_price=109.0, low_price=95.0),
+        ],
+        [
+            observed(5, high_price=109.0, low_price=95.0),
+            observed(4, high_price=109.0, low_price=95.0),
+        ],
+        [
+            observed(5, high_price=109.0, low_price=95.0),
+            observed(7, high_price=111.0, low_price=95.0),
+        ],
+    ],
+)
+def test_observation_indexes_must_be_complete_dense_chronology(
+    observations: list[BMSObservation],
+) -> None:
+    with pytest.raises(ValueError, match="complete dense chronology"):
+        evaluate_bms(uptrend_context(), observations)
+
+
+def test_same_index_observation_is_ohlc_indeterminate() -> None:
+    with pytest.raises(ValueError, match="same-candle pullback/BMS order"):
+        evaluate_bms(
+            uptrend_context(),
+            [observed(4, high_price=111.0, low_price=95.0)],
+        )
