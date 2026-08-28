@@ -49,3 +49,28 @@ class MarketState(Enum):
     UPTREND = "uptrend"
     DOWNTREND = "downtrend"
     NON_TREND = "non_trend"
+
+
+def compare_structure_points(
+    previous: StructurePoint,
+    later: StructurePoint,
+) -> StructureRelationship:
+    """Compare chronological structural points of the same kind."""
+
+    if previous.kind is not later.kind:
+        raise ValueError("structure-point comparison requires the same kind")
+    if later.index <= previous.index:
+        raise ValueError("same-kind structure points must be chronological")
+
+    if previous.kind is StructurePointKind.HIGH:
+        if later.price > previous.price:
+            return StructureRelationship.HIGHER_HIGH
+        if later.price < previous.price:
+            return StructureRelationship.LOWER_HIGH
+        return StructureRelationship.EQUAL_HIGH
+
+    if later.price > previous.price:
+        return StructureRelationship.HIGHER_LOW
+    if later.price < previous.price:
+        return StructureRelationship.LOWER_LOW
+    return StructureRelationship.EQUAL_LOW
