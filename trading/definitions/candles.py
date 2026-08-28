@@ -62,6 +62,13 @@ class Advantage(Enum):
     NONE = "none"
 
 
+class TrendStatus(Enum):
+    """Whether a known candle archetype shows a clear side advantage."""
+
+    TREND = "trend"
+    NON_TREND = "non_trend"
+
+
 class CandleType(Enum):
     """The 16 currently defined visual/fuzzy candle archetypes."""
 
@@ -82,6 +89,15 @@ class CandleType(Enum):
     BEAR_6 = "bear_6"
     BEAR_7 = "bear_7"
     BEAR_8 = "bear_8"
+
+
+@dataclass(frozen=True)
+class CandleTypeInterpretation:
+    """Course meaning attached to a known candle archetype."""
+
+    candle_type: CandleType
+    advantage: Advantage
+    trend_status: TrendStatus
 
 
 _ADVANTAGE_BY_CANDLE_TYPE: dict[CandleType, Advantage] = {
@@ -186,6 +202,32 @@ def get_advantage(candle_type: CandleType) -> Advantage:
     """Return the defined market advantage for a candle archetype."""
 
     return _ADVANTAGE_BY_CANDLE_TYPE[candle_type]
+
+
+def get_trend_status(candle_type: CandleType) -> TrendStatus:
+    """Return trend status from the known archetype's side advantage."""
+
+    if get_advantage(candle_type) is Advantage.NONE:
+        return TrendStatus.NON_TREND
+    return TrendStatus.TREND
+
+
+def interpret_candle_type(
+    candle_type: CandleType,
+) -> CandleTypeInterpretation:
+    """Return the complete course interpretation of a known archetype."""
+
+    return CandleTypeInterpretation(
+        candle_type=candle_type,
+        advantage=get_advantage(candle_type),
+        trend_status=get_trend_status(candle_type),
+    )
+
+
+def is_trend_candle(candle_type: CandleType) -> bool:
+    """Return whether a known candle archetype has a clear advantage."""
+
+    return get_trend_status(candle_type) is TrendStatus.TREND
 
 
 def classify_candle(candle: Candle) -> CandleType:

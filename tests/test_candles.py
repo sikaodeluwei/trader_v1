@@ -6,11 +6,36 @@ from trading.definitions.candles import (
     CandleGeometry,
     CandleSide,
     CandleType,
+    CandleTypeInterpretation,
+    TrendStatus,
     classify_candle,
     get_advantage,
     get_geometry,
     get_side,
+    get_trend_status,
+    interpret_candle_type,
+    is_trend_candle,
 )
+
+
+COURSE_INTERPRETATIONS = [
+    (CandleType.BULL_1, Advantage.BUYER, "trend"),
+    (CandleType.BULL_2, Advantage.BUYER, "trend"),
+    (CandleType.BULL_3, Advantage.BUYER, "trend"),
+    (CandleType.BULL_4, Advantage.SELLER, "trend"),
+    (CandleType.BULL_5, Advantage.BUYER, "trend"),
+    (CandleType.BULL_6, Advantage.NONE, "non_trend"),
+    (CandleType.BULL_7, Advantage.NONE, "non_trend"),
+    (CandleType.BULL_8, Advantage.NONE, "non_trend"),
+    (CandleType.BEAR_1, Advantage.SELLER, "trend"),
+    (CandleType.BEAR_2, Advantage.SELLER, "trend"),
+    (CandleType.BEAR_3, Advantage.SELLER, "trend"),
+    (CandleType.BEAR_4, Advantage.SELLER, "trend"),
+    (CandleType.BEAR_5, Advantage.BUYER, "trend"),
+    (CandleType.BEAR_6, Advantage.NONE, "non_trend"),
+    (CandleType.BEAR_7, Advantage.NONE, "non_trend"),
+    (CandleType.BEAR_8, Advantage.NONE, "non_trend"),
+]
 
 
 @pytest.mark.parametrize(
@@ -50,41 +75,35 @@ def test_get_geometry_uses_neutral_positions_for_zero_range() -> None:
 
 
 @pytest.mark.parametrize(
-    ("candle_type", "expected_advantage"),
-    [
-        (CandleType.BULL_1, Advantage.BUYER),
-        (CandleType.BULL_2, Advantage.BUYER),
-        (CandleType.BULL_3, Advantage.BUYER),
-        (CandleType.BULL_4, Advantage.SELLER),
-        (CandleType.BULL_5, Advantage.BUYER),
-        (CandleType.BULL_6, Advantage.NONE),
-        (CandleType.BULL_7, Advantage.NONE),
-        (CandleType.BULL_8, Advantage.NONE),
-    ],
+    ("candle_type", "expected_advantage", "expected_trend_value"),
+    COURSE_INTERPRETATIONS,
 )
-def test_get_advantage_maps_all_bullish_archetypes(
-    candle_type: CandleType, expected_advantage: Advantage
+def test_interpretation_matches_course_mapping_for_every_candle_type(
+    candle_type: CandleType,
+    expected_advantage: Advantage,
+    expected_trend_value: str,
 ) -> None:
+    expected_trend_status = TrendStatus(expected_trend_value)
+
     assert get_advantage(candle_type) is expected_advantage
+    assert get_trend_status(candle_type) is expected_trend_status
+    assert interpret_candle_type(candle_type) == (
+        CandleTypeInterpretation(
+            candle_type=candle_type,
+            advantage=expected_advantage,
+            trend_status=expected_trend_status,
+        )
+    )
+    assert is_trend_candle(candle_type) is (
+        expected_trend_status is TrendStatus.TREND
+    )
 
 
-@pytest.mark.parametrize(
-    ("candle_type", "expected_advantage"),
-    [
-        (CandleType.BEAR_1, Advantage.SELLER),
-        (CandleType.BEAR_2, Advantage.SELLER),
-        (CandleType.BEAR_3, Advantage.SELLER),
-        (CandleType.BEAR_4, Advantage.SELLER),
-        (CandleType.BEAR_5, Advantage.BUYER),
-        (CandleType.BEAR_6, Advantage.NONE),
-        (CandleType.BEAR_7, Advantage.NONE),
-        (CandleType.BEAR_8, Advantage.NONE),
-    ],
-)
-def test_get_advantage_maps_all_bearish_archetypes(
-    candle_type: CandleType, expected_advantage: Advantage
-) -> None:
-    assert get_advantage(candle_type) is expected_advantage
+def test_course_interpretation_reference_covers_all_candle_types() -> None:
+    referenced_types = [candle_type for candle_type, _, _ in COURSE_INTERPRETATIONS]
+
+    assert len(referenced_types) == len(CandleType)
+    assert set(referenced_types) == set(CandleType)
 
 
 def test_classify_candle_is_explicitly_unimplemented() -> None:
