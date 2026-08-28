@@ -54,7 +54,7 @@ future course-defined strategy/execution layers (not implemented)
 
 - Every market-state decision requires an explicit `MarketSegment` and caller-supplied chronological `StructurePoint` values.
 - Structural points distinguish `HIGH` and `LOW` and support six same-kind relationships: higher high, lower high, equal high, higher low, lower low, and equal low.
-- Market state is one of `UPTREND`, `DOWNTREND`, or `SIDEWAYS`.
+- Market state is one of `UPTREND`, `DOWNTREND`, or `NON_TREND`.
 - The minimum uptrend is two highs where the later high is higher and two lows where the later low is higher.
 - The minimum downtrend is two highs where the later high is lower and two lows where the later low is lower.
 - In longer segments, every adjacent same-kind relationship must continue the claimed direction. Chronology is preserved: points are not sorted, contradictory intermediate points are not skipped, and equality breaks directional continuity.
