@@ -14,6 +14,7 @@ from trading.definitions.sms_structure import (
     SMSObservation,
     SMSResult,
     SMSStructureStatus,
+    evaluate_sms,
 )
 
 
@@ -212,3 +213,82 @@ def test_non_terminal_result_rejects_event_fields(
             broken_point=low(2, 95.0),
             event_index=4,
         )
+
+
+def observed(
+    index: int,
+    *,
+    high_price: float,
+    low_price: float,
+) -> SMSObservation:
+    midpoint = (high_price + low_price) / 2
+    return SMSObservation(
+        index=index,
+        candle=Candle(midpoint, high_price, low_price, midpoint),
+    )
+
+
+@pytest.mark.parametrize("context", [uptrend_context(), downtrend_context()])
+def test_empty_observations_return_pending(context: SMSContext) -> None:
+    assert evaluate_sms(context, ()) == SMSResult(SMSStructureStatus.PENDING)
+
+
+@pytest.mark.parametrize(
+    ("context", "observations"),
+    [
+        (
+            uptrend_context(),
+            [observed(4, high_price=109.0, low_price=96.0)],
+        ),
+        (
+            downtrend_context(),
+            [
+                observed(4, high_price=104.0, low_price=91.0),
+                observed(5, high_price=105.0, low_price=90.0),
+            ],
+        ),
+    ],
+)
+def test_non_empty_inside_boundary_history_is_pullback_only(
+    context: SMSContext,
+    observations: list[SMSObservation],
+) -> None:
+    assert evaluate_sms(context, observations) == SMSResult(
+        SMSStructureStatus.PULLBACK_ONLY
+    )
+
+
+@pytest.mark.parametrize(
+    "observations",
+    [
+        [observed(3, high_price=109.0, low_price=96.0)],
+        [observed(5, high_price=109.0, low_price=96.0)],
+        [
+            observed(4, high_price=109.0, low_price=96.0),
+            observed(6, high_price=109.0, low_price=96.0),
+        ],
+        [
+            observed(4, high_price=109.0, low_price=96.0),
+            observed(4, high_price=109.0, low_price=96.0),
+        ],
+        [
+            observed(4, high_price=109.0, low_price=96.0),
+            observed(3, high_price=109.0, low_price=96.0),
+        ],
+    ],
+)
+def test_observation_indexes_require_complete_dense_chronology(
+    observations: list[SMSObservation],
+) -> None:
+    with pytest.raises(ValueError, match="complete dense chronology"):
+        evaluate_sms(uptrend_context(), observations)
+
+
+def test_complete_sequence_is_validated_before_an_early_terminal_candidate() -> None:
+    observations = [
+        observed(4, high_price=109.0, low_price=94.0),
+        observed(6, high_price=109.0, low_price=96.0),
+    ]
+
+    with pytest.raises(ValueError, match="complete dense chronology"):
+        evaluate_sms(uptrend_context(), observations)

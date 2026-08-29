@@ -1,5 +1,6 @@
 """Explicit Chapter 2 SMS reversal-structure definitions."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
@@ -100,3 +101,30 @@ class SMSResult:
             )
         if not is_terminal and has_any_event_field:
             raise ValueError("non-terminal SMS result cannot contain event details")
+
+
+def _validate_observations(
+    context: SMSContext,
+    observations: Sequence[SMSObservation],
+) -> None:
+    expected_index = context.trend_extreme.index + 1
+    for observation in observations:
+        if observation.index != expected_index:
+            raise ValueError(
+                "observations must use complete dense chronology after trend extreme"
+            )
+        expected_index += 1
+
+
+def evaluate_sms(
+    context: SMSContext,
+    observations: Sequence[SMSObservation],
+) -> SMSResult:
+    """Evaluate one explicit SMS context through supplied later candles."""
+
+    _validate_observations(context, observations)
+
+    if not observations:
+        return SMSResult(SMSStructureStatus.PENDING)
+
+    return SMSResult(SMSStructureStatus.PULLBACK_ONLY)
