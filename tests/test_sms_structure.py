@@ -336,6 +336,43 @@ def test_strict_parent_extreme_wick_break_terminates_old_context(
     assert result.broken_point is context.trend_extreme
 
 
+@pytest.mark.parametrize(
+    ("context", "observations", "expected_status", "expected_boundary"),
+    [
+        (
+            uptrend_context(),
+            [
+                observed(4, high_price=109.0, low_price=96.0),
+                observed(5, high_price=109.0, low_price=94.0),
+            ],
+            SMSStructureStatus.SMS_CONFIRMED,
+            low(2, 95.0),
+        ),
+        (
+            downtrend_context(),
+            [
+                observed(4, high_price=104.0, low_price=91.0),
+                observed(5, high_price=104.0, low_price=89.0),
+            ],
+            SMSStructureStatus.PARENT_CONTINUED,
+            low(3, 90.0),
+        ),
+    ],
+)
+def test_later_terminal_event_follows_unresolved_dense_observation(
+    context: SMSContext,
+    observations: list[SMSObservation],
+    expected_status: SMSStructureStatus,
+    expected_boundary: StructurePoint,
+) -> None:
+    result = evaluate_sms(context, observations)
+
+    assert result == SMSResult(expected_status, expected_boundary, 5)
+    assert result.broken_point is not None
+    assert result.broken_point == expected_boundary
+    assert result.event_index == 5
+
+
 def test_first_sms_event_is_not_erased_by_later_parent_continuation() -> None:
     observations = [
         observed(4, high_price=109.0, low_price=94.0),
@@ -401,14 +438,13 @@ def test_sms_wick_break_is_independent_of_close_body_and_color(
 def test_same_candle_dual_boundary_crossing_is_ohlc_ambiguous(
     context: SMSContext,
 ) -> None:
-    with pytest.raises(
-        ValueError,
-        match="OHLC cannot determine the intrabar boundary order",
-    ):
+    with pytest.raises(ValueError) as exc_info:
         evaluate_sms(
             context,
             [observed(4, high_price=111.0, low_price=89.0)],
         )
+
+    assert str(exc_info.value) == "OHLC cannot determine the intrabar boundary order"
 
 
 def test_repeated_explicit_sms_contexts_are_evaluated_independently() -> None:
