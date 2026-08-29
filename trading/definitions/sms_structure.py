@@ -120,11 +120,40 @@ def evaluate_sms(
     context: SMSContext,
     observations: Sequence[SMSObservation],
 ) -> SMSResult:
-    """Evaluate one explicit SMS context through supplied later candles."""
+    """Evaluate the first boundary event for one explicit SMS context."""
 
     _validate_observations(context, observations)
 
     if not observations:
         return SMSResult(SMSStructureStatus.PENDING)
+
+    for observation in observations:
+        if context.parent_state is MarketState.UPTREND:
+            sms_crossed = observation.candle.low < context.creator_point.price
+            continuation_crossed = (
+                observation.candle.high > context.trend_extreme.price
+            )
+        else:
+            sms_crossed = observation.candle.high > context.creator_point.price
+            continuation_crossed = (
+                observation.candle.low < context.trend_extreme.price
+            )
+
+        if sms_crossed and continuation_crossed:
+            raise ValueError(
+                "OHLC cannot determine the intrabar boundary order"
+            )
+        if sms_crossed:
+            return SMSResult(
+                SMSStructureStatus.SMS_CONFIRMED,
+                broken_point=context.creator_point,
+                event_index=observation.index,
+            )
+        if continuation_crossed:
+            return SMSResult(
+                SMSStructureStatus.PARENT_CONTINUED,
+                broken_point=context.trend_extreme,
+                event_index=observation.index,
+            )
 
     return SMSResult(SMSStructureStatus.PULLBACK_ONLY)
