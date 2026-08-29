@@ -229,3 +229,132 @@ def test_same_index_observation_is_ohlc_indeterminate() -> None:
             uptrend_context(),
             [observed(4, high_price=111.0, low_price=95.0)],
         )
+
+
+@pytest.mark.parametrize(
+    ("context", "observation"),
+    [
+        (
+            uptrend_context(),
+            observed(5, high_price=111.0, low_price=89.0),
+        ),
+        (
+            downtrend_context(),
+            observed(5, high_price=111.0, low_price=89.0),
+        ),
+    ],
+)
+def test_dual_boundary_ohlc_candle_is_rejected_as_ambiguous(
+    context: PullbackContext,
+    observation: BMSObservation,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="OHLC cannot determine the intrabar boundary order",
+    ):
+        evaluate_bms(context, [observation])
+
+
+def test_exact_bms_level_touch_is_not_a_break() -> None:
+    result = evaluate_bms(
+        uptrend_context(),
+        [observed(5, high_price=110.0, low_price=95.0)],
+    )
+
+    assert result == BMSResult(PullbackStructureStatus.PULLBACK_ONLY)
+
+
+def test_exact_origin_touch_does_not_prevent_later_wick_bms() -> None:
+    result = evaluate_bms(
+        uptrend_context(),
+        [observed(5, high_price=111.0, low_price=90.0)],
+    )
+
+    assert result == BMSResult(
+        PullbackStructureStatus.BMS_CONFIRMED,
+        broken_extreme=high(3, 110.0),
+        breakout_index=5,
+    )
+
+
+@pytest.mark.parametrize(
+    "candle",
+    [
+        Candle(100.0, 111.0, 95.0, 101.0),
+        Candle(105.0, 111.0, 95.0, 100.0),
+        Candle(100.0, 111.0, 95.0, 100.0),
+    ],
+)
+def test_wick_bms_is_independent_of_close_body_and_color(candle: Candle) -> None:
+    context = uptrend_context()
+    result = evaluate_bms(context, [BMSObservation(5, candle)])
+
+    assert result.status is PullbackStructureStatus.BMS_CONFIRMED
+    assert result.broken_extreme is context.previous_extreme
+    assert result.breakout_index == 5
+
+
+def test_downtrend_equality_and_wick_rules_mirror_uptrend() -> None:
+    touch = observed(5, high_price=105.0, low_price=90.0)
+    wick_break = observed(5, high_price=110.0, low_price=89.0)
+
+    assert evaluate_bms(downtrend_context(), [touch]).status is (
+        PullbackStructureStatus.PULLBACK_ONLY
+    )
+    assert evaluate_bms(downtrend_context(), [wick_break]) == BMSResult(
+        PullbackStructureStatus.BMS_CONFIRMED,
+        broken_extreme=low(3, 90.0),
+        breakout_index=5,
+    )
+
+
+def test_bms_result_requires_break_details_only_for_confirmed_status() -> None:
+    with pytest.raises(ValueError, match="confirmed BMS requires"):
+        BMSResult(PullbackStructureStatus.BMS_CONFIRMED)
+
+    with pytest.raises(ValueError, match="non-BMS result cannot contain"):
+        BMSResult(
+            PullbackStructureStatus.PULLBACK_ONLY,
+            broken_extreme=high(3, 110.0),
+            breakout_index=5,
+        )
+
+
+def test_repeated_explicit_contexts_are_evaluated_independently() -> None:
+    first = uptrend_context()
+    second = uptrend_context(
+        segment=MarketSegment(5, 8),
+        origin=low(6, 105.0),
+        previous=high(8, 120.0),
+        pullback=low(9, 115.0),
+    )
+
+    first_result = evaluate_bms(
+        first,
+        [observed(5, high_price=111.0, low_price=96.0)],
+    )
+    second_result = evaluate_bms(
+        second,
+        [observed(10, high_price=121.0, low_price=116.0)],
+    )
+
+    assert first_result.breakout_index == 5
+    assert second_result.breakout_index == 10
+
+
+def test_nested_explicit_contexts_need_no_hierarchy_fields() -> None:
+    outer = uptrend_context(pullback=low(8, 99.0))
+    inner = downtrend_context(
+        segment=MarketSegment(4, 7),
+        origin=high(6, 106.0),
+        previous=low(7, 100.0),
+        pullback=high(8, 103.0),
+    )
+    shared_observation = observed(9, high_price=105.0, low_price=99.0)
+
+    assert evaluate_bms(outer, [shared_observation]).status is (
+        PullbackStructureStatus.PULLBACK_ONLY
+    )
+    assert evaluate_bms(inner, [shared_observation]).status is (
+        PullbackStructureStatus.BMS_CONFIRMED
+    )

@@ -83,6 +83,25 @@ class BMSResult:
     broken_extreme: StructurePoint | None = None
     breakout_index: int | None = None
 
+    def __post_init__(self) -> None:
+        has_break_details = (
+            self.broken_extreme is not None and self.breakout_index is not None
+        )
+        has_partial_break_details = (
+            self.broken_extreme is not None or self.breakout_index is not None
+        )
+
+        if (
+            self.status is PullbackStructureStatus.BMS_CONFIRMED
+            and not has_break_details
+        ):
+            raise ValueError("confirmed BMS requires broken extreme and breakout index")
+        if (
+            self.status is not PullbackStructureStatus.BMS_CONFIRMED
+            and has_partial_break_details
+        ):
+            raise ValueError("non-BMS result cannot contain break details")
+
 
 def _validate_observations(
     context: PullbackContext,
@@ -140,6 +159,10 @@ def evaluate_bms(
             origin_crossed = observation.candle.high > context.trend_origin.price
             bms_crossed = observation.candle.low < context.previous_extreme.price
 
+        if origin_crossed and bms_crossed:
+            raise ValueError(
+                "OHLC cannot determine the intrabar boundary order"
+            )
         if origin_crossed:
             return BMSResult(PullbackStructureStatus.NOT_A_PULLBACK)
         if bms_crossed:
