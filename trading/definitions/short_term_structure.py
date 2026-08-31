@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from collections.abc import Sequence
 
 from .isolated_point_deformations import (
     IsolatedPointBasis,
@@ -46,6 +47,74 @@ class ShortTermStructure:
     points: tuple[ShortTermPoint, ...]
     vertices: tuple[ShortTermPoint, ...]
     suppressed: tuple[SuppressedShortTermPoint, ...]
+
+
+def _validate_chronology(points: Sequence[ShortTermPoint]) -> None:
+    for previous, current in zip(points, points[1:]):
+        if current.index <= previous.index:
+            raise ValueError(
+                "short-term point indexes must be strictly increasing"
+            )
+
+
+def _is_more_extreme(
+    candidate: ShortTermPoint,
+    current: ShortTermPoint,
+) -> bool:
+    if current.kind is IsolatedPointKind.HIGH:
+        return candidate.price > current.price
+    return candidate.price < current.price
+
+
+def _normalize_same_kind_runs(
+    points: tuple[ShortTermPoint, ...],
+) -> tuple[
+    list[ShortTermPoint],
+    list[SuppressedShortTermPoint],
+]:
+    vertices: list[ShortTermPoint] = []
+    suppressed: list[SuppressedShortTermPoint] = []
+    run: list[ShortTermPoint] = []
+
+    def flush_run() -> None:
+        if not run:
+            return
+        winner = run[0]
+        for candidate in run[1:]:
+            if _is_more_extreme(candidate, winner):
+                winner = candidate
+        vertices.append(winner)
+        suppressed.extend(
+            SuppressedShortTermPoint(
+                point,
+                ShortTermSuppressionReason.CONSECUTIVE_SAME_KIND,
+            )
+            for point in run
+            if point is not winner
+        )
+
+    for point in points:
+        if run and point.kind is not run[-1].kind:
+            flush_run()
+            run = []
+        run.append(point)
+    flush_run()
+    return vertices, suppressed
+
+
+def build_short_term_structure(
+    points: Sequence[ShortTermPoint],
+) -> ShortTermStructure:
+    """Normalize confirmed short-term points without losing evidence."""
+
+    all_points = tuple(points)
+    _validate_chronology(all_points)
+    vertices, suppressed = _normalize_same_kind_runs(all_points)
+    return ShortTermStructure(
+        points=all_points,
+        vertices=tuple(vertices),
+        suppressed=tuple(suppressed),
+    )
 
 
 def _require_confirmed(point: IsolatedPoint) -> None:
