@@ -319,9 +319,18 @@ Small valid inputs carry no invented trend meaning:
 
 The builder must not impose an arbitrary minimum point count. It also must not label a small set as an uptrend, downtrend, or non-trend; Lesson 1 market-state classification remains separate.
 
-### Ambiguous equal extremes
+### Engineering tie-break for equal extremes
 
-The course rule selects the highest point in a consecutive `HIGH` run and the lowest point in a consecutive `LOW` run. When more than one point shares the same extreme price and the course supplies no rule for choosing between equal candidates, the implementation must not assign discretionary structural importance. The later implementation plan must either preserve the tied candidates or adopt a separately approved deterministic representation that changes no price-level meaning. It must not silently invent a nearest, newest, oldest, or strongest-point market rule.
+The course rule selects the highest point in a consecutive `HIGH` run and the lowest point in a consecutive `LOW` run, but it does not define temporal precedence when multiple points share that exact most-extreme price.
+
+The approved neutral engineering tie-break is:
+
+- for equal highest `HIGH` points, keep the earliest highest `HIGH` as the normalized structure-line vertex;
+- for equal lowest `LOW` points, keep the earliest lowest `LOW` as the normalized structure-line vertex;
+- every later tied point remains a valid point in `ShortTermStructure.points`; and
+- every later tied point is omitted only from `vertices` and recorded in `suppressed` with reason `CONSECUTIVE_SAME_KIND`.
+
+This is an engineering representation, not a course-derived market rule. Choosing the earliest occurrence is deterministic and minimal, assigns no additional price-level meaning, and matches the existing `replace_with_more_extreme_point()` behavior, which keeps the existing point when prices are equal. Because all tied points remain in the all-points collection, no recognition evidence is lost.
 
 ## Consecutive Same-Kind Normalization
 
@@ -332,13 +341,13 @@ Consecutive valid points of the same kind do not require artificial structure-li
 For one consecutive `HIGH` run without an intervening short-term `LOW`:
 
 - every confirmed high remains in `ShortTermStructure.points`;
-- the highest high contributes the line vertex for the run when it is objectively unique; and
+- the highest high contributes the line vertex for the run, with the earliest occurrence retained when multiple highs share that exact highest price; and
 - other highs may appear in `suppressed` with reason `CONSECUTIVE_SAME_KIND`.
 
 For one consecutive `LOW` run without an intervening short-term `HIGH`:
 
 - every confirmed low remains in `points`;
-- the lowest low contributes the line vertex for the run when it is objectively unique; and
+- the lowest low contributes the line vertex for the run, with the earliest occurrence retained when multiple lows share that exact lowest price; and
 - other lows may appear in `suppressed` with reason `CONSECUTIVE_SAME_KIND`.
 
 Example:
@@ -363,7 +372,7 @@ HIGH 109 -> CONSECUTIVE_SAME_KIND
 
 ### Engineering representation
 
-Same-kind normalization is a stable chronological run reduction over the vertex candidates, not a mutation of `points`. It mirrors the intent of the existing `replace_with_more_extreme_point()` helper, but this design does not require refactoring or reusing that helper. The implementation plan must first assess whether direct reuse preserves the required source metadata and suppression record.
+Same-kind normalization is a stable chronological run reduction over the vertex candidates, not a mutation of `points`. Its earliest-on-equality tie-break matches the existing `replace_with_more_extreme_point()` behavior. This design does not require refactoring or direct reuse of that helper; the implementation plan must first assess whether reuse preserves the required source metadata and suppression record.
 
 ## Inside-Structure Normalization
 
@@ -576,23 +585,24 @@ The plan must cover at least:
 6. chronological alternating points remaining unchanged;
 7. a consecutive `HIGH` run retaining the highest high as the objective vertex;
 8. a consecutive `LOW` run retaining the lowest low as the objective vertex;
-9. same-kind suppressed points remaining in the all-points collection;
-10. a complete inside `HIGH`/`LOW` range being suppressed from vertices;
-11. equality at either inside boundary counting as contained;
-12. contained high with a lower-low breakout being preserved;
-13. contained low with a higher-high breakout being preserved;
-14. mirrored `HIGH -> LOW` and `LOW -> HIGH` inside cases;
-15. repeated or nested definite inside structures normalizing until stable;
-16. ambiguous or non-rule cases being preserved;
-17. decreasing chronology raising an error;
-18. duplicate indexes raising an error;
-19. proof that input is not silently sorted;
-20. neutral empty input;
-21. neutral one-point input;
-22. neutral two-point input with same-kind normalization as objectively applicable; and
-23. no implicit trend classification or cross-level propagation.
-
-Equal-price same-kind runs must receive an explicit test consistent with the conservative ambiguity policy or with a separately approved deterministic representation chosen in the implementation plan.
+9. equal highest `HIGH` ties retaining the earliest highest `HIGH` as the vertex;
+10. equal lowest `LOW` ties retaining the earliest lowest `LOW` as the vertex;
+11. later equal-extreme points remaining valid in the all-points collection and being suppressed only from the line with reason `CONSECUTIVE_SAME_KIND`;
+12. other same-kind suppressed points remaining in the all-points collection;
+13. a complete inside `HIGH`/`LOW` range being suppressed from vertices;
+14. equality at either inside boundary counting as contained;
+15. contained high with a lower-low breakout being preserved;
+16. contained low with a higher-high breakout being preserved;
+17. mirrored `HIGH -> LOW` and `LOW -> HIGH` inside cases;
+18. repeated or nested definite inside structures normalizing until stable;
+19. ambiguous or non-rule cases being preserved;
+20. decreasing chronology raising an error;
+21. duplicate indexes raising an error;
+22. proof that input is not silently sorted;
+23. neutral empty input;
+24. neutral one-point input;
+25. neutral two-point input with same-kind normalization as objectively applicable; and
+26. no implicit trend classification or cross-level propagation.
 
 ### Focused cross-layer integration
 
@@ -682,12 +692,14 @@ Future implementation and later Chapter 2 designs must preserve these invariants
 11. A valid short-term point need not be a final structure-line vertex.
 12. Suppression from the line never deletes or invalidates the confirmed point.
 13. A consecutive same-kind run uses its objectively most extreme point as the line vertex and records other definite suppressions.
-14. Inside suppression requires both later boundaries to be inclusively contained.
-15. A breakout on either side prevents inside suppression.
-16. Repeated/nested processing is repeated application of the same definite inside rule until stable.
-17. Caller chronology is authoritative, strictly increasing, and never silently sorted.
-18. Ambiguous cases remain preserved when no precise course rule resolves them.
-19. BMS/SMS are not automatically invoked to resolve ambiguity or propagated across levels.
-20. No medium-term or long-term identification rule is invented before Lesson 6.
-21. Strategy, risk, and execution behavior remain outside this layer.
-22. Formal Chapter 2 Level 2 validation remains deferred until all Chapter 2 lessons are complete.
+14. When multiple same-kind points share the exact most-extreme price, the earliest occurrence is the vertex and later ties remain valid points suppressed only from the line with reason `CONSECUTIVE_SAME_KIND`.
+15. Earliest-on-equality behavior is a neutral engineering tie-break, not a course-derived market rule.
+16. Inside suppression requires both later boundaries to be inclusively contained.
+17. A breakout on either side prevents inside suppression.
+18. Repeated/nested processing is repeated application of the same definite inside rule until stable.
+19. Caller chronology is authoritative, strictly increasing, and never silently sorted.
+20. Ambiguous cases remain preserved when no precise course rule resolves them and no approved engineering representation exists.
+21. BMS/SMS are not automatically invoked to resolve ambiguity or propagated across levels.
+22. No medium-term or long-term identification rule is invented before Lesson 6.
+23. Strategy, risk, and execution behavior remain outside this layer.
+24. Formal Chapter 2 Level 2 validation remains deferred until all Chapter 2 lessons are complete.
