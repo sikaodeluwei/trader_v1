@@ -942,7 +942,7 @@ git commit -m "Add short-term inside normalization"
 
 **Interfaces:**
 - Consumes: existing `detect_confirmed_isolated_point()`, `find_confirmed_isolated_points()`, `get_potential_isolated_point()`, and `confirm_isolated_point_with_deformation()`; Task 1 mapping functions; Task 2–3 `build_short_term_structure()`.
-- Produces: focused evidence that real Chapter 1 recognition results compose into the Lesson 5 domain and normalized line without duplicate candle-pattern logic.
+- Produces: focused evidence that both strict isolated recognition and deformation-aware `RIGHT_INSIDE_BAR` recognition compose through the Lesson 5 domain into `ShortTermStructure`, without duplicate candle-pattern logic.
 
 - [ ] **Step 1: Verify the integration test artifact is absent for RED**
 
@@ -1015,7 +1015,7 @@ def test_strict_isolated_low_maps_to_short_term_low() -> None:
     assert point.price == 3.0
 
 
-def test_right_inside_bar_recognition_preserves_basis() -> None:
+def test_right_inside_bar_recognition_composes_into_structure() -> None:
     middle = candle(12.0, 7.0)
     potential = get_potential_isolated_point(
         candle(10.0, 5.0),
@@ -1031,9 +1031,14 @@ def test_right_inside_bar_recognition_preserves_basis() -> None:
     assert recognition is not None
 
     point = short_term_point_from_recognition(recognition)
+    result = build_short_term_structure([point])
 
     assert point.kind is IsolatedPointKind.HIGH
     assert point.recognition_basis is IsolatedPointBasis.RIGHT_INSIDE_BAR
+    assert result.points == (point,)
+    assert result.vertices == (point,)
+    assert result.suppressed == ()
+    assert result.points[0].recognition_basis is IsolatedPointBasis.RIGHT_INSIDE_BAR
 
 
 def test_strict_candle_sequence_preserves_points_while_normalizing_line() -> None:
@@ -1071,7 +1076,7 @@ Run:
 pytest tests/test_short_term_structure_integration.py -v
 ```
 
-Expected: PASS. If a genuine integration defect appears, first preserve the failing test, then make the smallest change in `trading/definitions/short_term_structure.py`; do not modify Chapter 1 recognition behavior.
+Expected: PASS. The suite proves both complete composition paths: strict isolated recognition reaches `ShortTermStructure`, and deformation-aware `RIGHT_INSIDE_BAR` recognition reaches `ShortTermStructure` while preserving its recognition basis. If a genuine integration defect appears, first preserve the failing test, then make the smallest change in `trading/definitions/short_term_structure.py`; do not modify Chapter 1 recognition behavior.
 
 - [ ] **Step 4: Run all short-term tests together**
 
@@ -1127,7 +1132,7 @@ Expected:
 
 - [ ] **Step 8: Review and commit Task 4**
 
-Review the complete integration path, point-evidence preservation, absence of duplicated recognition logic, and unchanged existing layers.
+Review both complete integration paths—strict isolated recognition to `ShortTermStructure` and deformation-aware `RIGHT_INSIDE_BAR` recognition to `ShortTermStructure`—along with point-evidence preservation, absence of duplicated recognition logic, and unchanged existing layers.
 
 ```bash
 git add tests/test_short_term_structure_integration.py
