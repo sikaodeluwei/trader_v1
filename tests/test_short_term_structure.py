@@ -260,3 +260,140 @@ def test_equal_extreme_tie_keeps_earliest_vertex(
         )
         for point in points[1:]
     )
+
+
+@pytest.mark.parametrize(
+    "points",
+    [
+        [
+            short_point(0, IsolatedPointKind.HIGH, 110.0),
+            short_point(1, IsolatedPointKind.LOW, 100.0),
+            short_point(2, IsolatedPointKind.HIGH, 108.0),
+            short_point(3, IsolatedPointKind.LOW, 102.0),
+        ],
+        [
+            short_point(0, IsolatedPointKind.LOW, 100.0),
+            short_point(1, IsolatedPointKind.HIGH, 110.0),
+            short_point(2, IsolatedPointKind.LOW, 102.0),
+            short_point(3, IsolatedPointKind.HIGH, 108.0),
+        ],
+    ],
+)
+def test_complete_inside_pair_is_suppressed_in_both_orientations(
+    points: list[ShortTermPoint],
+) -> None:
+    result = build_short_term_structure(points)
+
+    assert result.points == tuple(points)
+    assert result.vertices == tuple(points[:2])
+    assert result.suppressed == tuple(
+        SuppressedShortTermPoint(
+            point,
+            ShortTermSuppressionReason.INSIDE_STRUCTURE,
+        )
+        for point in points[2:]
+    )
+
+
+@pytest.mark.parametrize(
+    "later_high,later_low",
+    [
+        (110.0, 102.0),
+        (108.0, 100.0),
+        (110.0, 100.0),
+    ],
+)
+def test_equality_at_either_inside_boundary_counts_as_contained(
+    later_high: float,
+    later_low: float,
+) -> None:
+    points = [
+        short_point(0, IsolatedPointKind.HIGH, 110.0),
+        short_point(1, IsolatedPointKind.LOW, 100.0),
+        short_point(2, IsolatedPointKind.HIGH, later_high),
+        short_point(3, IsolatedPointKind.LOW, later_low),
+    ]
+
+    assert build_short_term_structure(points).vertices == tuple(points[:2])
+
+
+@pytest.mark.parametrize(
+    "later_high,later_low",
+    [
+        (111.0, 102.0),
+        (108.0, 99.0),
+    ],
+)
+def test_one_side_breakout_prevents_inside_suppression(
+    later_high: float,
+    later_low: float,
+) -> None:
+    points = [
+        short_point(0, IsolatedPointKind.HIGH, 110.0),
+        short_point(1, IsolatedPointKind.LOW, 100.0),
+        short_point(2, IsolatedPointKind.HIGH, later_high),
+        short_point(3, IsolatedPointKind.LOW, later_low),
+    ]
+
+    result = build_short_term_structure(points)
+
+    assert result.vertices == tuple(points)
+    assert result.suppressed == ()
+
+
+def test_repeated_inside_pairs_normalize_until_stable() -> None:
+    points = [
+        short_point(0, IsolatedPointKind.HIGH, 120.0),
+        short_point(1, IsolatedPointKind.LOW, 90.0),
+        short_point(2, IsolatedPointKind.HIGH, 115.0),
+        short_point(3, IsolatedPointKind.LOW, 95.0),
+        short_point(4, IsolatedPointKind.HIGH, 110.0),
+        short_point(5, IsolatedPointKind.LOW, 100.0),
+    ]
+
+    result = build_short_term_structure(points)
+
+    assert result.vertices == tuple(points[:2])
+    assert [item.point for item in result.suppressed] == points[2:]
+    assert all(
+        item.reason is ShortTermSuppressionReason.INSIDE_STRUCTURE
+        for item in result.suppressed
+    )
+
+
+def test_incomplete_later_range_is_preserved_without_invented_pairing() -> None:
+    points = [
+        short_point(0, IsolatedPointKind.HIGH, 110.0),
+        short_point(1, IsolatedPointKind.LOW, 100.0),
+        short_point(2, IsolatedPointKind.HIGH, 108.0),
+    ]
+
+    assert build_short_term_structure(points).vertices == tuple(points)
+
+
+def test_suppression_order_is_phase_then_chronology() -> None:
+    points = [
+        short_point(0, IsolatedPointKind.HIGH, 110.0),
+        short_point(1, IsolatedPointKind.HIGH, 112.0),
+        short_point(2, IsolatedPointKind.LOW, 100.0),
+        short_point(3, IsolatedPointKind.HIGH, 108.0),
+        short_point(4, IsolatedPointKind.LOW, 102.0),
+    ]
+
+    result = build_short_term_structure(points)
+
+    assert result.vertices == (points[1], points[2])
+    assert result.suppressed == (
+        SuppressedShortTermPoint(
+            points[0],
+            ShortTermSuppressionReason.CONSECUTIVE_SAME_KIND,
+        ),
+        SuppressedShortTermPoint(
+            points[3],
+            ShortTermSuppressionReason.INSIDE_STRUCTURE,
+        ),
+        SuppressedShortTermPoint(
+            points[4],
+            ShortTermSuppressionReason.INSIDE_STRUCTURE,
+        ),
+    )

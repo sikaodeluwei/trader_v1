@@ -102,6 +102,70 @@ def _normalize_same_kind_runs(
     return vertices, suppressed
 
 
+def _pair_bounds(
+    first: ShortTermPoint,
+    second: ShortTermPoint,
+) -> tuple[float, float] | None:
+    if first.kind is second.kind:
+        return None
+    high = first if first.kind is IsolatedPointKind.HIGH else second
+    low = first if first.kind is IsolatedPointKind.LOW else second
+    return high.price, low.price
+
+
+def _later_pair_is_inside(
+    earlier: tuple[ShortTermPoint, ShortTermPoint],
+    later: tuple[ShortTermPoint, ShortTermPoint],
+) -> bool:
+    earlier_bounds = _pair_bounds(*earlier)
+    later_bounds = _pair_bounds(*later)
+    if earlier_bounds is None or later_bounds is None:
+        return False
+    earlier_high, earlier_low = earlier_bounds
+    later_high, later_low = later_bounds
+    return later_high <= earlier_high and later_low >= earlier_low
+
+
+def _normalize_inside_structures(
+    vertices: list[ShortTermPoint],
+) -> tuple[
+    list[ShortTermPoint],
+    list[SuppressedShortTermPoint],
+]:
+    normalized = list(vertices)
+    suppressed: list[SuppressedShortTermPoint] = []
+    changed = True
+
+    while changed:
+        changed = False
+        pair_start = 0
+        while pair_start + 3 < len(normalized):
+            earlier = (
+                normalized[pair_start],
+                normalized[pair_start + 1],
+            )
+            later = (
+                normalized[pair_start + 2],
+                normalized[pair_start + 3],
+            )
+            if not _later_pair_is_inside(earlier, later):
+                pair_start += 2
+                continue
+
+            removed = normalized[pair_start + 2 : pair_start + 4]
+            del normalized[pair_start + 2 : pair_start + 4]
+            suppressed.extend(
+                SuppressedShortTermPoint(
+                    point,
+                    ShortTermSuppressionReason.INSIDE_STRUCTURE,
+                )
+                for point in removed
+            )
+            changed = True
+
+    return normalized, suppressed
+
+
 def build_short_term_structure(
     points: Sequence[ShortTermPoint],
 ) -> ShortTermStructure:
@@ -109,11 +173,16 @@ def build_short_term_structure(
 
     all_points = tuple(points)
     _validate_chronology(all_points)
-    vertices, suppressed = _normalize_same_kind_runs(all_points)
+    same_kind_vertices, same_kind_suppressed = _normalize_same_kind_runs(
+        all_points
+    )
+    vertices, inside_suppressed = _normalize_inside_structures(
+        same_kind_vertices
+    )
     return ShortTermStructure(
         points=all_points,
         vertices=tuple(vertices),
-        suppressed=tuple(suppressed),
+        suppressed=tuple(same_kind_suppressed + inside_suppressed),
     )
 
 
