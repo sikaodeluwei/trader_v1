@@ -178,15 +178,61 @@ def _recognize_medium_points(
     return points, potentials
 
 
+def _is_more_extreme_medium(
+    candidate: MediumTermPoint,
+    current: MediumTermPoint,
+) -> bool:
+    if current.kind is IsolatedPointKind.HIGH:
+        return candidate.price > current.price
+    return candidate.price < current.price
+
+
+def _normalize_same_kind_runs(
+    points: tuple[MediumTermPoint, ...],
+) -> tuple[
+    list[MediumTermPoint],
+    list[SuppressedMediumTermPoint],
+]:
+    vertices: list[MediumTermPoint] = []
+    suppressed: list[SuppressedMediumTermPoint] = []
+    run: list[MediumTermPoint] = []
+
+    def flush_run() -> None:
+        if not run:
+            return
+        winner = run[0]
+        for candidate in run[1:]:
+            if _is_more_extreme_medium(candidate, winner):
+                winner = candidate
+        vertices.append(winner)
+        suppressed.extend(
+            SuppressedMediumTermPoint(
+                point,
+                MediumTermSuppressionReason.CONSECUTIVE_SAME_KIND,
+            )
+            for point in run
+            if point is not winner
+        )
+
+    for point in points:
+        if run and point.kind is not run[-1].kind:
+            flush_run()
+            run = []
+        run.append(point)
+    flush_run()
+    return vertices, suppressed
+
+
 def build_medium_term_structure(source: ShortTermStructure) -> MediumTermStructure:
     """Build canonical medium structure from cleaned short-term vertices."""
 
     _validate_short_term_source(source)
     points, potentials = _recognize_medium_points(source.vertices)
+    vertices, suppressed = _normalize_same_kind_runs(points)
     return MediumTermStructure(
         points=points,
         potentials=potentials,
-        vertices=points,
-        suppressed=(),
+        vertices=tuple(vertices),
+        suppressed=tuple(suppressed),
         course_evidence=(),
     )
