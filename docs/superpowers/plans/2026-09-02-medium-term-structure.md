@@ -1851,11 +1851,20 @@ Expected: the full repository suite passes, `git diff --check` has no output, an
 
 - [ ] **Step 6: Verify feature scope against the implementation base**
 
-Use the approved plan/spec commit as the comparison base:
+Fetch the current remote reference, then verify that `origin/main` still equals the exact implementation-base SHA recorded in the SDD ledger when the feature branch was created:
 
 ```bash
-git diff --name-only 30e531ddff0e0dd14d1bed9eb74152f7aa0e773e..HEAD
-git log --oneline 30e531ddff0e0dd14d1bed9eb74152f7aa0e773e..HEAD
+git fetch origin main
+git rev-parse origin/main
+```
+
+If `origin/main` has moved from the recorded implementation base, STOP and report the divergence. Do not silently compare against a different base, rebase, merge, or redefine the implementation base.
+
+Only after the SHA matches, compare the feature branch against that unchanged base:
+
+```bash
+git diff --name-only origin/main...HEAD
+git log --oneline origin/main..HEAD
 git status --short
 ```
 
@@ -1922,13 +1931,15 @@ Expected: the feature branch is available for independent GitHub review. Do not 
 
 At implementation time:
 
-1. use `superpowers:using-git-worktrees` to create or verify the isolated `feature/medium-term-structure` worktree from commit `30e531ddff0e0dd14d1bed9eb74152f7aa0e773e` plus this approved plan commit;
-2. create the SDD workspace/ledger for this exact plan;
-3. run the SDD pre-flight consistency scan against the approved spec;
-4. use `superpowers:subagent-driven-development` as the recommended executor, with a fresh implementer and task review for Tasks 1-4;
-5. use `superpowers:executing-plans` only when subagent-driven execution is unavailable;
-6. record RED/GREEN evidence, reviewer verdicts, rulings, and commit SHAs in the ledger;
-7. complete Task 5 verification and broad whole-branch review; and
-8. push only the reviewed feature branch for independent review.
+1. fetch `origin/main`;
+2. verify local `main` equals `origin/main` and that `origin/main` is the approved latest Lesson 6 implementation-plan checkpoint named by the user for execution;
+3. record that exact `origin/main` SHA as the implementation base, then use `superpowers:using-git-worktrees` to create or verify the isolated `feature/medium-term-structure` branch and worktree from that exact remote checkpoint;
+4. create the SDD workspace/ledger for this exact plan and record the implementation-base SHA in it;
+5. run the SDD pre-flight consistency scan against the approved spec;
+6. use `superpowers:subagent-driven-development` as the recommended executor, with a fresh implementer and task review for Tasks 1-4;
+7. use `superpowers:executing-plans` only when subagent-driven execution is unavailable;
+8. record RED/GREEN evidence, reviewer verdicts, rulings, and commit SHAs in the ledger;
+9. complete Task 5 verification and broad whole-branch review; and
+10. push only the reviewed feature branch for independent review.
 
 Do not merge Lesson 6 into `main` until the user explicitly selects the repository's finishing workflow after independent review.
