@@ -396,3 +396,172 @@ def test_same_kind_normalization_does_not_change_potentials() -> None:
     assert [point.price for point in result.points] == [110.0, 120.0]
     assert [point.price for point in result.vertices] == [120.0]
     assert [potential.price for potential in result.potentials] == [125.0]
+
+
+def paired_medium_source(
+    earlier_high: float,
+    earlier_low: float,
+    later_high: float,
+    later_low: float,
+    *,
+    first_kind: IsolatedPointKind = IsolatedPointKind.HIGH,
+) -> ShortTermStructure:
+    return alternating_source(
+        high_prices=[
+            earlier_high - 5.0,
+            earlier_high,
+            min(earlier_high, later_high) - 6.0,
+            later_high,
+            later_high - 5.0,
+        ],
+        low_prices=[
+            earlier_low + 5.0,
+            earlier_low,
+            max(earlier_low, later_low) + 6.0,
+            later_low,
+            later_low + 5.0,
+        ],
+        first_kind=first_kind,
+    )
+
+
+@pytest.mark.parametrize(
+    "first_kind",
+    [IsolatedPointKind.HIGH, IsolatedPointKind.LOW],
+)
+def test_complete_inside_pair_is_suppressed_in_both_orientations(
+    first_kind: IsolatedPointKind,
+) -> None:
+    source = paired_medium_source(
+        110.0,
+        100.0,
+        108.0,
+        102.0,
+        first_kind=first_kind,
+    )
+
+    result = build_medium_term_structure(source)
+
+    assert len(result.points) == 4
+    assert result.vertices == result.points[:2]
+    assert result.suppressed == tuple(
+        SuppressedMediumTermPoint(
+            point,
+            MediumTermSuppressionReason.INSIDE_STRUCTURE,
+        )
+        for point in result.points[2:]
+    )
+
+
+@pytest.mark.parametrize(
+    "later_high,later_low",
+    [
+        (110.0, 102.0),
+        (108.0, 100.0),
+        (110.0, 100.0),
+    ],
+)
+def test_equality_at_medium_inside_boundary_counts_as_contained(
+    later_high: float,
+    later_low: float,
+) -> None:
+    source = paired_medium_source(110.0, 100.0, later_high, later_low)
+
+    result = build_medium_term_structure(source)
+
+    assert result.vertices == result.points[:2]
+
+
+@pytest.mark.parametrize(
+    "later_high,later_low",
+    [
+        (111.0, 102.0),
+        (108.0, 99.0),
+    ],
+)
+def test_one_side_breakout_preserves_later_medium_pair(
+    later_high: float,
+    later_low: float,
+) -> None:
+    source = paired_medium_source(110.0, 100.0, later_high, later_low)
+
+    result = build_medium_term_structure(source)
+
+    assert result.vertices == result.points
+    assert result.suppressed == ()
+
+
+def test_incomplete_later_medium_range_is_preserved() -> None:
+    source = alternating_source(
+        high_prices=[105.0, 110.0, 104.0, 108.0, 103.0],
+        low_prices=[105.0, 100.0, 106.0, 107.0, 108.0],
+    )
+
+    result = build_medium_term_structure(source)
+
+    assert [(point.kind, point.price) for point in result.points] == [
+        (IsolatedPointKind.HIGH, 110.0),
+        (IsolatedPointKind.LOW, 100.0),
+        (IsolatedPointKind.HIGH, 108.0),
+    ]
+    assert result.vertices == result.points
+    assert result.suppressed == ()
+
+
+def test_repeated_inside_medium_pairs_normalize_until_stable() -> None:
+    source = alternating_source(
+        high_prices=[100.0, 120.0, 99.0, 115.0, 98.0, 110.0, 97.0],
+        low_prices=[110.0, 90.0, 111.0, 95.0, 112.0, 100.0, 113.0],
+    )
+
+    result = build_medium_term_structure(source)
+
+    assert [point.price for point in result.vertices] == [120.0, 90.0]
+    assert [item.point for item in result.suppressed] == list(result.points[2:])
+    assert all(
+        item.reason is MediumTermSuppressionReason.INSIDE_STRUCTURE
+        for item in result.suppressed
+    )
+
+
+def test_non_contained_layout_is_preserved_without_chart_matching() -> None:
+    source = paired_medium_source(110.0, 100.0, 115.0, 95.0)
+
+    result = build_medium_term_structure(source)
+
+    assert result.vertices == result.points
+    assert result.suppressed == ()
+
+
+def test_suppression_order_is_phase_then_pivot_chronology() -> None:
+    source = alternating_source(
+        high_prices=[
+            100.0,
+            110.0,
+            105.0,
+            120.0,
+            107.0,
+            115.0,
+            100.0,
+            101.0,
+        ],
+        low_prices=[
+            100.0,
+            99.0,
+            98.0,
+            97.0,
+            90.0,
+            96.0,
+            92.0,
+            98.0,
+        ],
+    )
+
+    result = build_medium_term_structure(source)
+
+    reasons = [item.reason for item in result.suppressed]
+    assert reasons[0] is MediumTermSuppressionReason.CONSECUTIVE_SAME_KIND
+    assert reasons[1:] == [
+        MediumTermSuppressionReason.INSIDE_STRUCTURE,
+        MediumTermSuppressionReason.INSIDE_STRUCTURE,
+    ]

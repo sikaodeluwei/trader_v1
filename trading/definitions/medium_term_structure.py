@@ -223,16 +223,81 @@ def _normalize_same_kind_runs(
     return vertices, suppressed
 
 
+def _pair_bounds(
+    first: MediumTermPoint,
+    second: MediumTermPoint,
+) -> tuple[float, float] | None:
+    if first.kind is second.kind:
+        return None
+    high = first if first.kind is IsolatedPointKind.HIGH else second
+    low = first if first.kind is IsolatedPointKind.LOW else second
+    return high.price, low.price
+
+
+def _later_pair_is_inside(
+    earlier: tuple[MediumTermPoint, MediumTermPoint],
+    later: tuple[MediumTermPoint, MediumTermPoint],
+) -> bool:
+    earlier_bounds = _pair_bounds(*earlier)
+    later_bounds = _pair_bounds(*later)
+    if earlier_bounds is None or later_bounds is None:
+        return False
+    earlier_high, earlier_low = earlier_bounds
+    later_high, later_low = later_bounds
+    return later_high <= earlier_high and later_low >= earlier_low
+
+
+def _normalize_inside_structures(
+    vertices: list[MediumTermPoint],
+) -> tuple[
+    list[MediumTermPoint],
+    list[SuppressedMediumTermPoint],
+]:
+    normalized = list(vertices)
+    suppressed: list[SuppressedMediumTermPoint] = []
+    changed = True
+
+    while changed:
+        changed = False
+        pair_start = 0
+        while pair_start + 3 < len(normalized):
+            earlier = (
+                normalized[pair_start],
+                normalized[pair_start + 1],
+            )
+            later = (
+                normalized[pair_start + 2],
+                normalized[pair_start + 3],
+            )
+            if not _later_pair_is_inside(earlier, later):
+                pair_start += 2
+                continue
+
+            removed = normalized[pair_start + 2 : pair_start + 4]
+            del normalized[pair_start + 2 : pair_start + 4]
+            suppressed.extend(
+                SuppressedMediumTermPoint(
+                    point,
+                    MediumTermSuppressionReason.INSIDE_STRUCTURE,
+                )
+                for point in removed
+            )
+            changed = True
+
+    return normalized, suppressed
+
+
 def build_medium_term_structure(source: ShortTermStructure) -> MediumTermStructure:
     """Build canonical medium structure from cleaned short-term vertices."""
 
     _validate_short_term_source(source)
     points, potentials = _recognize_medium_points(source.vertices)
-    vertices, suppressed = _normalize_same_kind_runs(points)
+    same_kind_vertices, same_kind_suppressed = _normalize_same_kind_runs(points)
+    vertices, inside_suppressed = _normalize_inside_structures(same_kind_vertices)
     return MediumTermStructure(
         points=points,
         potentials=potentials,
         vertices=tuple(vertices),
-        suppressed=tuple(suppressed),
+        suppressed=tuple(same_kind_suppressed + inside_suppressed),
         course_evidence=(),
     )
