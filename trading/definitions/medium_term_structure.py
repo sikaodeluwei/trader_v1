@@ -25,18 +25,28 @@ class CourseRuleMatch(Enum):
 
 @dataclass(frozen=True)
 class MediumTermPoint:
-    """A canonical medium pivot and when its right evidence existed."""
+    """A canonical medium pivot and its structural right-side confirmer."""
 
     pivot: ShortTermPoint
-    confirmation_index: int
+    confirmed_by: ShortTermPoint
 
     def __post_init__(self) -> None:
-        if self.confirmation_index <= self.pivot.index:
-            raise ValueError("confirmation_index must be after pivot index")
+        if self.pivot.kind is not self.confirmed_by.kind:
+            raise ValueError(
+                "confirmed medium points require same-kind pivot and confirmed_by points"
+            )
+        if self.confirmed_by.index <= self.pivot.index:
+            raise ValueError("confirmed_by index must be after pivot index")
 
     @property
     def pivot_index(self) -> int:
         return self.pivot.index
+
+    @property
+    def confirmed_by_index(self) -> int:
+        """Return structural source location, not actual knowability time."""
+
+        return self.confirmed_by.index
 
     @property
     def kind(self) -> IsolatedPointKind:
@@ -154,7 +164,7 @@ def _recognize_kind(
 ) -> tuple[list[MediumTermPoint], PotentialMediumTermPoint | None]:
     same_kind = tuple(point for point in vertices if point.kind is kind)
     confirmed = [
-        MediumTermPoint(pivot, later.index)
+        MediumTermPoint(pivot, later)
         for previous, pivot, later in zip(
             same_kind,
             same_kind[1:],

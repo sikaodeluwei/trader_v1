@@ -72,7 +72,8 @@ def test_enum_values_are_stable() -> None:
 
 def test_medium_records_preserve_provenance_and_are_frozen() -> None:
     pivot = short_point(3, IsolatedPointKind.HIGH, 112.0)
-    point = MediumTermPoint(pivot, confirmation_index=7)
+    confirmed_by = short_point(7, IsolatedPointKind.HIGH, 108.0)
+    point = MediumTermPoint(pivot, confirmed_by)
     potential = PotentialMediumTermPoint(short_point(1, IsolatedPointKind.HIGH, 105.0), pivot)
     suppressed = SuppressedMediumTermPoint(point, MediumTermSuppressionReason.CONSECUTIVE_SAME_KIND)
     evidence = MediumCourseEvidence(point, CourseRuleMatch.UNKNOWN)
@@ -81,20 +82,33 @@ def test_medium_records_preserve_provenance_and_are_frozen() -> None:
     )
 
     assert point.pivot is pivot
+    assert point.confirmed_by is confirmed_by
     assert point.pivot_index == 3
+    assert point.confirmed_by_index == 7
     assert point.kind is IsolatedPointKind.HIGH
     assert point.price == 112.0
+    assert not hasattr(point, "known_at_index")
     assert structure.course_evidence == (evidence,)
     with pytest.raises(FrozenInstanceError):
-        point.confirmation_index = 8  # type: ignore[misc]
+        point.confirmed_by = short_point(8, IsolatedPointKind.HIGH, 107.0)  # type: ignore[misc]
 
 
-@pytest.mark.parametrize("confirmation_index", [2, 3])
-def test_confirmed_point_requires_later_confirmation_index(confirmation_index: int) -> None:
+def test_confirmed_point_requires_same_kind_source_points() -> None:
     pivot = short_point(3, IsolatedPointKind.HIGH, 112.0)
 
-    with pytest.raises(ValueError, match="after pivot index"):
-        MediumTermPoint(pivot, confirmation_index)
+    with pytest.raises(ValueError, match="same-kind pivot and confirmed_by"):
+        MediumTermPoint(pivot, short_point(5, IsolatedPointKind.LOW, 95.0))
+
+
+@pytest.mark.parametrize("confirmed_by_index", [2, 3])
+def test_confirmed_point_requires_later_confirmed_by(confirmed_by_index: int) -> None:
+    pivot = short_point(3, IsolatedPointKind.HIGH, 112.0)
+
+    with pytest.raises(ValueError, match="confirmed_by index must be after pivot index"):
+        MediumTermPoint(
+            pivot,
+            short_point(confirmed_by_index, IsolatedPointKind.HIGH, 108.0),
+        )
 
 
 def test_potential_requires_same_kind_chronological_sources() -> None:
@@ -189,10 +203,11 @@ def test_basic_ith_uses_strict_same_kind_neighbors() -> None:
 
     point = result.points[0]
     assert point.pivot is source.vertices[2]
+    assert point.confirmed_by is source.vertices[4]
     assert point.pivot_index == 2
+    assert point.confirmed_by_index == 4
     assert point.kind is IsolatedPointKind.HIGH
     assert point.price == 112.0
-    assert point.confirmation_index == 4
     assert result.vertices == result.points
 
 
@@ -205,10 +220,11 @@ def test_basic_itl_uses_strict_same_kind_neighbors() -> None:
 
     point = result.points[0]
     assert point.pivot is source.vertices[3]
+    assert point.confirmed_by is source.vertices[5]
     assert point.pivot_index == 3
+    assert point.confirmed_by_index == 5
     assert point.kind is IsolatedPointKind.LOW
     assert point.price == 94.0
-    assert point.confirmation_index == 5
 
 
 @pytest.mark.parametrize(
@@ -244,8 +260,8 @@ def test_opposite_kind_vertices_are_not_comparison_neighbors() -> None:
         (2, IsolatedPointKind.HIGH),
         (3, IsolatedPointKind.LOW),
     ]
-    assert result.points[0].confirmation_index == 4
-    assert result.points[1].confirmation_index == 5
+    assert result.points[0].confirmed_by is source.vertices[4]
+    assert result.points[1].confirmed_by is source.vertices[5]
 
 
 def test_recognizer_does_not_skip_intervening_same_kind_vertex() -> None:
@@ -295,7 +311,8 @@ def test_potential_becomes_confirmed_only_after_right_high_exists() -> None:
     assert before.potentials[0].pivot_index == 3
     assert after.potentials == ()
     assert after.points[0].pivot is initial.vertices[1]
-    assert after.points[0].confirmation_index == 5
+    assert after.points[0].confirmed_by is extended.vertices[2]
+    assert after.points[0].confirmed_by_index == 5
 
 
 def test_failed_potential_is_not_promoted() -> None:
@@ -313,7 +330,7 @@ def test_failed_potential_is_not_promoted() -> None:
     assert [potential.pivot_index for potential in after.potentials] == [5]
 
 
-def test_confirmed_points_use_pivot_order_and_keep_confirmation_timing() -> None:
+def test_confirmed_points_use_pivot_order_and_keep_confirming_sources() -> None:
     source = alternating_source(
         high_prices=[105.0, 112.0, 108.0], low_prices=[100.0, 94.0, 98.0]
     )
@@ -321,8 +338,12 @@ def test_confirmed_points_use_pivot_order_and_keep_confirmation_timing() -> None
     result = build_medium_term_structure(source)
 
     assert [point.pivot_index for point in result.points] == [2, 3]
-    assert [point.confirmation_index for point in result.points] == [4, 5]
-    assert all(point.confirmation_index > point.pivot_index for point in result.points)
+    assert [point.confirmed_by_index for point in result.points] == [4, 5]
+    assert all(
+        point.confirmed_by.kind is point.pivot.kind
+        and point.confirmed_by_index > point.pivot_index
+        for point in result.points
+    )
 
 
 def test_consecutive_medium_highs_keep_highest_vertex_and_all_points() -> None:
@@ -613,7 +634,7 @@ def test_course_evidence_requires_an_existing_confirmed_point() -> None:
     structure = build_medium_term_structure(source)
     unrelated = MediumTermPoint(
         short_point(20, IsolatedPointKind.HIGH, 130.0),
-        confirmation_index=22,
+        short_point(22, IsolatedPointKind.HIGH, 125.0),
     )
 
     with pytest.raises(ValueError, match="requires a confirmed medium point"):

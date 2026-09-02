@@ -87,9 +87,12 @@ def test_real_strict_and_deformation_paths_reach_medium_structure() -> None:
         IsolatedPointBasis.RIGHT_INSIDE_BAR
     )
     assert len(medium_structure.points) == 1
-    assert medium_structure.points[0].pivot is deformation_high
-    assert medium_structure.points[0].pivot_index == 3
-    assert medium_structure.points[0].confirmation_index == 6
+    medium_high = medium_structure.points[0]
+    assert medium_high.pivot is deformation_high
+    assert medium_high.pivot_index == 3
+    assert medium_high.confirmed_by is strict_high_3
+    assert medium_high.confirmed_by_index == 6
+    assert not hasattr(medium_high, "known_at_index")
 
 
 def test_suppressed_short_term_point_is_not_a_medium_neighbor() -> None:
