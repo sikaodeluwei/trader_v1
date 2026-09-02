@@ -11,6 +11,7 @@ from trading.definitions.medium_term_structure import (
     MediumTermSuppressionReason,
     PotentialMediumTermPoint,
     SuppressedMediumTermPoint,
+    attach_course_evidence,
     build_medium_term_structure,
 )
 from trading.definitions.short_term_structure import (
@@ -565,3 +566,42 @@ def test_suppression_order_is_phase_then_pivot_chronology() -> None:
         MediumTermSuppressionReason.INSIDE_STRUCTURE,
         MediumTermSuppressionReason.INSIDE_STRUCTURE,
     ]
+
+
+def test_course_evidence_attachment_preserves_all_canonical_output() -> None:
+    source = alternating_source(
+        high_prices=[105.0, 112.0, 108.0],
+        low_prices=[90.0, 91.0, 92.0],
+    )
+    structure = build_medium_term_structure(source)
+    evidence = MediumCourseEvidence(
+        structure.points[0],
+        CourseRuleMatch.UNKNOWN,
+    )
+
+    enriched = attach_course_evidence(structure, [evidence])
+
+    assert enriched.points == structure.points
+    assert enriched.potentials == structure.potentials
+    assert enriched.vertices == structure.vertices
+    assert enriched.suppressed == structure.suppressed
+    assert enriched.course_evidence == (evidence,)
+    assert structure.course_evidence == ()
+
+
+def test_course_evidence_requires_an_existing_confirmed_point() -> None:
+    source = alternating_source(
+        high_prices=[105.0, 112.0, 108.0],
+        low_prices=[90.0, 91.0, 92.0],
+    )
+    structure = build_medium_term_structure(source)
+    unrelated = MediumTermPoint(
+        short_point(20, IsolatedPointKind.HIGH, 130.0),
+        confirmation_index=22,
+    )
+
+    with pytest.raises(ValueError, match="requires a confirmed medium point"):
+        attach_course_evidence(
+            structure,
+            [MediumCourseEvidence(unrelated, CourseRuleMatch.YES)],
+        )

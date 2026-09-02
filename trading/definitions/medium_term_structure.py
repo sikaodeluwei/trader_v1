@@ -1,5 +1,6 @@
 """Canonical Chapter 2 medium-term structure from cleaned short-term vertices."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
@@ -105,6 +106,24 @@ class MediumTermStructure:
     vertices: tuple[MediumTermPoint, ...]
     suppressed: tuple[SuppressedMediumTermPoint, ...]
     course_evidence: tuple[MediumCourseEvidence, ...] = ()
+
+
+def attach_course_evidence(
+    structure: MediumTermStructure,
+    evidence: Sequence[MediumCourseEvidence],
+) -> MediumTermStructure:
+    """Attach external diagnostic evidence without changing canonical output."""
+
+    evidence_tuple = tuple(evidence)
+    if any(item.point not in structure.points for item in evidence_tuple):
+        raise ValueError("course evidence requires a confirmed medium point")
+    return MediumTermStructure(
+        points=structure.points,
+        potentials=structure.potentials,
+        vertices=structure.vertices,
+        suppressed=structure.suppressed,
+        course_evidence=evidence_tuple,
+    )
 
 
 def _validate_short_term_source(source: ShortTermStructure) -> None:
