@@ -394,3 +394,77 @@ def test_non_extreme_right_edge_is_not_a_potential() -> None:
     result = build_long_term_structure(source)
 
     assert result.potentials == ()
+
+
+def test_consecutive_long_highs_keep_highest_vertex_and_all_points() -> None:
+    source = alternating_medium_source(
+        high_prices=[100.0, 110.0, 105.0, 120.0, 107.0, 115.0, 100.0],
+        low_prices=[80.0, 81.0, 82.0, 83.0, 84.0, 85.0, 86.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert [point.price for point in result.points] == [110.0, 120.0, 115.0]
+    assert [point.price for point in result.vertices] == [120.0]
+    assert [item.point.price for item in result.suppressed] == [110.0, 115.0]
+    assert all(
+        item.reason is LongTermSuppressionReason.CONSECUTIVE_SAME_KIND
+        for item in result.suppressed
+    )
+
+
+def test_consecutive_long_lows_keep_lowest_vertex_and_all_points() -> None:
+    source = alternating_medium_source(
+        high_prices=[130.0, 131.0, 132.0, 133.0, 134.0, 135.0, 136.0],
+        low_prices=[120.0, 90.0, 100.0, 80.0, 95.0, 85.0, 110.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert [point.price for point in result.points] == [90.0, 80.0, 85.0]
+    assert [point.price for point in result.vertices] == [80.0]
+    assert [item.point.price for item in result.suppressed] == [90.0, 85.0]
+
+
+def test_equal_highest_long_high_keeps_earliest_pivot() -> None:
+    source = alternating_medium_source(
+        high_prices=[100.0, 110.0, 105.0, 110.0, 100.0],
+        low_prices=[80.0, 81.0, 82.0, 83.0, 84.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert [point.price for point in result.points] == [110.0, 110.0]
+    assert result.vertices == (result.points[0],)
+    assert result.suppressed == (
+        SuppressedLongTermPoint(
+            result.points[1],
+            LongTermSuppressionReason.CONSECUTIVE_SAME_KIND,
+        ),
+    )
+
+
+def test_equal_lowest_long_low_keeps_earliest_pivot() -> None:
+    source = alternating_medium_source(
+        high_prices=[130.0, 131.0, 132.0, 133.0, 134.0],
+        low_prices=[120.0, 90.0, 100.0, 90.0, 110.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert [point.price for point in result.points] == [90.0, 90.0]
+    assert result.vertices == (result.points[0],)
+    assert result.suppressed[0].point is result.points[1]
+
+
+def test_same_kind_normalization_does_not_change_potentials() -> None:
+    source = alternating_medium_source(
+        high_prices=[100.0, 110.0, 105.0, 120.0, 107.0, 125.0],
+        low_prices=[80.0, 81.0, 82.0, 83.0, 84.0, 85.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert [point.price for point in result.points] == [110.0, 120.0]
+    assert [point.price for point in result.vertices] == [120.0]
+    assert [potential.price for potential in result.potentials] == [125.0]

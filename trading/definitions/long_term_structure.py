@@ -182,14 +182,57 @@ def _recognize_long_points(
     return points, potentials
 
 
+def _is_more_extreme_long(
+    candidate: LongTermPoint,
+    current: LongTermPoint,
+) -> bool:
+    if current.kind is IsolatedPointKind.HIGH:
+        return candidate.price > current.price
+    return candidate.price < current.price
+
+
+def _normalize_same_kind_runs(
+    points: tuple[LongTermPoint, ...],
+) -> tuple[list[LongTermPoint], list[SuppressedLongTermPoint]]:
+    vertices: list[LongTermPoint] = []
+    suppressed: list[SuppressedLongTermPoint] = []
+    run: list[LongTermPoint] = []
+
+    def flush_run() -> None:
+        if not run:
+            return
+        winner = run[0]
+        for candidate in run[1:]:
+            if _is_more_extreme_long(candidate, winner):
+                winner = candidate
+        vertices.append(winner)
+        suppressed.extend(
+            SuppressedLongTermPoint(
+                point,
+                LongTermSuppressionReason.CONSECUTIVE_SAME_KIND,
+            )
+            for point in run
+            if point is not winner
+        )
+
+    for point in points:
+        if run and point.kind is not run[-1].kind:
+            flush_run()
+            run = []
+        run.append(point)
+    flush_run()
+    return vertices, suppressed
+
+
 def build_long_term_structure(source: MediumTermStructure) -> LongTermStructure:
     """Build canonical long structure from cleaned medium vertices."""
     _validate_medium_term_source(source)
     points, potentials = _recognize_long_points(source.vertices)
+    vertices, suppressed = _normalize_same_kind_runs(points)
     return LongTermStructure(
         points=points,
         potentials=potentials,
-        vertices=points,
-        suppressed=(),
+        vertices=tuple(vertices),
+        suppressed=tuple(suppressed),
         course_evidence=(),
     )
