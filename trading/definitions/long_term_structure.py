@@ -102,8 +102,20 @@ class LongTermStructure:
 
 
 def attach_course_evidence(structure: LongTermStructure, evidence: Sequence[LongCourseEvidence]) -> LongTermStructure:
-    """Remain intentionally unimplemented until Task 6's behavioral RED."""
-    raise NotImplementedError("course evidence attachment is not implemented")
+    """Attach external diagnostic evidence without changing canonical output."""
+
+    evidence_tuple = tuple(evidence)
+    if any(item.point not in structure.points for item in evidence_tuple):
+        raise ValueError(
+            "course evidence requires a confirmed long-term point"
+        )
+    return LongTermStructure(
+        points=structure.points,
+        potentials=structure.potentials,
+        vertices=structure.vertices,
+        suppressed=structure.suppressed,
+        course_evidence=evidence_tuple,
+    )
 
 
 def _validate_medium_term_source(source: MediumTermStructure) -> None:

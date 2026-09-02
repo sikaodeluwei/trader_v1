@@ -11,6 +11,7 @@ from trading.definitions.long_term_structure import (
     LongTermSuppressionReason,
     PotentialLongTermPoint,
     SuppressedLongTermPoint,
+    attach_course_evidence,
     build_long_term_structure,
 )
 from trading.definitions.medium_term_structure import (
@@ -665,3 +666,49 @@ def test_suppression_order_is_phase_then_pivot_chronology() -> None:
         LongTermSuppressionReason.INSIDE_STRUCTURE,
         LongTermSuppressionReason.INSIDE_STRUCTURE,
     ]
+
+
+def test_course_evidence_attachment_preserves_canonical_output() -> None:
+    canonical = build_long_term_structure(
+        alternating_medium_source(
+            high_prices=[105.0, 120.0, 115.0],
+            low_prices=[90.0, 91.0, 92.0],
+        )
+    )
+    evidence = LongCourseEvidence(
+        canonical.points[0],
+        CourseRuleMatch.UNKNOWN,
+    )
+
+    enriched = attach_course_evidence(canonical, [evidence])
+
+    assert enriched.points == canonical.points
+    assert enriched.potentials == canonical.potentials
+    assert enriched.vertices == canonical.vertices
+    assert enriched.suppressed == canonical.suppressed
+    assert enriched.course_evidence == (evidence,)
+    assert canonical.course_evidence == ()
+    assert enriched.points[0].pivot is canonical.points[0].pivot
+    assert enriched.points[0].confirmed_by is canonical.points[0].confirmed_by
+
+
+def test_course_evidence_requires_a_confirmed_long_point() -> None:
+    canonical = build_long_term_structure(
+        alternating_medium_source(
+            high_prices=[105.0, 120.0, 115.0],
+            low_prices=[90.0, 91.0, 92.0],
+        )
+    )
+    unrelated = LongTermPoint(
+        medium_point(200, IsolatedPointKind.HIGH, 130.0),
+        medium_point(220, IsolatedPointKind.HIGH, 125.0),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="requires a confirmed long-term point",
+    ):
+        attach_course_evidence(
+            canonical,
+            [LongCourseEvidence(unrelated, CourseRuleMatch.YES)],
+        )
