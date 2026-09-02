@@ -525,6 +525,22 @@ def test_repeated_inside_medium_pairs_normalize_until_stable() -> None:
     )
 
 
+def test_inside_pair_is_compared_with_immediately_previous_pair() -> None:
+    source = alternating_source(
+        high_prices=[105.0, 110.0, 104.0, 120.0, 103.0, 115.0, 102.0],
+        low_prices=[105.0, 100.0, 106.0, 90.0, 107.0, 95.0, 108.0],
+    )
+
+    result = build_medium_term_structure(source)
+
+    assert [point.price for point in result.vertices] == [110.0, 100.0, 120.0, 90.0]
+    assert [item.point.price for item in result.suppressed] == [115.0, 95.0]
+    assert all(
+        item.reason is MediumTermSuppressionReason.INSIDE_STRUCTURE
+        for item in result.suppressed
+    )
+
+
 def test_non_contained_layout_is_preserved_without_chart_matching() -> None:
     source = paired_medium_source(110.0, 100.0, 115.0, 95.0)
 
