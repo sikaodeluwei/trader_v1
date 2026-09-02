@@ -320,3 +320,77 @@ def test_confirmed_long_points_use_pivot_order_and_exact_sources() -> None:
         source.vertices[5],
     ]
     assert all(not hasattr(point, "known_at_index") for point in result.points)
+
+
+@pytest.mark.parametrize(
+    "kind,prices",
+    [
+        (IsolatedPointKind.HIGH, [105.0, 120.0]),
+        (IsolatedPointKind.LOW, [100.0, 80.0]),
+    ],
+)
+def test_current_edge_candidate_is_only_a_potential(
+    kind: IsolatedPointKind,
+    prices: list[float],
+) -> None:
+    source = medium_structure(
+        [
+            medium_point(10, kind, prices[0]),
+            medium_point(30, kind, prices[1]),
+        ]
+    )
+
+    result = build_long_term_structure(source)
+
+    assert result.points == ()
+    assert result.vertices == ()
+    assert result.suppressed == ()
+    assert len(result.potentials) == 1
+    assert result.potentials[0].previous_same_kind is source.vertices[0]
+    assert result.potentials[0].pivot is source.vertices[1]
+
+
+def test_potential_becomes_confirmed_after_passing_later_high() -> None:
+    previous = medium_point(10, IsolatedPointKind.HIGH, 105.0)
+    pivot = medium_point(30, IsolatedPointKind.HIGH, 120.0)
+    later = medium_point(50, IsolatedPointKind.HIGH, 115.0)
+
+    before = build_long_term_structure(medium_structure([previous, pivot]))
+    after = build_long_term_structure(
+        medium_structure([previous, pivot, later])
+    )
+
+    assert before.points == ()
+    assert before.potentials[0].pivot is pivot
+    assert after.potentials == ()
+    assert after.points == (LongTermPoint(pivot, later),)
+
+
+def test_failed_potential_is_not_promoted() -> None:
+    previous = medium_point(10, IsolatedPointKind.HIGH, 105.0)
+    pivot = medium_point(30, IsolatedPointKind.HIGH, 120.0)
+    later = medium_point(50, IsolatedPointKind.HIGH, 125.0)
+
+    before = build_long_term_structure(medium_structure([previous, pivot]))
+    after = build_long_term_structure(
+        medium_structure([previous, pivot, later])
+    )
+
+    assert before.potentials[0].pivot is pivot
+    assert all(point.pivot is not pivot for point in after.points)
+    assert after.potentials == (
+        PotentialLongTermPoint(pivot, later),
+    )
+
+
+def test_non_extreme_right_edge_is_not_a_potential() -> None:
+    source = medium_structure(
+        [
+            medium_point(10, IsolatedPointKind.LOW, 80.0),
+            medium_point(30, IsolatedPointKind.LOW, 90.0),
+        ]
+    )
+
+    result = build_long_term_structure(source)
+
+    assert result.potentials == ()
