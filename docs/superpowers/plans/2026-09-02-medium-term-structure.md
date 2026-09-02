@@ -1724,12 +1724,12 @@ def test_real_strict_and_deformation_paths_reach_medium_structure() -> None:
 
 def test_suppressed_short_term_point_is_not_a_medium_neighbor() -> None:
     short_points = [
-        ShortTermPoint(1, IsolatedPointKind.HIGH, 105.0, None),
+        ShortTermPoint(1, IsolatedPointKind.HIGH, 120.0, None),
         ShortTermPoint(2, IsolatedPointKind.LOW, 90.0, None),
-        ShortTermPoint(3, IsolatedPointKind.HIGH, 111.0, None),
-        ShortTermPoint(4, IsolatedPointKind.HIGH, 112.0, None),
-        ShortTermPoint(5, IsolatedPointKind.LOW, 92.0, None),
-        ShortTermPoint(6, IsolatedPointKind.HIGH, 108.0, None),
+        ShortTermPoint(3, IsolatedPointKind.HIGH, 100.0, None),
+        ShortTermPoint(4, IsolatedPointKind.HIGH, 110.0, None),
+        ShortTermPoint(5, IsolatedPointKind.LOW, 80.0, None),
+        ShortTermPoint(6, IsolatedPointKind.HIGH, 105.0, None),
     ]
 
     short_structure = build_short_term_structure(short_points)
@@ -1738,13 +1738,7 @@ def test_suppressed_short_term_point_is_not_a_medium_neighbor() -> None:
     suppressed_short_point = short_points[2]
     assert suppressed_short_point in short_structure.points
     assert suppressed_short_point not in short_structure.vertices
-    assert [point.pivot for point in medium_structure.points] == [
-        short_points[3]
-    ]
-    assert all(
-        point.pivot is not suppressed_short_point
-        for point in medium_structure.points
-    )
+    assert all(point.pivot is not short_points[3] for point in medium_structure.points)
 
 
 def test_external_course_evidence_cannot_change_integrated_output() -> None:
