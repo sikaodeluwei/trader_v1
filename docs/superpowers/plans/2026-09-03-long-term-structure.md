@@ -33,6 +33,9 @@
 - Do not add timeframe mappings, automatic creator/trend-context selection, BMS/SMS reinterpretation, market-state inference, reversal decisions, strategy, signals, entries, exits, risk, sizing, broker, order, execution, machine-learning, or Lesson 8 behavior.
 - Do not create `tests/test_course_market_structure_scenarios.py`; formal Chapter 2 Level-2 validation remains deferred until Lesson 8 is understood.
 - Use red-to-green TDD for every production behavior, with a fresh implementer subagent and both spec-compliance and code-quality review after every implementation task.
+- Every RED command must collect and execute its test, then report `FAILED`
+  because the intended behavior is missing. Import errors, collection errors,
+  syntax errors, missing test files, and other setup failures are never RED.
 
 ## Planned File Structure
 
@@ -184,9 +187,162 @@ At implementation kickoff:
   `_validate_medium_term_source()`, and a neutral
   `build_long_term_structure(source: MediumTermStructure) -> LongTermStructure`.
 
-- [ ] **Step 1: Write the domain and source-validation tests**
+- [ ] **Step 1: Write a collectable module-boundary test**
 
 Create `tests/test_long_term_structure.py` with:
+
+~~~python
+from importlib import import_module, util
+
+
+def test_long_term_module_exists() -> None:
+    assert (
+        util.find_spec("trading.definitions.long_term_structure")
+        is not None
+    )
+~~~
+
+The test module imports no nonexistent Lesson 7 module or symbol during
+collection.
+
+- [ ] **Step 2: Run the module-boundary test and verify behavioral RED**
+
+Run:
+
+~~~bash
+pytest tests/test_long_term_structure.py::test_long_term_module_exists -v
+~~~
+
+Expected: pytest collects and runs the test, then reports `FAILED` because
+`find_spec(...)` returns `None`. This is a normal assertion failure, not a
+collection or import error.
+
+- [ ] **Step 3: Add only the module required by the first RED**
+
+Create `trading/definitions/long_term_structure.py` with:
+
+~~~python
+"""Canonical Chapter 2 long-term structure from cleaned medium vertices."""
+~~~
+
+Do not add public records, functions, recognition, or validation in this
+bootstrap step.
+
+- [ ] **Step 4: Run the module-boundary test and verify GREEN**
+
+Run:
+
+~~~bash
+pytest tests/test_long_term_structure.py::test_long_term_module_exists -v
+~~~
+
+Expected: the one module-boundary test passes.
+
+- [ ] **Step 5: Add a collectable locked-API boundary test**
+
+Append:
+
+~~~python
+def test_locked_long_term_api_is_exposed() -> None:
+    module = import_module("trading.definitions.long_term_structure")
+    expected_names = {
+        "LongTermSuppressionReason",
+        "LongTermPoint",
+        "PotentialLongTermPoint",
+        "SuppressedLongTermPoint",
+        "LongCourseEvidence",
+        "LongTermStructure",
+        "build_long_term_structure",
+        "attach_course_evidence",
+    }
+
+    missing = sorted(
+        name for name in expected_names if not hasattr(module, name)
+    )
+
+    assert missing == []
+~~~
+
+- [ ] **Step 6: Run the locked-API test and verify behavioral RED**
+
+Run:
+
+~~~bash
+pytest tests/test_long_term_structure.py::test_locked_long_term_api_is_exposed -v
+~~~
+
+Expected: pytest collects and runs the test, then reports `FAILED` with the
+missing public names in the assertion diff. The existing module imports
+successfully.
+
+- [ ] **Step 7: Add only the public-name scaffold required by the API RED**
+
+Replace the bootstrap module contents with:
+
+~~~python
+"""Canonical Chapter 2 long-term structure from cleaned medium vertices."""
+
+from collections.abc import Sequence
+from enum import Enum
+
+from .medium_term_structure import (
+    MediumTermStructure,
+)
+
+
+class LongTermSuppressionReason(Enum):
+    pass
+
+
+class LongTermPoint:
+    pass
+
+
+class PotentialLongTermPoint:
+    pass
+
+
+class SuppressedLongTermPoint:
+    pass
+
+
+class LongCourseEvidence:
+    pass
+
+
+class LongTermStructure:
+    pass
+
+
+def build_long_term_structure(
+    source: MediumTermStructure,
+) -> LongTermStructure:
+    raise NotImplementedError("long-term structure behavior is not implemented")
+
+
+def attach_course_evidence(
+    structure: LongTermStructure,
+    evidence: Sequence[LongCourseEvidence],
+) -> LongTermStructure:
+    raise NotImplementedError("course evidence attachment is not implemented")
+~~~
+
+This scaffold establishes only the locked public names. It does not implement
+records, validation, canonical construction, or evidence behavior.
+
+- [ ] **Step 8: Run both boundary tests and verify GREEN**
+
+Run:
+
+~~~bash
+pytest tests/test_long_term_structure.py -v
+~~~
+
+Expected: both boundary tests pass.
+
+- [ ] **Step 9: Append the domain and source-validation behavioral tests**
+
+Append to `tests/test_long_term_structure.py`:
 
 ~~~python
 from dataclasses import FrozenInstanceError
@@ -429,7 +585,7 @@ def test_empty_and_one_vertex_sources_are_neutral() -> None:
     assert one == LongTermStructure((), (), (), (), ())
 ~~~
 
-- [ ] **Step 2: Run Task 1 tests and verify RED**
+- [ ] **Step 10: Run the domain and validation tests and verify behavioral RED**
 
 Run:
 
@@ -437,12 +593,15 @@ Run:
 pytest tests/test_long_term_structure.py -v
 ~~~
 
-Expected: collection fails because
-`trading.definitions.long_term_structure` does not exist.
+Expected: pytest collects and executes every test. The two boundary tests pass,
+while the new domain and validation tests report `FAILED` because the scaffold
+has no dataclass construction, enum values, delegated properties, validation,
+or neutral builder behavior. There must be no collection/import/syntax error.
 
-- [ ] **Step 3: Implement the immutable records and validation boundary**
+- [ ] **Step 11: Implement the immutable records and validation boundary**
 
-Create `trading/definitions/long_term_structure.py` with:
+Replace the public-name scaffold in
+`trading/definitions/long_term_structure.py` with:
 
 ~~~python
 """Canonical Chapter 2 long-term structure from cleaned medium vertices."""
@@ -577,6 +736,15 @@ class LongTermStructure:
     course_evidence: tuple[LongCourseEvidence, ...] = ()
 
 
+def attach_course_evidence(
+    structure: LongTermStructure,
+    evidence: Sequence[LongCourseEvidence],
+) -> LongTermStructure:
+    """Remain intentionally unimplemented until Task 6's behavioral RED."""
+
+    raise NotImplementedError("course evidence attachment is not implemented")
+
+
 def _validate_medium_term_source(source: MediumTermStructure) -> None:
     for previous, current in zip(source.vertices, source.vertices[1:]):
         if current.pivot_index <= previous.pivot_index:
@@ -606,10 +774,11 @@ def build_long_term_structure(
 ~~~
 
 `Sequence` is imported now because Task 6 adds the locked evidence
-attachment signature. Do not add recognition, potentials, or normalization in
-this task.
+attachment behavior. Its public callable remains an explicit
+`NotImplementedError` stub until Task 6. Do not add recognition, potentials,
+normalization, or final evidence behavior in this task.
 
-- [ ] **Step 4: Run Task 1 tests and verify GREEN**
+- [ ] **Step 12: Run Task 1 tests and verify GREEN**
 
 Run:
 
@@ -619,7 +788,7 @@ pytest tests/test_long_term_structure.py -v
 
 Expected: all Task 1 tests pass.
 
-- [ ] **Step 5: Run lower-layer regressions**
+- [ ] **Step 13: Run lower-layer regressions**
 
 Run:
 
@@ -632,7 +801,7 @@ git diff --check
 Expected: all existing Lesson 5 and Lesson 6 tests pass; the diff check emits
 no errors.
 
-- [ ] **Step 6: Review and commit Task 1**
+- [ ] **Step 14: Review and commit Task 1**
 
 Review frozen records, exact delegated properties, timing deferral, all direct
 invariants, complete source validation before output, neutral small input,
@@ -672,6 +841,7 @@ def test_basic_long_high_uses_strict_same_kind_medium_neighbors() -> None:
 
     result = build_long_term_structure(source)
 
+    assert len(result.points) == 1
     point = result.points[0]
     assert point.pivot is source.vertices[2]
     assert point.confirmed_by is source.vertices[4]
@@ -790,11 +960,12 @@ def test_confirmed_long_points_use_pivot_order_and_exact_sources() -> None:
 Run:
 
 ~~~bash
-pytest tests/test_long_term_structure.py -v
+pytest tests/test_long_term_structure.py::test_basic_long_high_uses_strict_same_kind_medium_neighbors -v
 ~~~
 
-Expected: strict recognition assertions fail because the neutral builder
-returns no confirmed points.
+Expected: pytest collects and runs the test, then reports `FAILED` at
+`assert len(result.points) == 1` because the neutral builder returns no
+confirmed points. There is no collection or setup error.
 
 - [ ] **Step 3: Implement strict recognition**
 
@@ -992,11 +1163,12 @@ def test_non_extreme_right_edge_is_not_a_potential() -> None:
 Run:
 
 ~~~bash
-pytest tests/test_long_term_structure.py -v
+pytest tests/test_long_term_structure.py::test_current_edge_candidate_is_only_a_potential -v
 ~~~
 
-Expected: potential assertions fail because the builder still returns an empty
-`potentials` collection.
+Expected: pytest collects and runs both parameter cases, then reports `FAILED`
+at `assert len(result.potentials) == 1` because the builder still returns an
+empty `potentials` collection. There is no collection or setup error.
 
 - [ ] **Step 3: Extend recognition to return edge potentials**
 
@@ -1213,11 +1385,12 @@ def test_same_kind_normalization_does_not_change_potentials() -> None:
 Run:
 
 ~~~bash
-pytest tests/test_long_term_structure.py -v
+pytest tests/test_long_term_structure.py::test_consecutive_long_highs_keep_highest_vertex_and_all_points -v
 ~~~
 
-Expected: the new vertex and suppression assertions fail because every
-confirmed point is still returned as a vertex.
+Expected: pytest collects and runs the test, then reports `FAILED` because
+every confirmed high is still returned as a vertex instead of only the
+highest high. There is no collection or setup error.
 
 - [ ] **Step 3: Implement same-kind run normalization**
 
@@ -1527,11 +1700,13 @@ def test_suppression_order_is_phase_then_pivot_chronology() -> None:
 Run:
 
 ~~~bash
-pytest tests/test_long_term_structure.py -v
+pytest tests/test_long_term_structure.py::test_complete_inside_long_pair_is_suppressed_in_both_orientations -v
 ~~~
 
-Expected: contained-pair assertions fail because inside normalization is not
-implemented; breakout-preservation tests document already-preserved layouts.
+Expected: pytest collects and runs both orientation cases, then reports
+`FAILED` because the contained later pair remains in `vertices`. There is no
+collection or setup error. Breakout-preservation tests document
+already-preserved layouts and are verified after GREEN.
 
 - [ ] **Step 3: Implement the provisional complete-pair rule**
 
@@ -1736,15 +1911,18 @@ def test_course_evidence_requires_a_confirmed_long_point() -> None:
 Run:
 
 ~~~bash
-pytest tests/test_long_term_structure.py -v
+pytest tests/test_long_term_structure.py::test_course_evidence_attachment_preserves_canonical_output tests/test_long_term_structure.py::test_course_evidence_requires_a_confirmed_long_point -v
 ~~~
 
-Expected: collection fails with an `ImportError` for
-`attach_course_evidence`.
+Expected: pytest collects and runs both tests, then reports two `FAILED` tests
+because the Task 1 public callable still raises
+`NotImplementedError("course evidence attachment is not implemented")`.
+This is the intended missing evidence behavior, not an import, collection, or
+setup failure.
 
 - [ ] **Step 3: Implement immutable evidence attachment**
 
-Add before source validation:
+Replace the Task 1 `attach_course_evidence()` stub with:
 
 ~~~python
 def attach_course_evidence(
@@ -1824,18 +2002,7 @@ git commit -m "Add long-term course evidence"
   a discriminating cleaned-medium-vertices-only test, and passive-evidence
   integration coverage.
 
-- [ ] **Step 1: Verify the integration artifact is absent for RED**
-
-Run:
-
-~~~bash
-pytest tests/test_long_term_structure_integration.py -v
-~~~
-
-Expected: pytest reports that
-`tests/test_long_term_structure_integration.py` does not exist.
-
-- [ ] **Step 2: Create exact raw-recognition integration fixtures and tests**
+- [ ] **Step 1: Create exact raw-recognition integration fixtures and tests**
 
 Create `tests/test_long_term_structure_integration.py`:
 
@@ -2042,7 +2209,7 @@ The second test is deliberately discriminating: scanning all medium
 while the approved cleaned `vertices` boundary contains only `120` and
 therefore confirms nothing.
 
-- [ ] **Step 3: Run the integration suite and verify GREEN**
+- [ ] **Step 2: Run the integration verification suite**
 
 Run:
 
@@ -2050,10 +2217,28 @@ Run:
 pytest tests/test_long_term_structure_integration.py -v
 ~~~
 
-Expected: all three integration tests pass. Both Chapter 1 recognition paths
-reach `LongTermStructure`; nested medium-to-short provenance is retained;
-suppressed medium points cannot affect long recognition; and evidence is
-passive.
+Expected: all three integration tests pass against the already completed
+Tasks 1-6 production behavior. Both Chapter 1 recognition paths reach
+`LongTermStructure`; nested medium-to-short provenance is retained; suppressed
+medium points cannot affect long recognition; and evidence is passive. This is
+integration verification, not a RED step.
+
+- [ ] **Step 3: Handle a real integration-discovered production defect with TDD**
+
+If Step 2 fails because an approved Tasks 1-6 production behavior is defective:
+
+1. Preserve the failing integration test as the behavioral RED evidence.
+2. Confirm pytest collected and ran it and that the failure is caused by the
+   production defect rather than fixture, import, collection, or setup error.
+3. Make the minimum production correction in
+   `trading/definitions/long_term_structure.py`.
+4. Rerun the exact failing integration test to GREEN.
+5. Rerun `pytest tests/test_long_term_structure.py -v` and the complete
+   integration file.
+6. Commit the correction as a narrowly scoped review/fix commit and record it
+   in the SDD ledger.
+
+If Step 2 passes, make no production change and create no fix commit.
 
 - [ ] **Step 4: Run all Lessons 5-7 tests together**
 
