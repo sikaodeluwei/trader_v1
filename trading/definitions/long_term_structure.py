@@ -116,7 +116,55 @@ def _validate_medium_term_source(source: MediumTermStructure) -> None:
         raise ValueError("suppressed medium points must not be long-term recognition vertices")
 
 
+def _is_strict_long_pivot(
+    previous: MediumTermPoint,
+    pivot: MediumTermPoint,
+    later: MediumTermPoint,
+) -> bool:
+    if pivot.kind is IsolatedPointKind.HIGH:
+        return previous.price < pivot.price > later.price
+    return previous.price > pivot.price < later.price
+
+
+def _recognize_kind(
+    vertices: tuple[MediumTermPoint, ...],
+    kind: IsolatedPointKind,
+) -> list[LongTermPoint]:
+    same_kind = tuple(point for point in vertices if point.kind is kind)
+    return [
+        LongTermPoint(pivot, later)
+        for previous, pivot, later in zip(
+            same_kind,
+            same_kind[1:],
+            same_kind[2:],
+        )
+        if _is_strict_long_pivot(previous, pivot, later)
+    ]
+
+
+def _recognize_long_points(
+    vertices: tuple[MediumTermPoint, ...],
+) -> tuple[LongTermPoint, ...]:
+    high_points = _recognize_kind(vertices, IsolatedPointKind.HIGH)
+    low_points = _recognize_kind(vertices, IsolatedPointKind.LOW)
+    point_by_index = {
+        point.pivot_index: point for point in high_points + low_points
+    }
+    return tuple(
+        point_by_index[vertex.pivot_index]
+        for vertex in vertices
+        if vertex.pivot_index in point_by_index
+    )
+
+
 def build_long_term_structure(source: MediumTermStructure) -> LongTermStructure:
     """Build canonical long structure from cleaned medium vertices."""
     _validate_medium_term_source(source)
-    return LongTermStructure((), (), (), (), ())
+    points = _recognize_long_points(source.vertices)
+    return LongTermStructure(
+        points=points,
+        potentials=(),
+        vertices=points,
+        suppressed=(),
+        course_evidence=(),
+    )

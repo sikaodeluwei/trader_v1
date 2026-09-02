@@ -182,3 +182,141 @@ def test_empty_and_one_vertex_sources_are_neutral() -> None:
     one = build_long_term_structure(medium_structure([medium_point(10, IsolatedPointKind.HIGH, 105.0)]))
     assert empty == LongTermStructure((), (), (), (), ())
     assert one == LongTermStructure((), (), (), (), ())
+
+
+def alternating_medium_source(
+    *,
+    high_prices: list[float],
+    low_prices: list[float],
+) -> MediumTermStructure:
+    vertices: list[MediumTermPoint] = []
+    for index, (high_price, low_price) in enumerate(zip(high_prices, low_prices)):
+        vertices.extend(
+            [
+                medium_point(index * 20 + 10, IsolatedPointKind.HIGH, high_price),
+                medium_point(index * 20 + 20, IsolatedPointKind.LOW, low_price),
+            ]
+        )
+    return medium_structure(vertices)
+
+
+def test_basic_long_high_uses_strict_same_kind_medium_neighbors() -> None:
+    source = alternating_medium_source(
+        high_prices=[105.0, 120.0, 115.0],
+        low_prices=[90.0, 91.0, 92.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert len(result.points) == 1
+    point = result.points[0]
+    assert point.pivot is source.vertices[2]
+    assert point.confirmed_by is source.vertices[4]
+    assert point.pivot_index == source.vertices[2].pivot_index
+    assert point.confirmed_by_index == source.vertices[4].pivot_index
+    assert point.kind is IsolatedPointKind.HIGH
+    assert point.price == 120.0
+    assert result.vertices == result.points
+    assert result.potentials == ()
+
+
+def test_basic_long_low_uses_strict_same_kind_medium_neighbors() -> None:
+    source = alternating_medium_source(
+        high_prices=[110.0, 111.0, 112.0],
+        low_prices=[100.0, 80.0, 90.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    point = result.points[0]
+    assert point.pivot is source.vertices[3]
+    assert point.confirmed_by is source.vertices[5]
+    assert point.kind is IsolatedPointKind.LOW
+    assert point.price == 80.0
+
+
+@pytest.mark.parametrize(
+    "high_prices",
+    [[120.0, 120.0, 115.0], [105.0, 120.0, 120.0]],
+)
+def test_long_high_equality_on_either_side_rejects_confirmation(
+    high_prices: list[float],
+) -> None:
+    source = alternating_medium_source(
+        high_prices=high_prices,
+        low_prices=[90.0, 91.0, 92.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert all(
+        point.kind is not IsolatedPointKind.HIGH
+        for point in result.points
+    )
+
+
+@pytest.mark.parametrize(
+    "low_prices",
+    [[80.0, 80.0, 90.0], [100.0, 80.0, 80.0]],
+)
+def test_long_low_equality_on_either_side_rejects_confirmation(
+    low_prices: list[float],
+) -> None:
+    source = alternating_medium_source(
+        high_prices=[110.0, 111.0, 112.0],
+        low_prices=low_prices,
+    )
+
+    result = build_long_term_structure(source)
+
+    assert all(
+        point.kind is not IsolatedPointKind.LOW
+        for point in result.points
+    )
+
+
+def test_opposite_kind_vertices_are_not_same_kind_neighbors() -> None:
+    source = alternating_medium_source(
+        high_prices=[105.0, 120.0, 115.0],
+        low_prices=[100.0, 80.0, 90.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert [(point.pivot_index, point.kind) for point in result.points] == [
+        (source.vertices[2].pivot_index, IsolatedPointKind.HIGH),
+        (source.vertices[3].pivot_index, IsolatedPointKind.LOW),
+    ]
+    assert result.points[0].confirmed_by is source.vertices[4]
+    assert result.points[1].confirmed_by is source.vertices[5]
+
+
+def test_recognizer_does_not_skip_intervening_same_kind_medium_vertex() -> None:
+    source = alternating_medium_source(
+        high_prices=[100.0, 110.0, 120.0, 105.0],
+        low_prices=[80.0, 81.0, 82.0, 83.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert [point.price for point in result.points] == [120.0]
+    assert all(point.price != 110.0 for point in result.points)
+
+
+def test_confirmed_long_points_use_pivot_order_and_exact_sources() -> None:
+    source = alternating_medium_source(
+        high_prices=[105.0, 120.0, 115.0],
+        low_prices=[100.0, 80.0, 90.0],
+    )
+
+    result = build_long_term_structure(source)
+
+    assert [point.pivot_index for point in result.points] == [
+        source.vertices[2].pivot_index,
+        source.vertices[3].pivot_index,
+    ]
+    assert [point.confirmed_by for point in result.points] == [
+        source.vertices[4],
+        source.vertices[5],
+    ]
+    assert all(not hasattr(point, "known_at_index") for point in result.points)
