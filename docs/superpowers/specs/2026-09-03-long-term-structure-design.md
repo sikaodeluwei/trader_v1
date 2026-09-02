@@ -112,9 +112,25 @@ canonical recognition.
 
 ### Potential versus confirmed
 
-The course continues to distinguish a point that is structurally eligible at
-the current edge from a point whose later same-kind comparison exists and
-passes. Potential long-term points remain separate from confirmed points.
+Lesson 7 retains a course distinction between potential and confirmed
+long-term points. In the teacher's creator/break framework, confirmation is
+produced by the specified structural break relationship. For example, in an
+already-defined upward trend, a potential long-term low remains potential until
+the relevant recently confirmed long-term high is truly broken upward; before
+that break, price may continue lower.
+
+The course does not define that confirmation through a strict previous/middle/
+next same-kind medium-point comparison. Because exact creator selection and
+trend-context selection remain subjective or under-specified for deterministic
+software, the teacher's potential/confirmed method remains course context and
+optional diagnostic evidence.
+
+The project separately exposes canonical potential and confirmed states. A
+canonical right-edge potential exists because only its strict left same-kind
+comparison is currently available. It becomes canonically confirmed only when
+the immediate next same-kind cleaned medium vertex exists and the strict
+three-medium-point comparison passes. This is a project operational rule, not
+a claim about the teacher's literal confirmation method.
 
 ### Timeframe is not structural level
 
