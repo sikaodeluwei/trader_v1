@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the Chapter 2 Lesson 6 medium-term structure layer from cleaned short-term vertices, with strict ITH/ITL recognition, historically honest confirmation timing, separate edge potentials, deterministic normalization, and evidence-only course metadata.
+**Goal:** Build the Chapter 2 Lesson 6 medium-term structure layer from cleaned short-term vertices, with strict ITH/ITL recognition, explicit right-side structural confirmation provenance, separate edge potentials, deterministic normalization, and evidence-only course metadata. Exact real-time knowability remains deferred because `ShortTermPoint` does not carry availability timing.
 
-**Architecture:** Add one focused module whose canonical entry point accepts a `ShortTermStructure`, validates its cleaned `vertices`, recognizes medium points from previous/middle/next same-kind vertices, and then normalizes only confirmed medium points. Immutable domain records preserve source pivots, confirmation indexes, potentials, suppressions, and optional externally supplied course evidence without rescanning candles or changing existing Chapter 1/Lesson 1-5 behavior.
+**Architecture:** Add one focused module whose canonical entry point accepts a `ShortTermStructure`, validates its cleaned `vertices`, recognizes medium points from previous/middle/next same-kind vertices, and then normalizes only confirmed medium points. Immutable domain records preserve both the source pivot and the immediate next same-kind cleaned short-term point that structurally confirms it, plus potentials, suppressions, and optional externally supplied course evidence, without rescanning candles or changing existing Chapter 1/Lesson 1-5 behavior.
 
 **Tech Stack:** Python, frozen dataclasses, `Enum`, `collections.abc.Sequence`, pytest.
 
@@ -20,8 +20,10 @@
 - Canonical ITL recognition is strictly `previous LOW > middle LOW < next LOW` over chronological cleaned short-term lows.
 - Previous and next always mean the immediately previous and next cleaned short-term vertex of the same kind; never skip an intervening same-kind vertex.
 - Equality on either side prevents canonical confirmation.
-- Preserve the source `ShortTermPoint`, its pivot index, and the next same-kind vertex index that made confirmation knowable.
-- Order confirmed medium points and final line vertices by pivot chronology, never by confirmation chronology.
+- Preserve the source `ShortTermPoint` as `pivot` and the immediate next same-kind cleaned vertex as `confirmed_by`.
+- `confirmed_by_index` is structural source information only. It is not necessarily the candle index when `confirmed_by` itself became knowable.
+- Do not invent `known_at_index`; exact real-time knowability is deferred until the lower short-term layer supplies its own availability timing.
+- Order confirmed medium points and final line vertices by pivot chronology, never by confirming-source chronology.
 - Never expose a point as confirmed before its right-side same-kind source vertex exists.
 - Represent eligible current right-edge potentials separately from confirmed `points` and `vertices`.
 - A right-edge high is potential only when a previous cleaned high exists and the edge high is strictly higher; mirror with a strictly lower edge low.
@@ -34,7 +36,7 @@
 - Apply only the definite inside rule from left to right repeatedly until stable.
 - Do not add range extension, boundary replacement, nearest-pair selection, discretionary chart matching, trend-based cleanup, ATR, percentage, movement, distance, or candle-count thresholds.
 - Course creator/break evidence is optional, external, immutable diagnostic metadata only; do not calculate creator selection or break evidence automatically.
-- Course evidence must not alter confirmed points, pivot indexes, confirmation indexes, potentials, suppressions, or vertices.
+- Course evidence must not alter confirmed points, pivots, `confirmed_by` sources, potentials, suppressions, or vertices.
 - Do not add a generic structural-level enum, fixed timeframe mapping, long-term recognition, recursive promotion, or automatic parent/child hierarchy.
 - Do not reinterpret or invoke BMS/SMS, infer market state or reversal, or add strategy, signals, entries, exits, stop losses, risk, sizing, leverage, broker, order, execution, or AI/ML logic.
 - Do not modify existing production modules merely to re-export the new API; consumers import directly from `trading.definitions.medium_term_structure`.
@@ -49,7 +51,7 @@
 Create exactly these implementation artifacts unless a failing integration test proves a narrowly scoped correction is required:
 
 - `trading/definitions/medium_term_structure.py` - immutable Lesson 6 records, cleaned-source validation, strict ITH/ITL recognition, potential candidates, normalization, and evidence attachment.
-- `tests/test_medium_term_structure.py` - focused domain, validation, recognition, timing, same-kind, inside, and evidence-boundary tests.
+- `tests/test_medium_term_structure.py` - focused domain, validation, recognition, structural confirming-source, same-kind, inside, and evidence-boundary tests.
 - `tests/test_medium_term_structure_integration.py` - real Chapter 1 -> Lesson 5 -> Lesson 6 composition and cleaned-vertex boundary proof.
 
 Existing Chapter 1 and Chapter 2 production modules remain unchanged. Existing tests remain unchanged.
@@ -73,11 +75,15 @@ class CourseRuleMatch(Enum):
 @dataclass(frozen=True)
 class MediumTermPoint:
     pivot: ShortTermPoint
-    confirmation_index: int
+    confirmed_by: ShortTermPoint
 
     @property
     def pivot_index(self) -> int:
         return self.pivot.index
+
+    @property
+    def confirmed_by_index(self) -> int:
+        return self.confirmed_by.index
 
     @property
     def kind(self) -> IsolatedPointKind:
@@ -139,7 +145,7 @@ attach_course_evidence(
 
 `build_medium_term_structure()` is the only canonical recognition entry point. Accepting `ShortTermStructure` instead of `Sequence[ShortTermPoint]` makes the cleaned-source boundary explicit and prevents callers from accidentally passing all recognized or suppressed short-term points.
 
-`MediumTermPoint` stores one source object plus one later index rather than duplicating kind, price, and pivot index. Its properties expose those values directly from the immutable source pivot.
+`MediumTermPoint` stores the source pivot and the immediate next same-kind cleaned short-term point that completes the strict comparison. Its properties expose pivot values and `confirmed_by_index` directly from those immutable source objects. The latter is structural provenance, not an actual `known_at_index`.
 
 `PotentialMediumTermPoint` is the minimal current-edge representation. At most one high potential and one low potential may exist for one source snapshot; the returned tuple is ordered by pivot chronology. Failed candidates are not retained as a rejected-history collection.
 
@@ -148,7 +154,8 @@ attach_course_evidence(
 Exact validation messages selected by this plan:
 
 ```text
-confirmation_index must be after pivot index
+confirmed medium points require same-kind pivot and confirmed_by points
+confirmed_by index must be after pivot index
 potential medium points require same-kind source points
 potential medium point indexes must be chronological
 potential medium point must be more extreme than previous same-kind point
@@ -166,7 +173,7 @@ Suppression ordering is deterministic:
 
 ---
 
-### Task 1: Medium Domain Model, Cleaned-Source Validation, Strict Recognition, and Timing
+### Task 1: Medium Domain Model, Cleaned-Source Validation, Strict Recognition, and Structural Confirmation Provenance
 
 **Files:**
 - Create: `trading/definitions/medium_term_structure.py`
@@ -174,7 +181,7 @@ Suppression ordering is deterministic:
 
 **Interfaces:**
 - Consumes: `IsolatedPointKind` from `trading.definitions.isolated_points`; `ShortTermPoint`, `ShortTermStructure`, and `SuppressedShortTermPoint` from `trading.definitions.short_term_structure`.
-- Produces: all locked domain records and enums; `build_medium_term_structure(source: ShortTermStructure) -> MediumTermStructure` with complete source validation, strict same-kind recognition, confirmation timing, and current edge potentials. At this task boundary, confirmed `points` are also the provisional `vertices`, `suppressed == ()`, and `course_evidence == ()`.
+- Produces: all locked domain records and enums; `build_medium_term_structure(source: ShortTermStructure) -> MediumTermStructure` with complete source validation, strict same-kind recognition, explicit `confirmed_by` provenance, and current edge potentials. At this task boundary, confirmed `points` are also the provisional `vertices`, `suppressed == ()`, and `course_evidence == ()`.
 
 - [ ] **Step 1: Write domain, validation, and neutral-input tests first**
 
@@ -266,7 +273,8 @@ def test_enum_values_are_stable() -> None:
 
 def test_medium_records_preserve_provenance_and_are_frozen() -> None:
     pivot = short_point(3, IsolatedPointKind.HIGH, 112.0)
-    point = MediumTermPoint(pivot, confirmation_index=7)
+    confirmed_by = short_point(7, IsolatedPointKind.HIGH, 108.0)
+    point = MediumTermPoint(pivot, confirmed_by)
     potential = PotentialMediumTermPoint(
         short_point(1, IsolatedPointKind.HIGH, 105.0),
         pivot,
@@ -285,22 +293,37 @@ def test_medium_records_preserve_provenance_and_are_frozen() -> None:
     )
 
     assert point.pivot is pivot
+    assert point.confirmed_by is confirmed_by
     assert point.pivot_index == 3
+    assert point.confirmed_by_index == 7
     assert point.kind is IsolatedPointKind.HIGH
     assert point.price == 112.0
     assert structure.course_evidence == (evidence,)
     with pytest.raises(FrozenInstanceError):
-        point.confirmation_index = 8  # type: ignore[misc]
+        point.confirmed_by = short_point(8, IsolatedPointKind.HIGH, 107.0)  # type: ignore[misc]
 
 
-@pytest.mark.parametrize("confirmation_index", [2, 3])
-def test_confirmed_point_requires_later_confirmation_index(
-    confirmation_index: int,
+def test_confirmed_point_requires_same_kind_source_points() -> None:
+    pivot = short_point(3, IsolatedPointKind.HIGH, 112.0)
+
+    with pytest.raises(ValueError, match="same-kind pivot and confirmed_by"):
+        MediumTermPoint(
+            pivot,
+            short_point(5, IsolatedPointKind.LOW, 95.0),
+        )
+
+
+@pytest.mark.parametrize("confirmed_by_index", [2, 3])
+def test_confirmed_point_requires_later_confirmed_by(
+    confirmed_by_index: int,
 ) -> None:
     pivot = short_point(3, IsolatedPointKind.HIGH, 112.0)
 
-    with pytest.raises(ValueError, match="after pivot index"):
-        MediumTermPoint(pivot, confirmation_index)
+    with pytest.raises(ValueError, match="confirmed_by index must be after pivot index"):
+        MediumTermPoint(
+            pivot,
+            short_point(confirmed_by_index, IsolatedPointKind.HIGH, 108.0),
+        )
 
 
 def test_potential_requires_same_kind_chronological_sources() -> None:
@@ -467,18 +490,28 @@ class CourseRuleMatch(Enum):
 
 @dataclass(frozen=True)
 class MediumTermPoint:
-    """A canonical medium pivot and when its right evidence existed."""
+    """A canonical medium pivot and its structural right-side confirmer."""
 
     pivot: ShortTermPoint
-    confirmation_index: int
+    confirmed_by: ShortTermPoint
 
     def __post_init__(self) -> None:
-        if self.confirmation_index <= self.pivot.index:
-            raise ValueError("confirmation_index must be after pivot index")
+        if self.pivot.kind is not self.confirmed_by.kind:
+            raise ValueError(
+                "confirmed medium points require same-kind pivot and confirmed_by points"
+            )
+        if self.confirmed_by.index <= self.pivot.index:
+            raise ValueError("confirmed_by index must be after pivot index")
 
     @property
     def pivot_index(self) -> int:
         return self.pivot.index
+
+    @property
+    def confirmed_by_index(self) -> int:
+        """Return structural source location, not actual knowability time."""
+
+        return self.confirmed_by.index
 
     @property
     def kind(self) -> IsolatedPointKind:
@@ -615,7 +648,7 @@ pytest tests/test_medium_term_structure.py -v
 
 Expected: every test currently in the file passes. No raw-candle or isolated-point recognition import exists in the new production module.
 
-- [ ] **Step 5: Add strict recognition, timing, same-kind-neighbor, and potential tests**
+- [ ] **Step 5: Add strict recognition, confirmed-by, same-kind-neighbor, and potential tests**
 
 Append to `tests/test_medium_term_structure.py`:
 
@@ -630,10 +663,11 @@ def test_basic_ith_uses_strict_same_kind_neighbors() -> None:
 
     point = result.points[0]
     assert point.pivot is source.vertices[2]
+    assert point.confirmed_by is source.vertices[4]
     assert point.pivot_index == 2
     assert point.kind is IsolatedPointKind.HIGH
     assert point.price == 112.0
-    assert point.confirmation_index == 4
+    assert point.confirmed_by_index == 4
     assert result.vertices == result.points
 
 
@@ -647,10 +681,11 @@ def test_basic_itl_uses_strict_same_kind_neighbors() -> None:
 
     point = result.points[0]
     assert point.pivot is source.vertices[3]
+    assert point.confirmed_by is source.vertices[5]
     assert point.pivot_index == 3
     assert point.kind is IsolatedPointKind.LOW
     assert point.price == 94.0
-    assert point.confirmation_index == 5
+    assert point.confirmed_by_index == 5
 
 
 @pytest.mark.parametrize(
@@ -705,8 +740,8 @@ def test_opposite_kind_vertices_are_not_comparison_neighbors() -> None:
         (2, IsolatedPointKind.HIGH),
         (3, IsolatedPointKind.LOW),
     ]
-    assert result.points[0].confirmation_index == 4
-    assert result.points[1].confirmation_index == 5
+    assert result.points[0].confirmed_by is source.vertices[4]
+    assert result.points[1].confirmed_by is source.vertices[5]
 
 
 def test_recognizer_does_not_skip_intervening_same_kind_vertex() -> None:
@@ -769,7 +804,8 @@ def test_potential_becomes_confirmed_only_after_right_high_exists() -> None:
     assert before.potentials[0].pivot_index == 3
     assert after.potentials == ()
     assert after.points[0].pivot is initial.vertices[1]
-    assert after.points[0].confirmation_index == 5
+    assert after.points[0].confirmed_by is extended.vertices[2]
+    assert after.points[0].confirmed_by_index == 5
 
 
 def test_failed_potential_is_not_promoted() -> None:
@@ -794,7 +830,7 @@ def test_failed_potential_is_not_promoted() -> None:
     assert [potential.pivot_index for potential in after.potentials] == [5]
 
 
-def test_confirmed_points_use_pivot_order_and_keep_confirmation_timing() -> None:
+def test_confirmed_points_use_pivot_order_and_keep_confirming_sources() -> None:
     source = alternating_source(
         high_prices=[105.0, 112.0, 108.0],
         low_prices=[100.0, 94.0, 98.0],
@@ -803,14 +839,15 @@ def test_confirmed_points_use_pivot_order_and_keep_confirmation_timing() -> None
     result = build_medium_term_structure(source)
 
     assert [point.pivot_index for point in result.points] == [2, 3]
-    assert [point.confirmation_index for point in result.points] == [4, 5]
+    assert [point.confirmed_by_index for point in result.points] == [4, 5]
     assert all(
-        point.confirmation_index > point.pivot_index
+        point.confirmed_by.kind is point.pivot.kind
+        and point.confirmed_by_index > point.pivot_index
         for point in result.points
     )
 ```
 
-The final timing test keeps pivot order and confirmation metadata as separate fields. Do not fabricate an invalid non-alternating cleaned source merely to force globally inverted confirmation order.
+The final provenance test keeps pivot order and structural confirming-source metadata separate. `confirmed_by_index` must not be described as actual knowability time. Do not fabricate an invalid non-alternating cleaned source merely to force globally inverted source order.
 
 - [ ] **Step 6: Run the recognition tests and verify RED**
 
@@ -820,7 +857,7 @@ Run:
 pytest tests/test_medium_term_structure.py -v
 ```
 
-Expected: the new ITH/ITL, equality, same-kind-neighbor, promotion, and timing tests fail because the temporary builder does not yet scan chronological same-kind triples or expose general edge potentials.
+Expected: the new ITH/ITL, equality, same-kind-neighbor, promotion, and confirmed-by tests fail because the temporary builder does not yet scan chronological same-kind triples or expose general edge potentials.
 
 - [ ] **Step 7: Implement strict recognition and potential extraction**
 
@@ -843,7 +880,7 @@ def _recognize_kind(
 ) -> tuple[list[MediumTermPoint], PotentialMediumTermPoint | None]:
     same_kind = tuple(point for point in vertices if point.kind is kind)
     confirmed = [
-        MediumTermPoint(pivot, later.index)
+        MediumTermPoint(pivot, later)
         for previous, pivot, later in zip(
             same_kind,
             same_kind[1:],
@@ -924,7 +961,7 @@ Run:
 pytest tests/test_medium_term_structure.py -v
 ```
 
-Expected: every Task 1 test passes, including strict equality rejection, current potential isolation, failed-potential omission, and confirmation timing.
+Expected: every Task 1 test passes, including strict equality rejection, current potential isolation, failed-potential omission, and structural confirming-source provenance.
 
 - [ ] **Step 9: Run lower-layer regressions and inspect Task 1 scope**
 
@@ -940,7 +977,7 @@ Expected: all existing tests pass and the diff check has no output. Confirm the 
 
 - [ ] **Step 10: Review and commit Task 1**
 
-Review frozen records, exact enum values, source-only validation, strict same-kind triples, no silent sorting, pivot/confirmation separation, potential isolation, and absence of raw recognition logic.
+Review frozen records, exact enum values, source-only validation, strict same-kind triples, no silent sorting, pivot/confirmed-by separation, explicit real-time timing deferral, potential isolation, and absence of raw recognition logic.
 
 ```bash
 git add trading/definitions/medium_term_structure.py tests/test_medium_term_structure.py
@@ -1520,7 +1557,7 @@ def test_course_evidence_requires_an_existing_confirmed_point() -> None:
     structure = build_medium_term_structure(source)
     unrelated = MediumTermPoint(
         short_point(20, IsolatedPointKind.HIGH, 130.0),
-        confirmation_index=22,
+        short_point(22, IsolatedPointKind.HIGH, 125.0),
     )
 
     with pytest.raises(ValueError, match="requires a confirmed medium point"):
@@ -1681,7 +1718,8 @@ def test_real_strict_and_deformation_paths_reach_medium_structure() -> None:
     assert len(medium_structure.points) == 1
     assert medium_structure.points[0].pivot is deformation_high
     assert medium_structure.points[0].pivot_index == 3
-    assert medium_structure.points[0].confirmation_index == 6
+    assert medium_structure.points[0].confirmed_by is strict_high_3
+    assert medium_structure.points[0].confirmed_by_index == 6
 
 
 def test_suppressed_short_term_point_is_not_a_medium_neighbor() -> None:
@@ -1744,7 +1782,7 @@ Run:
 pytest tests/test_medium_term_structure_integration.py -v
 ```
 
-Expected: all integration tests pass. The deformation-aware high remains the source pivot, the confirmation index comes from the later cleaned same-kind high, and the suppressed short-term point never enters medium recognition.
+Expected: all integration tests pass. The deformation-aware high remains the source pivot, `confirmed_by` is the immediate later cleaned same-kind high at structural pivot index 6, the model does not invent an actual knowability timestamp from the candle at index 7, and the suppressed short-term point never enters medium recognition.
 
 - [ ] **Step 8: Run all Lesson 5 and Lesson 6 tests together**
 
@@ -1802,7 +1840,7 @@ Run:
 pytest tests/test_medium_term_structure.py -v
 ```
 
-Expected: PASS for domain invariants, strict recognition, equality rejection, same-kind neighbors, edge potentials, timing, same-kind cleanup, provisional inside cleanup, and evidence attachment.
+Expected: PASS for domain invariants, strict recognition, equality rejection, same-kind neighbors, edge potentials, structural confirming-source provenance, explicit knowability deferral, same-kind cleanup, provisional inside cleanup, and evidence attachment.
 
 - [ ] **Step 2: Run the complete Lesson 6 integration suite**
 
@@ -1871,6 +1909,8 @@ git status --short
 Expected changed files only:
 
 ```text
+docs/superpowers/specs/2026-09-02-medium-term-structure-design.md
+docs/superpowers/plans/2026-09-02-medium-term-structure.md
 trading/definitions/medium_term_structure.py
 tests/test_medium_term_structure.py
 tests/test_medium_term_structure_integration.py
@@ -1902,7 +1942,9 @@ The review must check:
 - strict same-kind comparisons and equality rejection;
 - no skipped same-kind point;
 - potential/confirmed separation and failed-potential omission;
-- pivot provenance and right same-kind confirmation timing;
+- pivot provenance and the exact right same-kind `confirmed_by` source;
+- `confirmed_by_index` is not represented as actual knowability time and no
+  `known_at_index` is invented;
 - pivot-ordered canonical output;
 - complete confirmed-point evidence despite normalization;
 - earliest equal-extreme tie handling;

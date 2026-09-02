@@ -11,8 +11,11 @@
 This specification records the approved Chapter 2, Lesson 6 design for a
 medium-term structural layer above the cleaned short-term structure. It defines
 how the project will recognize canonical Intermediate-Term Highs (`ITH`) and
-Intermediate-Term Lows (`ITL`), preserve when those points became knowable,
-and normalize confirmed medium points into a medium-level structure line.
+Intermediate-Term Lows (`ITL`), preserve the later same-kind short-term point
+that structurally confirms each pivot, and normalize confirmed medium points
+into a medium-level structure line. Exact real-time knowability remains
+unavailable until the lower short-term layer carries its own availability
+timing.
 
 The approved flow is:
 
@@ -56,7 +59,8 @@ This specification keeps four kinds of statements separate:
 These are concepts taught by the course and retained without assigning them
 additional software meaning. Examples include relative structural levels,
 same-level connections, the distinction between a pivot and its later
-confirmation, and the teacher's break-based medium-structure discussion.
+structural confirming point, and the teacher's break-based medium-structure
+discussion.
 
 ### B. Project canonical operational definition
 
@@ -120,7 +124,8 @@ A later implementation may add a focused medium-term layer that:
   same-kind-neighbor rule;
 - optionally exposes the current unconfirmed edge candidate without treating
   it as known history;
-- preserves both pivot location and confirmation timing;
+- preserves both pivot location and the later same-kind short-term point that
+  structurally confirms it;
 - preserves all confirmed medium points independently from final line
   vertices;
 - records objective same-kind and inside-structure suppressions;
@@ -269,8 +274,9 @@ AND
 ```
 
 STH2 is now a confirmed ITH. The confirmed point remains located at STH2's
-original pivot index, while the arrival of STH3 supplies its confirmation
-index.
+original pivot index, while STH3 is retained as the right-side same-kind
+short-term point that structurally confirms the comparison. STH3's pivot index
+does not reveal when STH3 itself became knowable.
 
 The same rule is mirrored for potential and confirmed ITLs.
 
@@ -296,44 +302,56 @@ The exact potential type, status representation, and whether failed candidate
 history is retained are implementation-plan decisions. No rejected candidate
 may be presented as a confirmed medium point.
 
-### No look-ahead invariant
+### Structural availability boundary and deferred real-time timing
 
-A backtest, incremental recognizer, or historical adapter must not expose a
-confirmed ITH/ITL before its next same-kind cleaned short-term point exists.
-Batch processing may calculate the result with a complete sequence, but its
-output must retain the actual confirmation index so downstream consumers can
-respect historical knowability.
+A confirmed ITH/ITL structurally depends on its next same-kind cleaned
+short-term point. The medium layer must retain that exact source point and must
+not represent the middle pivot as confirmed without it.
 
-## Pivot and Confirmation Chronology
+The current `ShortTermPoint` model contains a pivot index but no
+`known_at_index` or `confirmed_at_index`. Therefore the medium layer cannot
+truthfully expose the candle index when its right-side short-term dependency
+became knowable. A future backtest must not treat the dependency's pivot index
+as an executable knowledge timestamp. Exact real-time availability is deferred
+until the lower short-term layer explicitly carries that timing.
+
+## Pivot and Structural Confirmation Chronology
 
 ### Required semantics (A and C)
 
-Every confirmed medium point must preserve two meanings:
+Every confirmed medium point must preserve two structural meanings while
+leaving actual real-time knowability explicit as unavailable:
 
 ```text
-WHERE the structural point is = pivot index
-WHEN it became knowable        = confirmation index
+WHERE the structural point is                   = pivot.index
+WHICH later same-kind point confirms the triple = confirmed_by.index
+WHEN confirmed_by itself became knowable        = unavailable / deferred
 ```
 
 In general:
 
 ```text
-pivot_index != confirmation_index
-confirmation_index > pivot_index
+pivot_index != confirmed_by_index
+confirmed_by_index > pivot_index
 ```
 
-The confirmation index is the pivot index of the next cleaned short-term point
-of the same kind that completes the strict three-point comparison. It is not
-the index of an arbitrary adjacent opposite-kind vertex.
+`confirmed_by` is the next cleaned short-term point of the same kind that
+completes the strict three-point comparison. `confirmed_by_index` is that
+point's structural pivot index, not the index of an arbitrary adjacent
+opposite-kind vertex and not the candle index when `confirmed_by` became
+knowable.
+
+In general, `confirmed_by_index != actual known_at_index`. The latter is not
+represented by the current lower-layer API and must not be inferred.
 
 Canonical confirmed medium points are ordered in the structure by pivot
-location, not by confirmation time. Normalization likewise follows pivot
-chronology. Confirmation timing remains evidence attached to each point and
-must not reposition it.
+location, not by their right-side dependency indexes. Normalization likewise
+follows pivot chronology. Structural confirmation provenance must not
+reposition a point.
 
-The implementation must not assume that confirmation indexes across mixed
-medium-high and medium-low streams are themselves the line order. Pivot order
-is authoritative for the medium structure line.
+The implementation must not assume that `confirmed_by_index` values across
+mixed medium-high and medium-low streams are themselves the line order. Pivot
+order is authoritative for the medium structure line.
 
 ## Proposed Domain Model
 
@@ -348,20 +366,40 @@ Conceptually:
 @dataclass(frozen=True)
 class MediumTermPoint:
     pivot: ShortTermPoint
-    kind: IsolatedPointKind
-    price: float
-    pivot_index: int
-    confirmation_index: int
+    confirmed_by: ShortTermPoint
+
+    @property
+    def pivot_index(self) -> int: ...
+
+    @property
+    def confirmed_by_index(self) -> int: ...
+
+    @property
+    def kind(self) -> IsolatedPointKind: ...
+
+    @property
+    def price(self) -> float: ...
 ```
 
 Required meaning:
 
-- `pivot` or equivalent provenance identifies the cleaned short-term vertex;
+- `pivot` identifies the cleaned short-term vertex recognized as the medium
+  pivot;
+- `confirmed_by` identifies the immediate next cleaned short-term vertex of
+  the same kind that completes the strict triple;
 - `kind` remains `HIGH` or `LOW`;
 - `price` is the pivot's price;
 - `pivot_index` is the original short-term pivot location; and
-- `confirmation_index` is the later same-kind short-term point that made the
-  strict comparison knowable.
+- `confirmed_by_index` is `confirmed_by.index`, structural source information
+  rather than actual real-time knowability.
+
+Required validation is:
+
+- `pivot.kind is confirmed_by.kind`; and
+- `confirmed_by.index > pivot.index`.
+
+No `known_at_index` is invented. `confirmed_by_index` must not be documented or
+consumed as the candle time when the medium point became executable knowledge.
 
 An implementation may avoid storing duplicated fields if equivalent immutable
 properties preserve all meanings unambiguously.
@@ -428,8 +466,8 @@ For each point kind independently:
 2. Select the subsequence of vertices with that kind without reordering it.
 3. Evaluate each chronological triple of same-kind points.
 4. Confirm the middle point only when both strict comparisons pass.
-5. Record the middle point's pivot index and the later neighbor's index as its
-   confirmation index.
+5. Record the middle point as `pivot` and the immediate later same-kind neighbor
+   as `confirmed_by`.
 6. Merge confirmed highs and lows back into one sequence ordered by pivot
    chronology.
 7. Preserve any eligible current right-edge potential separately from
@@ -464,11 +502,10 @@ boundary.
 
 For every confirmed medium point:
 
-- pivot and confirmation indexes must refer to supplied cleaned short-term
-  vertices;
-- kinds must match the recognized source pivot;
-- confirmation must come from the next same-kind source vertex;
-- confirmation index must be later than pivot index; and
+- `pivot` and `confirmed_by` must refer to supplied cleaned short-term vertices;
+- `pivot.kind` and `confirmed_by.kind` must match;
+- `confirmed_by` must be the next same-kind source vertex;
+- `confirmed_by.index` must be later than `pivot.index`; and
 - confirmed points must be stored in strictly increasing pivot chronology.
 
 No silent repair, synthetic point, or alternative source chronology is
@@ -602,11 +639,11 @@ The model must keep distinct:
 - current potential edge candidates where the chosen API exposes them;
 - normalized final medium vertices;
 - suppressed confirmed points and suppression reasons;
-- pivot and confirmation timing/source information; and
+- pivot and structural confirming-source information; and
 - optional course-method evidence.
 
 Suppression from the medium line never revokes canonical confirmation, deletes
-the source short-term pivot, or changes when the medium point became knowable.
+the source short-term pivot, or changes its `confirmed_by` source.
 
 ## Course Break Method as Evidence
 
@@ -646,8 +683,8 @@ canonical ITH/ITL
 
 Canonical medium structure is determined only by the strict same-kind-neighbor
 rule. Course evidence is diagnostic metadata for later comparison. It must not
-change confirmed points, vertices, suppressions, pivot indexes, or confirmation
-indexes.
+change confirmed points, vertices, suppressions, pivot indexes, or
+`confirmed_by` sources.
 
 ## Ambiguity Policy
 
@@ -727,7 +764,7 @@ ShortTermStructure.vertices
 strict same-kind-neighbor ITH/ITL recognition
         |
         +--> potential edge candidate(s), if exposed
-        +--> confirmed points with pivot + confirmation indexes
+        +--> confirmed points with pivot + confirmed_by source points
         +--> optional evidence-only course metadata
         |
         v
@@ -797,10 +834,12 @@ The plan must cover at least:
 11. a potential failing its right-side comparison and not entering confirmed
     output;
 12. the confirmed point retaining the middle pivot's index;
-13. the later same-kind point supplying the confirmation index;
-14. confirmed points ordered by pivot chronology rather than confirmation
+13. the immediate later same-kind point being preserved as `confirmed_by`;
+14. `confirmed_by_index` exposing structural source location without claiming
+    actual knowability timing;
+15. confirmed points ordered by pivot chronology rather than confirming-source
     chronology; and
-15. batch output retaining enough timing evidence to prevent look-ahead use.
+16. no `known_at_index` being inferred from unavailable lower-layer data.
 
 ### Medium normalization tests
 
@@ -831,7 +870,7 @@ The plan must cover:
 - duplicate source indexes;
 - proof that source input is not silently sorted;
 - neutral small inputs;
-- pivot/confirmation invariant failures in directly constructed domain values;
+- pivot/confirmed-by invariant failures in directly constructed domain values;
   and
 - separation of potential, confirmed, vertex, and suppressed collections.
 
@@ -855,7 +894,7 @@ point suppressed by Lesson 5 normalization remains in
 neighbor.
 
 Another scenario must prove that optional course-method evidence does not
-change canonical ITH/ITL points, pivot locations, confirmation indexes, or
+change canonical ITH/ITL points, pivot locations, `confirmed_by` sources, or
 normalized vertices.
 
 ## Formal Chapter 2 Validation Status
@@ -913,7 +952,9 @@ implementation is approved, its design must determine from course evidence:
 - the canonical source level for long-term recognition;
 - whether the same-kind-neighbor operation repeats from cleaned medium
   vertices or whether the course supplies another deterministic rule;
-- how pivot and confirmation timing carry across another level;
+- how structural confirming-point provenance carries across another level;
+- how actual knowability timing should propagate once lower layers represent
+  it explicitly;
 - how same-level connection remains explicit;
 - whether provisional inside handling remains valid; and
 - whether any course break evidence becomes operationally precise.
@@ -959,30 +1000,34 @@ Future implementation and later designs must preserve these invariants:
 10. A potential medium candidate is not a confirmed medium point.
 11. A confirmed point is not exposed before its right-side same-kind evidence
     exists.
-12. Every confirmed point preserves both pivot and confirmation semantics.
+12. Every confirmed point preserves both `pivot` and `confirmed_by` structural
+    provenance.
 13. The pivot index determines where a medium point belongs in the line.
-14. The confirmation index records when that point became knowable.
-15. Confirmed medium points are ordered by pivot chronology.
-16. Every confirmed medium point remains preserved independently from final
+14. `confirmed_by_index` records the structural pivot index of the immediate
+    right-side same-kind confirming point, not actual knowability time.
+15. Actual `known_at_index` remains unavailable and must not be inferred until
+    the short-term layer explicitly supplies it.
+16. Confirmed medium points are ordered by pivot chronology.
+17. Every confirmed medium point remains preserved independently from final
     vertices.
-17. Suppression from the line never revokes canonical recognition.
-18. Consecutive medium highs retain the highest high as line representative.
-19. Consecutive medium lows retain the lowest low as line representative.
-20. Equal-extreme same-kind ties retain the earliest pivot as a neutral
+18. Suppression from the line never revokes canonical recognition.
+19. Consecutive medium highs retain the highest high as line representative.
+20. Consecutive medium lows retain the lowest low as line representative.
+21. Equal-extreme same-kind ties retain the earliest pivot as a neutral
     engineering tie-break.
-21. Medium inside suppression requires both later boundaries to be inclusively
+22. Medium inside suppression requires both later boundaries to be inclusively
     contained.
-22. A breakout on either boundary prevents inside suppression.
-23. Repeated inside handling applies only the same definite provisional rule
+23. A breakout on either boundary prevents inside suppression.
+24. Repeated inside handling applies only the same definite provisional rule
     until stable.
-24. Course creator/break evidence is optional diagnostic metadata only.
-25. Course evidence cannot change canonical points, vertices, suppressions,
-    pivot indexes, or confirmation indexes.
-26. Caller chronology is authoritative and is never silently sorted.
-27. Ambiguous course behavior is preserved or labeled, never converted into a
+25. Course creator/break evidence is optional diagnostic metadata only.
+26. Course evidence cannot change canonical points, vertices, suppressions,
+    pivot indexes, or `confirmed_by` sources.
+27. Caller chronology is authoritative and is never silently sorted.
+28. Ambiguous course behavior is preserved or labeled, never converted into a
     hidden rule.
-28. Long-term recognition remains deferred to Lesson 7.
-29. No BMS/SMS reinterpretation, market-state inference, strategy, risk, or
+29. Long-term recognition remains deferred to Lesson 7.
+30. No BMS/SMS reinterpretation, market-state inference, strategy, risk, or
     execution behavior is introduced.
-30. Formal Chapter 2 Level 2 validation remains deferred until all Chapter 2
+31. Formal Chapter 2 Level 2 validation remains deferred until all Chapter 2
     lessons are complete.
