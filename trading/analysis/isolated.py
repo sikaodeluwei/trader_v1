@@ -1,3 +1,5 @@
+"""Offline batch scanning for deformation-aware isolated point recognitions."""
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 

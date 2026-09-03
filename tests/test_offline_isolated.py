@@ -1,5 +1,6 @@
 from dataclasses import FrozenInstanceError
 from importlib import import_module
+from importlib.util import find_spec
 
 import pytest
 
@@ -13,6 +14,18 @@ from trading.definitions.isolated_points import (
 
 def load_isolated() -> object:
     return import_module("trading.analysis.isolated")
+
+
+def test_isolated_module_is_discoverable_with_required_docstring() -> None:
+    assert find_spec("trading.analysis.isolated") is not None
+    isolated = load_isolated()
+    assert isolated.__doc__
+
+
+def test_isolated_module_exports_locked_scan_name() -> None:
+    isolated = load_isolated()
+    assert hasattr(isolated, "find_isolated_point_recognitions")
+    assert callable(isolated.find_isolated_point_recognitions)
 
 
 def make_candle(high: float, low: float) -> Candle:
