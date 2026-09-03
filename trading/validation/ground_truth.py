@@ -72,6 +72,12 @@ class ExpectedStructure:
     vertices: tuple[ExpectedPoint, ...]
     suppressed: tuple[ExpectedSuppression, ...]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "points", tuple(self.points))
+        object.__setattr__(self, "potentials", tuple(self.potentials))
+        object.__setattr__(self, "vertices", tuple(self.vertices))
+        object.__setattr__(self, "suppressed", tuple(self.suppressed))
+
 
 @dataclass(frozen=True)
 class ExpectedGeometry:
@@ -116,6 +122,9 @@ class ExpectedMovementSummary:
 class ExpectedExtremePath:
     order: ExtremeOrder
     legs: tuple[ExpectedPriceLeg, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "legs", tuple(self.legs))
 
 
 @dataclass(frozen=True)
@@ -168,6 +177,10 @@ class ExpectedChapter1Candle:
     features: ExpectedFeatures | None
     candle_type_status: EvaluationStatus
     candle_type_reason: EvaluationReason | None
+
+    def __post_init__(self) -> None:
+        if self.legs is not None:
+            object.__setattr__(self, "legs", tuple(self.legs))
 
 
 @dataclass(frozen=True)
@@ -226,6 +239,11 @@ class GroundTruthCase:
     long_term: ExpectedStructure
     segment: ExpectedSegment | None
     ambiguities: tuple[GroundTruthAmbiguity, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "chapter1", tuple(self.chapter1))
+        object.__setattr__(self, "isolated", tuple(self.isolated))
+        object.__setattr__(self, "ambiguities", tuple(self.ambiguities))
 
 
 E = TypeVar("E", bound=Enum)
@@ -315,6 +333,8 @@ def _parse_point(
     path: str,
     *,
     require_provenance: bool,
+    require_recognition_basis: bool = False,
+    forbid_recognition_basis: bool = False,
 ) -> ExpectedPoint:
     item = _object(
         value,
@@ -325,6 +345,15 @@ def _parse_point(
     confirmed_by_index = _optional_integer(
         item["confirmed_by_index"], f"{path}.confirmed_by_index"
     )
+    recognition_basis = _optional_enum(
+        IsolatedPointBasis,
+        item["recognition_basis"],
+        f"{path}.recognition_basis",
+    )
+    if require_recognition_basis and recognition_basis is None:
+        raise ValueError(f"{path}.recognition_basis is required for confirmed isolated points")
+    if forbid_recognition_basis and recognition_basis is not None:
+        raise ValueError(f"{path}.recognition_basis is not valid above short term")
     if require_provenance:
         if confirmed_by_index is None:
             raise ValueError(f"{path}.confirmed_by_index is required")
@@ -336,11 +365,7 @@ def _parse_point(
         index=index,
         kind=_enum(IsolatedPointKind, item["kind"], f"{path}.kind"),
         price=_number(item["price"], f"{path}.price"),
-        recognition_basis=_optional_enum(
-            IsolatedPointBasis,
-            item["recognition_basis"],
-            f"{path}.recognition_basis",
-        ),
+        recognition_basis=recognition_basis,
         confirmed_by_index=confirmed_by_index,
     )
 
@@ -368,11 +393,21 @@ def _parse_structure(
 ) -> ExpectedStructure:
     item = _object(value, path, {"points", "potentials", "vertices", "suppressed"})
     points = tuple(
-        _parse_point(member, f"{path}.points[{index}]", require_provenance=require_provenance)
+        _parse_point(
+            member,
+            f"{path}.points[{index}]",
+            require_provenance=require_provenance,
+            forbid_recognition_basis=require_provenance,
+        )
         for index, member in enumerate(_list(item["points"], f"{path}.points"))
     )
     vertices = tuple(
-        _parse_point(member, f"{path}.vertices[{index}]", require_provenance=require_provenance)
+        _parse_point(
+            member,
+            f"{path}.vertices[{index}]",
+            require_provenance=require_provenance,
+            forbid_recognition_basis=require_provenance,
+        )
         for index, member in enumerate(_list(item["vertices"], f"{path}.vertices"))
     )
     potentials = tuple(
@@ -388,6 +423,7 @@ def _parse_structure(
                     suppression["point"],
                     f"{path}.suppressed[{index}].point",
                     require_provenance=require_provenance,
+                    forbid_recognition_basis=require_provenance,
                 ),
                 reason=_enum(
                     suppression_enum,
@@ -398,6 +434,8 @@ def _parse_structure(
         )
     _require_unique_points(points, f"{path}.points")
     _require_unique_points(vertices, f"{path}.vertices")
+    _require_unique_potentials(potentials, f"{path}.potentials")
+    _require_unique_suppressions(tuple(suppressed), f"{path}.suppressed")
     return ExpectedStructure(points, potentials, vertices, tuple(suppressed))
 
 
@@ -405,6 +443,39 @@ def _require_unique_points(points: tuple[ExpectedPoint, ...], path: str) -> None
     identities = [(point.index, point.kind) for point in points]
     if len(set(identities)) != len(identities):
         raise ValueError(f"{path} contains duplicate point identities")
+
+
+def _require_unique_chapter1_indexes(
+    candles: tuple[ExpectedChapter1Candle, ...],
+    path: str,
+) -> None:
+    indexes = [candle.index for candle in candles]
+    if len(set(indexes)) != len(indexes):
+        raise ValueError(f"{path} contains duplicate candle indexes")
+
+
+def _require_unique_potentials(
+    potentials: tuple[ExpectedPotential, ...],
+    path: str,
+) -> None:
+    identities = [
+        (item.previous_index, item.pivot_index, item.kind)
+        for item in potentials
+    ]
+    if len(set(identities)) != len(identities):
+        raise ValueError(f"{path} contains duplicate potential identities")
+
+
+def _require_unique_suppressions(
+    suppressions: tuple[ExpectedSuppression, ...],
+    path: str,
+) -> None:
+    identities = [
+        (item.point.index, item.point.kind)
+        for item in suppressions
+    ]
+    if len(set(identities)) != len(identities):
+        raise ValueError(f"{path} contains duplicate suppression identities")
 
 
 def _parse_geometry(value: object, path: str) -> ExpectedGeometry:
@@ -560,10 +631,15 @@ def _parse_bms(value: object, path: str) -> ExpectedBMS | None:
     )
     broken_point_index = _optional_integer(item["broken_point_index"], f"{path}.broken_point_index")
     breakout_index = _optional_integer(item["breakout_index"], f"{path}.breakout_index")
+    has_event = broken_point_index is not None and breakout_index is not None
     if (broken_point_index is None) != (breakout_index is None):
-        raise ValueError(f"{path} event details must be both present or absent")
-    if status is not EvaluationStatus.AVAILABLE and broken_point_index is not None:
-        raise ValueError(f"{path} unavailable or invalid result cannot contain event details")
+        raise ValueError(f"{path} BMS event details must be both present or absent")
+    if status is not EvaluationStatus.AVAILABLE and has_event:
+        raise ValueError(f"{path} unavailable or invalid BMS result cannot contain event details")
+    if result is PullbackStructureStatus.BMS_CONFIRMED and not has_event:
+        raise ValueError(f"{path} confirmed BMS requires broken point and breakout index")
+    if result is not PullbackStructureStatus.BMS_CONFIRMED and has_event:
+        raise ValueError(f"{path} nonterminal BMS result cannot contain event details")
     return ExpectedBMS(status, reason, result, broken_point_index, breakout_index)
 
 
@@ -579,10 +655,16 @@ def _parse_sms(value: object, path: str) -> ExpectedSMS | None:
     )
     broken_point_index = _optional_integer(item["broken_point_index"], f"{path}.broken_point_index")
     event_index = _optional_integer(item["event_index"], f"{path}.event_index")
+    has_event = broken_point_index is not None and event_index is not None
     if (broken_point_index is None) != (event_index is None):
-        raise ValueError(f"{path} event details must be both present or absent")
-    if status is not EvaluationStatus.AVAILABLE and broken_point_index is not None:
-        raise ValueError(f"{path} unavailable or invalid result cannot contain event details")
+        raise ValueError(f"{path} SMS event details must be both present or absent")
+    if status is not EvaluationStatus.AVAILABLE and has_event:
+        raise ValueError(f"{path} unavailable or invalid SMS result cannot contain event details")
+    if result in {SMSStructureStatus.SMS_CONFIRMED, SMSStructureStatus.PARENT_CONTINUED}:
+        if not has_event:
+            raise ValueError(f"{path} terminal SMS result requires broken point and event index")
+    elif has_event:
+        raise ValueError(f"{path} nonterminal SMS result cannot contain event details")
     return ExpectedSMS(status, reason, result, broken_point_index, event_index)
 
 
@@ -623,12 +705,21 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def _reject_duplicate_members(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"ground truth JSON has duplicate key: {key}")
+        result[key] = value
+    return result
+
+
 def load_ground_truth(path: str | Path) -> GroundTruthCase:
     """Load one strictly versioned, immutable ground-truth JSON document."""
 
     try:
         with Path(path).open("r", encoding="utf-8") as source:
-            payload = json.load(source)
+            payload = json.load(source, object_pairs_hook=_reject_duplicate_members)
     except json.JSONDecodeError as error:
         raise ValueError(f"ground truth JSON is malformed: {error.msg}") from error
     document = _object(payload, "ground truth", {"schema_version", "case_id", "source", "expected", "ambiguities"})
@@ -653,8 +744,19 @@ def load_ground_truth(path: str | Path) -> GroundTruthCase:
     )
     expected = _object(document["expected"], "ground truth.expected", {"chapter1", "isolated", "short_term", "medium_term", "long_term", "segment"})
     chapter1 = tuple(_parse_chapter1(member, f"ground truth.expected.chapter1[{index}]") for index, member in enumerate(_list(expected["chapter1"], "ground truth.expected.chapter1")))
-    isolated = tuple(_parse_point(member, f"ground truth.expected.isolated[{index}]", require_provenance=False) for index, member in enumerate(_list(expected["isolated"], "ground truth.expected.isolated")))
+    isolated = tuple(
+        _parse_point(
+            member,
+            f"ground truth.expected.isolated[{index}]",
+            require_provenance=False,
+            require_recognition_basis=True,
+        )
+        for index, member in enumerate(
+            _list(expected["isolated"], "ground truth.expected.isolated")
+        )
+    )
     _require_unique_points(isolated, "ground truth.expected.isolated")
+    _require_unique_chapter1_indexes(chapter1, "ground truth.expected.chapter1")
     ambiguities = tuple(
         GroundTruthAmbiguity(
             layer=_string(item["layer"], f"ground truth.ambiguities[{index}].layer"),

@@ -10,11 +10,15 @@ from pathlib import Path
 import pytest
 
 from trading.analysis.models import EvaluationReason, EvaluationStatus, StructuralLevel
+from trading.definitions.extremes import ExtremeOrder
 from trading.definitions.isolated_point_deformations import IsolatedPointBasis
 from trading.definitions.isolated_points import IsolatedPointKind
 from trading.definitions.market_structure import MarketState
 from trading.definitions.movements import MovementSide
 from trading.validation.ground_truth import (
+    ExpectedExtremePath,
+    ExpectedPoint,
+    ExpectedStructure,
     GroundTruthCase,
     load_ground_truth,
     sha256_file,
@@ -367,3 +371,126 @@ def test_rejects_source_filename_mismatch_without_loading_analyzer(tmp_path: Pat
     other.write_bytes(b"fixture")
     with pytest.raises(ValueError, match="filename"):
         verify_ground_truth_source(case, other)
+
+
+def test_rejects_nonterminal_bms_and_sms_event_details(tmp_path: Path) -> None:
+    market_data = tmp_path / "fixture.csv"
+    market_data.write_bytes(b"fixture")
+    path = tmp_path / "ground-truth.json"
+
+    payload = document(file_hash(market_data))
+    payload["expected"]["segment"]["bms"]["value"] = "pullback_only"  # type: ignore[index]
+    write_json(path, payload)
+    with pytest.raises(ValueError, match="BMS"):
+        load_ground_truth(path)
+
+    payload = document(file_hash(market_data))
+    payload["expected"]["segment"]["sms"]["value"] = "pending"  # type: ignore[index]
+    write_json(path, payload)
+    with pytest.raises(ValueError, match="SMS"):
+        load_ground_truth(path)
+
+
+def test_public_sequence_records_snapshot_mutable_inputs(tmp_path: Path) -> None:
+    point_value = ExpectedPoint(1, IsolatedPointKind.HIGH, 110.0)
+    points = [point_value]
+    structure_value = ExpectedStructure(points, [], points, [])  # type: ignore[arg-type]
+    legs = []
+    path_value = ExpectedExtremePath(ExtremeOrder.LOW_THEN_HIGH, legs)  # type: ignore[arg-type]
+
+    market_data = tmp_path / "fixture.csv"
+    market_data.write_bytes(b"fixture")
+    case = load_ground_truth(write_case(tmp_path, document(file_hash(market_data))))
+    chapter1 = list(case.chapter1)
+    isolated = list(case.isolated)
+    ambiguities = list(case.ambiguities)
+    copied_case = GroundTruthCase(
+        case.schema_version,
+        case.case_id,
+        case.source,
+        chapter1,  # type: ignore[arg-type]
+        isolated,  # type: ignore[arg-type]
+        case.short_term,
+        case.medium_term,
+        case.long_term,
+        case.segment,
+        ambiguities,  # type: ignore[arg-type]
+    )
+    points.clear()
+    legs.append(object())
+    chapter1.clear()
+    isolated.clear()
+    ambiguities.clear()
+
+    assert structure_value.points == (point_value,)
+    assert path_value.legs == ()
+    assert copied_case.chapter1 == case.chapter1
+    assert copied_case.isolated == case.isolated
+    assert copied_case.ambiguities == case.ambiguities
+
+
+def test_rejects_invalid_isolated_and_higher_level_provenance(tmp_path: Path) -> None:
+    market_data = tmp_path / "fixture.csv"
+    market_data.write_bytes(b"fixture")
+    path = tmp_path / "ground-truth.json"
+
+    payload = document(file_hash(market_data))
+    payload["expected"]["isolated"][0]["recognition_basis"] = None  # type: ignore[index]
+    write_json(path, payload)
+    with pytest.raises(ValueError, match="recognition_basis"):
+        load_ground_truth(path)
+
+    payload = document(file_hash(market_data))
+    payload["expected"]["medium_term"]["points"][0]["recognition_basis"] = "strict"  # type: ignore[index]
+    write_json(path, payload)
+    with pytest.raises(ValueError, match="recognition_basis"):
+        load_ground_truth(path)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda payload: payload["expected"]["chapter1"].append(chapter1_candle()),  # type: ignore[index]
+            "chapter1.*duplicate",
+        ),
+        (
+            lambda payload: payload["expected"]["short_term"]["potentials"].append(  # type: ignore[index]
+                payload["expected"]["short_term"]["potentials"][0]
+            ),
+            "potentials.*duplicate",
+        ),
+        (
+            lambda payload: payload["expected"]["short_term"]["suppressed"].append(  # type: ignore[index]
+                payload["expected"]["short_term"]["suppressed"][0]
+            ),
+            "suppressed.*duplicate",
+        ),
+    ],
+)
+def test_rejects_duplicate_expected_identities(
+    tmp_path: Path,
+    mutate: object,
+    message: str,
+) -> None:
+    market_data = tmp_path / "fixture.csv"
+    market_data.write_bytes(b"fixture")
+    payload = document(file_hash(market_data))
+    mutate(payload)  # type: ignore[operator]
+
+    with pytest.raises(ValueError, match=message):
+        load_ground_truth(write_case(tmp_path, payload))
+
+
+def test_rejects_duplicate_raw_json_member_names(tmp_path: Path) -> None:
+    path = tmp_path / "duplicate.json"
+    path.write_text('{"schema_version": 1, "schema_version": 1}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate key"):
+        load_ground_truth(path)
+
+
+def write_case(tmp_path: Path, payload: dict[str, object]) -> Path:
+    path = tmp_path / "ground-truth.json"
+    write_json(path, payload)
+    return path
