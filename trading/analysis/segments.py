@@ -68,17 +68,17 @@ def evaluate_selected_segment(
 ) -> SegmentAnalysisResult:
     """Evaluate selected canonical structure within an explicit window segment."""
 
-    if request.bms is not None or request.sms is not None:
-        raise NotImplementedError(
-            "BMS and SMS segment analysis are implemented in later tasks"
-        )
-
     window_end = window.start_index + len(window.candles) - 1
     if (
         request.segment.start_index < window.start_index
         or request.segment.end_index > window_end
     ):
         raise ValueError("segment is outside window")
+
+    if request.bms is not None or request.sms is not None:
+        raise NotImplementedError(
+            "BMS and SMS segment analysis are implemented in later tasks"
+        )
 
     selected = tuple(
         item

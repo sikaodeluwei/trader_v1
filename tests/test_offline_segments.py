@@ -9,11 +9,13 @@ import pytest
 from trading.analysis.hierarchy import StructuralHierarchy
 from trading.analysis.isolated import IsolatedPointScan
 from trading.analysis.models import (
+    BMSAnalysisRequest,
     ClosedCandleObservation,
     EvaluationReason,
     EvaluationStatus,
     OfflineMarketWindow,
     SegmentAnalysisRequest,
+    SMSAnalysisRequest,
     StructuralLevel,
 )
 from trading.definitions.isolated_point_deformations import IsolatedPointBasis
@@ -274,6 +276,32 @@ def test_segment_outside_window_raises_without_clamping(segment: MarketSegment) 
             window(start_index=0, count=5),
             hierarchy(short=(short_point(0, IsolatedPointKind.HIGH, 100.0),)),
             SegmentAnalysisRequest(segment, StructuralLevel.SHORT),
+        )
+
+
+@pytest.mark.parametrize(
+    "deferred_request",
+    [
+        SegmentAnalysisRequest(
+            MarketSegment(-1, 3),
+            StructuralLevel.SHORT,
+            bms=BMSAnalysisRequest(0, 1, 2),
+        ),
+        SegmentAnalysisRequest(
+            MarketSegment(0, 4),
+            StructuralLevel.SHORT,
+            sms=SMSAnalysisRequest(2, 1),
+        ),
+    ],
+)
+def test_outside_segment_validation_precedes_deferred_boundaries(
+    deferred_request: SegmentAnalysisRequest,
+) -> None:
+    with pytest.raises(ValueError, match="outside window"):
+        load_segments_api().evaluate_selected_segment(
+            window(start_index=0, count=4),
+            hierarchy(short=(short_point(0, IsolatedPointKind.HIGH, 100.0),)),
+            deferred_request,
         )
 
 
