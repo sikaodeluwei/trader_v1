@@ -103,11 +103,15 @@ def test_facade_composes_only_objective_ohlc_analysis(
     assert result.segment is None
 
 
-def test_segment_request_remains_an_explicit_not_implemented_boundary() -> None:
+def test_segment_request_is_resolved_after_objective_hierarchy() -> None:
     request = SegmentAnalysisRequest(
         MarketSegment(40, 47),
         StructuralLevel.SHORT,
     )
 
-    with pytest.raises(NotImplementedError):
-        load_offline().analyze_market_window(bridge_window(), segment=request)
+    result = load_offline().analyze_market_window(bridge_window(), segment=request)
+
+    assert result.segment is not None
+    assert result.segment.request is request
+    assert result.segment.bms is None
+    assert result.segment.sms is None
