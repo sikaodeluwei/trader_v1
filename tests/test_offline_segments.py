@@ -31,6 +31,7 @@ from trading.definitions.market_structure import (
     StructurePointKind,
 )
 from trading.definitions.pullback_structure import PullbackStructureStatus
+from trading.definitions.sms_structure import SMSStructureStatus
 from trading.definitions.medium_term_structure import (
     MediumTermPoint,
     MediumTermStructure,
@@ -320,31 +321,14 @@ def test_segment_without_bms_or_sms_returns_none_optional_results() -> None:
     assert result.sms is None
 
 
-def test_bms_and_sms_requests_remain_explicit_task_boundaries() -> None:
-    from trading.analysis.models import BMSAnalysisRequest, SMSAnalysisRequest
-
-    short = tuple(
-        short_point(index, kind, price)
-        for index, (kind, price) in enumerate(
-            (
-                (IsolatedPointKind.HIGH, 100.0),
-                (IsolatedPointKind.LOW, 90.0),
-                (IsolatedPointKind.HIGH, 110.0),
-                (IsolatedPointKind.LOW, 95.0),
-            )
-        )
+def test_sms_request_returns_explicit_evaluation() -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({}, count=5), sms_uptrend_hierarchy(), sms_request()
     )
-    source = hierarchy(short=short)
-    with pytest.raises(NotImplementedError):
-        load_segments_api().evaluate_selected_segment(
-            window(count=4),
-            source,
-            SegmentAnalysisRequest(
-                MarketSegment(0, 3),
-                StructuralLevel.SHORT,
-                sms=SMSAnalysisRequest(2, 1),
-            ),
-        )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.AVAILABLE
+    assert result.sms.value is not None
+    assert result.sms.value.status is SMSStructureStatus.PENDING
 
 
 def range_window(ranges: dict[int, tuple[float, float]], count: int = 9) -> OfflineMarketWindow:
@@ -599,6 +583,260 @@ def test_downtrend_bms_resolves_and_evaluates_symmetrically() -> None:
     assert result.bms.value.status is PullbackStructureStatus.BMS_CONFIRMED
     assert result.bms.value.broken_extreme == StructurePoint(3, StructurePointKind.LOW, 90.0)
     assert result.bms.value.breakout_index == 8
+
+
+def sms_uptrend_hierarchy() -> StructuralHierarchy:
+    return hierarchy(
+        short=(
+            short_point(0, IsolatedPointKind.HIGH, 100.0),
+            short_point(1, IsolatedPointKind.LOW, 90.0),
+            short_point(2, IsolatedPointKind.HIGH, 110.0),
+            short_point(3, IsolatedPointKind.LOW, 95.0),
+            short_point(4, IsolatedPointKind.HIGH, 120.0),
+        )
+    )
+
+
+def sms_request(
+    *,
+    segment: MarketSegment = MarketSegment(0, 4),
+    trend_extreme_index: int = 4,
+    creator_point_index: int = 3,
+    level: StructuralLevel = StructuralLevel.SHORT,
+) -> SegmentAnalysisRequest:
+    return SegmentAnalysisRequest(
+        segment,
+        level,
+        sms=SMSAnalysisRequest(trend_extreme_index, creator_point_index),
+    )
+
+
+def test_sms_empty_suffix_is_available_pending() -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({}, count=5), sms_uptrend_hierarchy(), sms_request()
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.AVAILABLE
+    assert result.sms.value is not None
+    assert result.sms.value.status is SMSStructureStatus.PENDING
+
+
+def test_sms_exact_touches_do_not_break() -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({5: (120.0, 95.0), 6: (120.0, 95.0)}),
+        sms_uptrend_hierarchy(),
+        sms_request(),
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.AVAILABLE
+    assert result.sms.value is not None
+    assert result.sms.value.status is SMSStructureStatus.PULLBACK_ONLY
+
+
+def test_sms_confirmation_returns_creator_and_first_event() -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({6: (120.0, 94.0), 7: (121.0, 94.0)}),
+        sms_uptrend_hierarchy(),
+        sms_request(),
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.AVAILABLE
+    assert result.sms.value is not None
+    assert result.sms.value.status is SMSStructureStatus.SMS_CONFIRMED
+    assert result.sms.value.broken_point == StructurePoint(
+        3, StructurePointKind.LOW, 95.0
+    )
+    assert result.sms.value.event_index == 6
+
+
+def test_sms_parent_continuation_returns_trend_extreme_and_first_event() -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({6: (121.0, 100.0), 7: (121.0, 94.0)}),
+        sms_uptrend_hierarchy(),
+        sms_request(),
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.AVAILABLE
+    assert result.sms.value is not None
+    assert result.sms.value.status is SMSStructureStatus.PARENT_CONTINUED
+    assert result.sms.value.broken_point == StructurePoint(
+        4, StructurePointKind.HIGH, 120.0
+    )
+    assert result.sms.value.event_index == 6
+
+
+def test_sms_builds_complete_dense_suffix_before_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    segments = load_segments_api()
+    observed: list[object] = []
+    original = segments.evaluate_sms
+
+    def spy(context: object, observations: object) -> object:
+        observed.extend(observations)  # type: ignore[arg-type]
+        return original(context, observations)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(segments, "evaluate_sms", spy)
+    result = segments.evaluate_selected_segment(
+        range_window({}, count=9), sms_uptrend_hierarchy(), sms_request()
+    )
+
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.AVAILABLE
+    assert [item.index for item in observed] == [5, 6, 7, 8]
+
+
+def test_sms_ohlc_dual_crossing_is_explicitly_ambiguous() -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({6: (121.0, 94.0)}),
+        sms_uptrend_hierarchy(),
+        sms_request(),
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.INVALID
+    assert result.sms.reason is EvaluationReason.OHLC_INTRABAR_ORDER_AMBIGUOUS
+    assert result.sms.message == "OHLC cannot determine the intrabar boundary order"
+
+
+@pytest.mark.parametrize("bad_index", [999, 5])
+def test_sms_rejects_missing_or_noncanonical_boundary_indexes(bad_index: int) -> None:
+    source = sms_uptrend_hierarchy()
+    if bad_index == 5:
+        short = source.short_term
+        suppressed = SuppressedShortTermPoint(
+            short_point(5, IsolatedPointKind.LOW, 105.0),
+            ShortTermSuppressionReason.CONSECUTIVE_SAME_KIND,
+        )
+        source = StructuralHierarchy(
+            source.isolated,
+            ShortTermStructure(
+                short.points + (suppressed.point,), short.vertices, (suppressed,)
+            ),
+            source.medium_term,
+            source.long_term,
+        )
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({}, count=9),
+        source,
+        sms_request(creator_point_index=bad_index),
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.INVALID
+    assert result.sms.reason is EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX
+
+
+def test_sms_rejects_index_present_only_at_another_level() -> None:
+    base = sms_uptrend_hierarchy()
+    medium = (medium_point(5, IsolatedPointKind.LOW, 105.0),)
+    source = StructuralHierarchy(
+        base.isolated,
+        base.short_term,
+        MediumTermStructure(medium, (), medium, ()),
+        base.long_term,
+    )
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({}, count=9),
+        source,
+        sms_request(creator_point_index=5),
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.INVALID
+    assert result.sms.reason is EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX
+
+
+@pytest.mark.parametrize(
+    ("segment", "trend_extreme_index", "creator_point_index"),
+    [
+        (MarketSegment(0, 4), 3, 2),
+        (MarketSegment(0, 3), 4, 3),
+    ],
+)
+def test_sms_preserves_existing_context_validation(
+    segment: MarketSegment,
+    trend_extreme_index: int,
+    creator_point_index: int,
+) -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({}, count=9),
+        sms_uptrend_hierarchy(),
+        sms_request(
+            segment=segment,
+            trend_extreme_index=trend_extreme_index,
+            creator_point_index=creator_point_index,
+        ),
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.INVALID
+    assert result.sms.reason is EvaluationReason.INVALID_CONTEXT
+
+
+def test_sms_parent_state_gate_does_not_construct_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    segments = load_segments_api()
+
+    def fail_if_constructed(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("SMSContext must not be constructed")
+
+    monkeypatch.setattr(segments, "SMSContext", fail_if_constructed)
+    result = segments.evaluate_selected_segment(
+        range_window({}, count=9),
+        hierarchy(
+            short=(
+                short_point(0, IsolatedPointKind.HIGH, 100.0),
+                short_point(1, IsolatedPointKind.LOW, 90.0),
+                short_point(2, IsolatedPointKind.HIGH, 110.0),
+            )
+        ),
+        sms_request(segment=MarketSegment(0, 2), trend_extreme_index=2, creator_point_index=1),
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.UNAVAILABLE
+    assert result.sms.reason is EvaluationReason.PARENT_STATE_NOT_DIRECTIONAL
+
+
+def test_sms_sufficient_nontrend_parent_is_unavailable() -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({}, count=9),
+        hierarchy(
+            short=(
+                short_point(0, IsolatedPointKind.HIGH, 110.0),
+                short_point(1, IsolatedPointKind.LOW, 90.0),
+                short_point(2, IsolatedPointKind.HIGH, 105.0),
+                short_point(3, IsolatedPointKind.LOW, 95.0),
+                short_point(4, IsolatedPointKind.HIGH, 120.0),
+            )
+        ),
+        sms_request(),
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.UNAVAILABLE
+    assert result.sms.reason is EvaluationReason.PARENT_STATE_NOT_DIRECTIONAL
+
+
+def test_downtrend_sms_resolves_and_evaluates_symmetrically() -> None:
+    source = hierarchy(
+        short=(
+            short_point(0, IsolatedPointKind.HIGH, 120.0),
+            short_point(1, IsolatedPointKind.LOW, 100.0),
+            short_point(2, IsolatedPointKind.HIGH, 110.0),
+            short_point(3, IsolatedPointKind.LOW, 90.0),
+        )
+    )
+    request_value = sms_request(
+        segment=MarketSegment(0, 3), trend_extreme_index=3, creator_point_index=2
+    )
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({4: (111.0, 90.0), 5: (111.0, 89.0)}), source, request_value
+    )
+    assert result.sms is not None
+    assert result.sms.status is EvaluationStatus.AVAILABLE
+    assert result.sms.value is not None
+    assert result.sms.value.status is SMSStructureStatus.SMS_CONFIRMED
+    assert result.sms.value.broken_point == StructurePoint(
+        2, StructurePointKind.HIGH, 110.0
+    )
+    assert result.sms.value.event_index == 4
 
 
 def test_offline_facade_wires_selected_segment_after_objective_hierarchy() -> None:

@@ -10,6 +10,12 @@ from trading.definitions.pullback_structure import (
     PullbackContext,
     evaluate_bms,
 )
+from trading.definitions.sms_structure import (
+    SMSContext,
+    SMSObservation,
+    SMSResult,
+    evaluate_sms,
+)
 
 from .hierarchy import StructuralHierarchy
 from .models import (
@@ -134,6 +140,62 @@ def _evaluate_bms(
     return Evaluation(EvaluationStatus.AVAILABLE, value=result)
 
 
+def _invalid_sms(reason: EvaluationReason, message: str) -> Evaluation[SMSResult]:
+    return Evaluation(EvaluationStatus.INVALID, reason=reason, message=message)
+
+
+def _evaluate_sms(
+    window: OfflineMarketWindow,
+    request: SegmentAnalysisRequest,
+    all_vertices: tuple[ResolvedStructurePoint, ...],
+    market_state: Evaluation,
+) -> Evaluation[SMSResult]:
+    sms_request = request.sms
+    assert sms_request is not None
+
+    if (
+        market_state.status is not EvaluationStatus.AVAILABLE
+        or market_state.value
+        not in {market_structure.MarketState.UPTREND, market_structure.MarketState.DOWNTREND}
+    ):
+        return Evaluation(
+            EvaluationStatus.UNAVAILABLE,
+            reason=EvaluationReason.PARENT_STATE_NOT_DIRECTIONAL,
+        )
+
+    trend_extreme = _resolve_bms_vertex(all_vertices, sms_request.trend_extreme_index)
+    creator_point = _resolve_bms_vertex(all_vertices, sms_request.creator_point_index)
+    if trend_extreme is None or creator_point is None:
+        return _invalid_sms(
+            EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX,
+            "SMS boundary index must resolve to exactly one canonical vertex",
+        )
+
+    try:
+        context = SMSContext(
+            request.segment,
+            market_state.value,
+            trend_extreme.point,
+            creator_point.point,
+        )
+        window_end = window.start_index + len(window.candles) - 1
+        observations = tuple(
+            SMSObservation(index, _candle_at(window, index))
+            for index in range(trend_extreme.point.index + 1, window_end + 1)
+        )
+        result = evaluate_sms(context, observations)
+    except ValueError as exc:
+        message = str(exc)
+        reason = (
+            EvaluationReason.OHLC_INTRABAR_ORDER_AMBIGUOUS
+            if message == "OHLC cannot determine the intrabar boundary order"
+            else EvaluationReason.INVALID_CONTEXT
+        )
+        return _invalid_sms(reason, message)
+
+    return Evaluation(EvaluationStatus.AVAILABLE, value=result)
+
+
 def select_canonical_vertices(
     hierarchy: StructuralHierarchy,
     level: StructuralLevel,
@@ -164,11 +226,6 @@ def evaluate_selected_segment(
     ):
         raise ValueError("segment is outside window")
 
-    if request.sms is not None:
-        raise NotImplementedError(
-            "SMS segment analysis is implemented in a later task"
-        )
-
     all_vertices = select_canonical_vertices(hierarchy, request.level)
 
     selected = tuple(
@@ -196,11 +253,16 @@ def evaluate_selected_segment(
         if request.bms is None
         else _evaluate_bms(window, request, all_vertices, market_state)
     )
+    sms = (
+        None
+        if request.sms is None
+        else _evaluate_sms(window, request, all_vertices, market_state)
+    )
 
     return SegmentAnalysisResult(
         request=request,
         selected_points=selected,
         market_state=market_state,
         bms=bms,
-        sms=None,
+        sms=sms,
     )
