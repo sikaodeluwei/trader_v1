@@ -27,8 +27,10 @@ from trading.definitions.long_term_structure import (
 from trading.definitions.market_structure import (
     MarketSegment,
     MarketState,
+    StructurePoint,
     StructurePointKind,
 )
+from trading.definitions.pullback_structure import PullbackStructureStatus
 from trading.definitions.medium_term_structure import (
     MediumTermPoint,
     MediumTermStructure,
@@ -340,19 +342,263 @@ def test_bms_and_sms_requests_remain_explicit_task_boundaries() -> None:
             SegmentAnalysisRequest(
                 MarketSegment(0, 3),
                 StructuralLevel.SHORT,
-                bms=BMSAnalysisRequest(0, 1, 2),
-            ),
-        )
-    with pytest.raises(NotImplementedError):
-        load_segments_api().evaluate_selected_segment(
-            window(count=4),
-            source,
-            SegmentAnalysisRequest(
-                MarketSegment(0, 3),
-                StructuralLevel.SHORT,
                 sms=SMSAnalysisRequest(2, 1),
             ),
         )
+
+
+def range_window(ranges: dict[int, tuple[float, float]], count: int = 9) -> OfflineMarketWindow:
+    """Build valid closed OHLC observations with selected high/low ranges."""
+    timestamp = datetime(2026, 9, 3, 9, 30, tzinfo=timezone.utc)
+    candles = []
+    for index in range(count):
+        high, low = ranges.get(index, (110.0, 100.0))
+        midpoint = (high + low) / 2
+        candles.append(
+            ClosedCandleObservation(
+                timestamp=timestamp + timedelta(minutes=index),
+                open=midpoint,
+                high=high,
+                low=low,
+                close=midpoint,
+            )
+        )
+    return OfflineMarketWindow("MNQ", "1m", 0, tuple(candles))
+
+
+def bms_uptrend_hierarchy(*, include_pullback: bool = True) -> StructuralHierarchy:
+    points = [
+        short_point(0, IsolatedPointKind.HIGH, 100.0),
+        short_point(1, IsolatedPointKind.LOW, 90.0),
+        short_point(2, IsolatedPointKind.HIGH, 110.0),
+        short_point(3, IsolatedPointKind.LOW, 95.0),
+        short_point(4, IsolatedPointKind.HIGH, 120.0),
+    ]
+    if include_pullback:
+        points.append(short_point(6, IsolatedPointKind.LOW, 105.0))
+    return hierarchy(short=tuple(points))
+
+
+def bms_request() -> SegmentAnalysisRequest:
+    return SegmentAnalysisRequest(
+        MarketSegment(0, 4),
+        StructuralLevel.SHORT,
+        bms=BMSAnalysisRequest(
+            trend_origin_index=3,
+            previous_extreme_index=4,
+            pullback_extreme_index=6,
+        ),
+    )
+
+
+def test_bms_resolves_canonical_vertices_and_passes_dense_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
+    segments = load_segments_api()
+    observed: list[object] = []
+    original = segments.evaluate_bms
+
+    def spy(context: object, observations: object) -> object:
+        observed.extend(observations)  # type: ignore[arg-type]
+        return original(context, observations)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(segments, "evaluate_bms", spy)
+    result = segments.evaluate_selected_segment(
+        range_window({7: (120.0, 104.0), 8: (121.0, 104.0)}),
+        bms_uptrend_hierarchy(),
+        bms_request(),
+    )
+
+    assert result.bms is not None
+    assert result.bms.status is EvaluationStatus.AVAILABLE
+    assert result.bms.value is not None
+    assert result.bms.value.status is PullbackStructureStatus.BMS_CONFIRMED
+    assert result.bms.value.broken_extreme == StructurePoint(4, StructurePointKind.HIGH, 120.0)
+    assert result.bms.value.breakout_index == 8
+    assert [item.index for item in observed] == [7, 8]
+
+
+def test_bms_touch_remains_pullback_only() -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({7: (120.0, 104.0)}),
+        bms_uptrend_hierarchy(),
+        bms_request(),
+    )
+    assert result.bms is not None
+    assert result.bms.status is EvaluationStatus.AVAILABLE
+    assert result.bms.value is not None
+    assert result.bms.value.status is PullbackStructureStatus.PULLBACK_ONLY
+
+
+def test_bms_ohlc_dual_crossing_is_explicitly_ambiguous() -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({7: (121.0, 94.0)}),
+        bms_uptrend_hierarchy(),
+        bms_request(),
+    )
+    assert result.bms is not None
+    assert result.bms.status is EvaluationStatus.INVALID
+    assert result.bms.reason is EvaluationReason.OHLC_INTRABAR_ORDER_AMBIGUOUS
+    assert result.bms.message == "OHLC cannot determine the intrabar boundary order"
+
+
+@pytest.mark.parametrize("bad_index", [999, 5])
+def test_bms_rejects_missing_or_noncanonical_boundary_indexes(bad_index: int) -> None:
+    source = bms_uptrend_hierarchy()
+    if bad_index == 5:
+        short = source.short_term
+        suppressed = SuppressedShortTermPoint(
+            short_point(5, IsolatedPointKind.LOW, 105.0),
+            ShortTermSuppressionReason.CONSECUTIVE_SAME_KIND,
+        )
+        source = StructuralHierarchy(
+            source.isolated,
+            ShortTermStructure(short.points + (suppressed.point,), short.vertices, (suppressed,)),
+            source.medium_term,
+            source.long_term,
+        )
+    request_value = SegmentAnalysisRequest(
+        MarketSegment(0, 4),
+        StructuralLevel.SHORT,
+        bms=BMSAnalysisRequest(3, 4, bad_index),
+    )
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({7: (120.0, 104.0)}), source, request_value
+    )
+    assert result.bms is not None
+    assert result.bms.status is EvaluationStatus.INVALID
+    assert result.bms.reason is EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX
+
+
+def test_bms_rejects_index_present_only_as_nonvertex_or_at_another_level() -> None:
+    base = bms_uptrend_hierarchy(include_pullback=False)
+    medium = (medium_point(6, IsolatedPointKind.LOW, 105.0),)
+    source = StructuralHierarchy(
+        base.isolated,
+        base.short_term,
+        MediumTermStructure(medium, (), medium, ()),
+        base.long_term,
+    )
+    request_value = SegmentAnalysisRequest(
+        MarketSegment(0, 4),
+        StructuralLevel.SHORT,
+        bms=BMSAnalysisRequest(3, 4, 6),
+    )
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({7: (120.0, 104.0)}), source, request_value
+    )
+    assert result.bms is not None
+    assert result.bms.reason is EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX
+
+
+def test_bms_rejects_index_present_only_in_points_not_vertices() -> None:
+    base = bms_uptrend_hierarchy(include_pullback=False)
+    nonvertex = short_point(6, IsolatedPointKind.LOW, 105.0)
+    source = StructuralHierarchy(
+        base.isolated,
+        ShortTermStructure(base.short_term.points + (nonvertex,), base.short_term.vertices, ()),
+        base.medium_term,
+        base.long_term,
+    )
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({7: (120.0, 104.0)}),
+        source,
+        bms_request(),
+    )
+    assert result.bms is not None
+    assert result.bms.status is EvaluationStatus.INVALID
+    assert result.bms.reason is EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX
+
+
+@pytest.mark.parametrize(
+    ("segment", "request_value", "message"),
+    [
+        (MarketSegment(0, 4), BMSAnalysisRequest(0, 4, 6), "point kinds"),
+        (MarketSegment(0, 4), BMSAnalysisRequest(3, 4, 1), "chronology"),
+        (MarketSegment(0, 3), BMSAnalysisRequest(3, 4, 6), "outside parent segment"),
+    ],
+)
+def test_bms_preserves_existing_context_validation(
+    segment: MarketSegment,
+    request_value: BMSAnalysisRequest,
+    message: str,
+) -> None:
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({7: (120.0, 104.0)}),
+        bms_uptrend_hierarchy(),
+        SegmentAnalysisRequest(segment, StructuralLevel.SHORT, bms=request_value),
+    )
+    assert result.bms is not None
+    assert result.bms.status is EvaluationStatus.INVALID
+    assert result.bms.reason is EvaluationReason.INVALID_CONTEXT
+    assert result.bms.message is not None
+    assert message in result.bms.message
+
+
+def test_bms_parent_state_gate_does_not_construct_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    segments = load_segments_api()
+
+    def fail_if_constructed(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("PullbackContext must not be constructed")
+
+    monkeypatch.setattr(segments, "PullbackContext", fail_if_constructed)
+    result = segments.evaluate_selected_segment(
+        range_window({7: (120.0, 104.0)}),
+        hierarchy(
+            short=(
+                short_point(0, IsolatedPointKind.HIGH, 100.0),
+                short_point(1, IsolatedPointKind.LOW, 90.0),
+                short_point(2, IsolatedPointKind.HIGH, 110.0),
+            )
+        ),
+        bms_request(),
+    )
+    assert result.bms is not None
+    assert result.bms.status is EvaluationStatus.UNAVAILABLE
+    assert result.bms.reason is EvaluationReason.PARENT_STATE_NOT_DIRECTIONAL
+
+
+def test_bms_sufficient_nontrend_parent_is_unavailable() -> None:
+    points = (
+        short_point(0, IsolatedPointKind.HIGH, 110.0),
+        short_point(1, IsolatedPointKind.LOW, 90.0),
+        short_point(2, IsolatedPointKind.HIGH, 105.0),
+        short_point(3, IsolatedPointKind.LOW, 95.0),
+        short_point(4, IsolatedPointKind.HIGH, 120.0),
+        short_point(6, IsolatedPointKind.LOW, 105.0),
+    )
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({7: (121.0, 104.0)}),
+        hierarchy(short=points),
+        bms_request(),
+    )
+    assert result.bms is not None
+    assert result.bms.status is EvaluationStatus.UNAVAILABLE
+    assert result.bms.reason is EvaluationReason.PARENT_STATE_NOT_DIRECTIONAL
+
+
+def test_downtrend_bms_resolves_and_evaluates_symmetrically() -> None:
+    points = (
+        short_point(0, IsolatedPointKind.HIGH, 120.0),
+        short_point(1, IsolatedPointKind.LOW, 100.0),
+        short_point(2, IsolatedPointKind.HIGH, 110.0),
+        short_point(3, IsolatedPointKind.LOW, 90.0),
+        short_point(6, IsolatedPointKind.HIGH, 95.0),
+    )
+    request_value = SegmentAnalysisRequest(
+        MarketSegment(0, 3),
+        StructuralLevel.SHORT,
+        bms=BMSAnalysisRequest(2, 3, 6),
+    )
+    result = load_segments_api().evaluate_selected_segment(
+        range_window({7: (90.0, 90.0), 8: (95.0, 89.0)}),
+        hierarchy(short=points),
+        request_value,
+    )
+    assert result.bms is not None
+    assert result.bms.status is EvaluationStatus.AVAILABLE
+    assert result.bms.value is not None
+    assert result.bms.value.status is PullbackStructureStatus.BMS_CONFIRMED
+    assert result.bms.value.broken_extreme == StructurePoint(3, StructurePointKind.LOW, 90.0)
+    assert result.bms.value.breakout_index == 8
 
 
 def test_offline_facade_wires_selected_segment_after_objective_hierarchy() -> None:

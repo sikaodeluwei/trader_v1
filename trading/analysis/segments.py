@@ -1,8 +1,15 @@
 """Selected-level offline segment resolution and market-state availability."""
 
 from trading.definitions import market_structure
+from trading.definitions.candles import Candle
 from trading.definitions.isolated_points import IsolatedPointKind
 from trading.definitions.market_structure import StructurePoint, StructurePointKind
+from trading.definitions.pullback_structure import (
+    BMSObservation,
+    BMSResult,
+    PullbackContext,
+    evaluate_bms,
+)
 
 from .hierarchy import StructuralHierarchy
 from .models import (
@@ -45,6 +52,88 @@ def _vertex_to_point(vertex: object, level: StructuralLevel) -> StructurePoint:
     )
 
 
+def _invalid_bms(reason: EvaluationReason, message: str) -> Evaluation[BMSResult]:
+    return Evaluation(EvaluationStatus.INVALID, reason=reason, message=message)
+
+
+def _resolve_bms_vertex(
+    vertices: tuple[ResolvedStructurePoint, ...],
+    index: int,
+) -> ResolvedStructurePoint | None:
+    matches = [item for item in vertices if item.point.index == index]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _candle_at(window: OfflineMarketWindow, index: int) -> Candle:
+    position = index - window.start_index
+    observation = window.candles[position]
+    return Candle(observation.open, observation.high, observation.low, observation.close)
+
+
+def _evaluate_bms(
+    window: OfflineMarketWindow,
+    request: SegmentAnalysisRequest,
+    all_vertices: tuple[ResolvedStructurePoint, ...],
+    market_state: Evaluation,
+) -> Evaluation[BMSResult]:
+    bms_request = request.bms
+    assert bms_request is not None
+
+    if (
+        market_state.status is not EvaluationStatus.AVAILABLE
+        or market_state.value
+        not in {market_structure.MarketState.UPTREND, market_structure.MarketState.DOWNTREND}
+    ):
+        return Evaluation(
+            EvaluationStatus.UNAVAILABLE,
+            reason=EvaluationReason.PARENT_STATE_NOT_DIRECTIONAL,
+        )
+
+    trend_origin = _resolve_bms_vertex(all_vertices, bms_request.trend_origin_index)
+    previous_extreme = _resolve_bms_vertex(all_vertices, bms_request.previous_extreme_index)
+    pullback_extreme = _resolve_bms_vertex(all_vertices, bms_request.pullback_extreme_index)
+    if trend_origin is None or previous_extreme is None or pullback_extreme is None:
+        return _invalid_bms(
+            EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX,
+            "BMS boundary index must resolve to exactly one canonical vertex",
+        )
+
+    if not (
+        window.start_index
+        <= pullback_extreme.point.index
+        <= window.start_index + len(window.candles) - 1
+    ):
+        return _invalid_bms(
+            EvaluationReason.INVALID_CONTEXT,
+            "pullback extreme is outside window",
+        )
+
+    try:
+        context = PullbackContext(
+            request.segment,
+            market_state.value,
+            trend_origin.point,
+            previous_extreme.point,
+            pullback_extreme.point,
+        )
+        window_end = window.start_index + len(window.candles) - 1
+        observations = tuple(
+            BMSObservation(index, _candle_at(window, index))
+            for index in range(pullback_extreme.point.index + 1, window_end + 1)
+        )
+        result = evaluate_bms(context, observations)
+    except ValueError as exc:
+        message = str(exc)
+        reason = (
+            EvaluationReason.OHLC_INTRABAR_ORDER_AMBIGUOUS
+            if message == "OHLC cannot determine the intrabar boundary order"
+            else EvaluationReason.INVALID_CONTEXT
+        )
+        return _invalid_bms(reason, message)
+
+    return Evaluation(EvaluationStatus.AVAILABLE, value=result)
+
+
 def select_canonical_vertices(
     hierarchy: StructuralHierarchy,
     level: StructuralLevel,
@@ -75,14 +164,16 @@ def evaluate_selected_segment(
     ):
         raise ValueError("segment is outside window")
 
-    if request.bms is not None or request.sms is not None:
+    if request.sms is not None:
         raise NotImplementedError(
-            "BMS and SMS segment analysis are implemented in later tasks"
+            "SMS segment analysis is implemented in a later task"
         )
+
+    all_vertices = select_canonical_vertices(hierarchy, request.level)
 
     selected = tuple(
         item
-        for item in select_canonical_vertices(hierarchy, request.level)
+        for item in all_vertices
         if request.segment.start_index <= item.point.index <= request.segment.end_index
     )
     points = tuple(item.point for item in selected)
@@ -100,10 +191,16 @@ def evaluate_selected_segment(
             value=market_structure.classify_market_state(request.segment, points),
         )
 
+    bms = (
+        None
+        if request.bms is None
+        else _evaluate_bms(window, request, all_vertices, market_state)
+    )
+
     return SegmentAnalysisResult(
         request=request,
         selected_points=selected,
         market_state=market_state,
-        bms=None,
+        bms=bms,
         sms=None,
     )
