@@ -10,6 +10,7 @@ from .models import (
     SegmentAnalysisRequest,
     SegmentAnalysisResult,
 )
+from .segments import evaluate_selected_segment
 
 
 @dataclass(frozen=True)
@@ -26,9 +27,6 @@ def analyze_market_window(
 ) -> OfflineMarketAnalysis:
     """Analyze a validated window without inferring market semantics."""
 
-    if segment is not None:
-        raise NotImplementedError("segment analysis is not available yet")
-
     candles = tuple(
         analyze_closed_candle(item, index=window.start_index + offset)
         for offset, item in enumerate(window.candles)
@@ -38,4 +36,9 @@ def analyze_market_window(
         start_index=window.start_index,
     )
     hierarchy = build_structural_hierarchy(scan)
-    return OfflineMarketAnalysis(window, candles, hierarchy, None)
+    segment_result = (
+        None
+        if segment is None
+        else evaluate_selected_segment(window, hierarchy, segment)
+    )
+    return OfflineMarketAnalysis(window, candles, hierarchy, segment_result)
