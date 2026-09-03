@@ -1,13 +1,9 @@
 from importlib import import_module
 from importlib.util import find_spec
+from types import ModuleType
 
 import pytest
 
-import trading.analysis
-from trading.analysis.hierarchy import (
-    StructuralHierarchy,
-    build_structural_hierarchy,
-)
 from trading.analysis.isolated import IsolatedPointScan
 from trading.definitions.isolated_point_deformations import (
     IsolatedPointBasis,
@@ -27,7 +23,7 @@ from trading.definitions.medium_term_structure import build_medium_term_structur
 from trading.definitions.long_term_structure import build_long_term_structure
 
 
-def load_hierarchy() -> object:
+def load_hierarchy() -> ModuleType:
     return import_module("trading.analysis.hierarchy")
 
 
@@ -62,7 +58,11 @@ def scan(*recognitions: IsolatedPointRecognition) -> IsolatedPointScan:
     return IsolatedPointScan(tuple(recognitions), None)
 
 
-def expected_hierarchy(isolated: IsolatedPointScan) -> StructuralHierarchy:
+def build_hierarchy(isolated: IsolatedPointScan) -> object:
+    return load_hierarchy().build_structural_hierarchy(isolated)
+
+
+def expected_hierarchy(isolated: IsolatedPointScan) -> object:
     short_term = build_short_term_structure(
         tuple(
             short_term_point_from_recognition(item)
@@ -71,7 +71,12 @@ def expected_hierarchy(isolated: IsolatedPointScan) -> StructuralHierarchy:
     )
     medium_term = build_medium_term_structure(short_term)
     long_term = build_long_term_structure(medium_term)
-    return StructuralHierarchy(isolated, short_term, medium_term, long_term)
+    return load_hierarchy().StructuralHierarchy(
+        isolated,
+        short_term,
+        medium_term,
+        long_term,
+    )
 
 
 def alternating_recognitions(
@@ -105,7 +110,7 @@ def test_composes_supplied_recognitions_through_all_structural_levels() -> None:
     )
     isolated = scan(*recognitions)
 
-    result = build_structural_hierarchy(isolated)
+    result = build_hierarchy(isolated)
 
     assert result == expected_hierarchy(isolated)
     expected_short_points = tuple(
@@ -142,7 +147,7 @@ def test_consecutive_same_kind_recognitions_stay_short_but_promote_only_winner()
         recognition(5, IsolatedPointKind.LOW, 95),
     )
 
-    result = build_structural_hierarchy(isolated)
+    result = build_hierarchy(isolated)
 
     assert result == expected_hierarchy(isolated)
     assert [point.price for point in result.short_term.points] == [90, 108, 110, 109, 95]
@@ -162,7 +167,7 @@ def test_later_inclusive_inside_pair_is_suppressed_before_promotion() -> None:
         recognition(4, IsolatedPointKind.LOW, 102),
     )
 
-    result = build_structural_hierarchy(isolated)
+    result = build_hierarchy(isolated)
 
     assert result == expected_hierarchy(isolated)
     assert [point.price for point in result.short_term.points] == [110, 100, 108, 102]
@@ -193,7 +198,7 @@ def test_equal_extreme_ties_keep_earliest_short_vertex(
         recognition(3, other_kind, other_price),
     )
 
-    result = build_structural_hierarchy(isolated)
+    result = build_hierarchy(isolated)
 
     assert result == expected_hierarchy(isolated)
     assert result.short_term.vertices[0] is result.short_term.points[0]
@@ -204,7 +209,7 @@ def test_equal_extreme_ties_keep_earliest_short_vertex(
 
 
 def test_right_edge_candidates_remain_existing_medium_and_long_potentials() -> None:
-    medium_candidate_result = build_structural_hierarchy(
+    medium_candidate_result = build_hierarchy(
         scan(
             *alternating_recognitions(
                 high_prices=[100, 110],
@@ -212,7 +217,7 @@ def test_right_edge_candidates_remain_existing_medium_and_long_potentials() -> N
             )
         )
     )
-    long_candidate_result = build_structural_hierarchy(
+    long_candidate_result = build_hierarchy(
         scan(
             *alternating_recognitions(
                 high_prices=[100, 110, 105, 120, 115],
@@ -263,7 +268,7 @@ def test_suppressed_short_points_never_become_promotion_neighbors() -> None:
         recognition(16, IsolatedPointKind.LOW, 70),
     )
 
-    result = build_structural_hierarchy(isolated)
+    result = build_hierarchy(isolated)
 
     assert result == expected_hierarchy(isolated)
     suppressed = {item.point for item in result.short_term.suppressed}
