@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import importlib.util
+from importlib import import_module
 
 import pytest
 
@@ -23,6 +25,18 @@ TIMESTAMP = datetime(2026, 8, 28, 9, 30, tzinfo=timezone.utc)
 CANONICAL_PATH = (100.0, 99.0, 102.0, 106.0, 110.0, 107.0, 103.0, 101.0)
 
 
+def test_adapter_module_is_discoverable() -> None:
+    assert importlib.util.find_spec("trading.analysis.candles") is not None
+
+
+def test_adapter_exposes_locked_public_names() -> None:
+    module = import_module("trading.analysis.candles")
+    assert all(
+        hasattr(module, name)
+        for name in ("OfflineCandleResult", "analyze_closed_candle")
+    )
+
+
 def observation(**overrides: object) -> ClosedCandleObservation:
     values: dict[str, object] = {
         "timestamp": TIMESTAMP,
@@ -36,10 +50,17 @@ def observation(**overrides: object) -> ClosedCandleObservation:
     return ClosedCandleObservation(**values)
 
 
-def test_analyze_closed_candle_reuses_authoritative_intrabar_outputs() -> None:
+def run_adapter(item: ClosedCandleObservation, index: int):
     from trading.analysis.candles import analyze_closed_candle
 
-    result = analyze_closed_candle(observation(), index=40)
+    try:
+        return analyze_closed_candle(item, index=index)
+    except NotImplementedError as error:
+        pytest.fail(f"adapter behavior absent: {error}")
+
+
+def test_analyze_closed_candle_reuses_authoritative_intrabar_outputs() -> None:
+    result = run_adapter(observation(), index=40)
     direct = analyze_prices(CANONICAL_PATH)
 
     assert result.index == 40
@@ -73,10 +94,8 @@ def test_analyze_closed_candle_reuses_authoritative_intrabar_outputs() -> None:
 
 
 def test_ohlc_only_keeps_candle_measurements_but_marks_intrabar_unavailable() -> None:
-    from trading.analysis.candles import analyze_closed_candle
-
     item = observation(intrabar_prices=None)
-    result = analyze_closed_candle(item, index=40)
+    result = run_adapter(item, index=40)
 
     assert result.side is get_side(result.candle)
     assert result.geometry == get_geometry(result.candle)
@@ -100,9 +119,7 @@ def test_ohlc_only_keeps_candle_measurements_but_marks_intrabar_unavailable() ->
 def test_ohlc_only_supports_bearish_doji_and_zero_range(
     open: float, high: float, low: float, close: float, side: CandleSide
 ) -> None:
-    from trading.analysis.candles import analyze_closed_candle
-
-    result = analyze_closed_candle(
+    result = run_adapter(
         observation(
             open=open,
             high=high,
@@ -120,7 +137,6 @@ def test_ohlc_only_supports_bearish_doji_and_zero_range(
 
 
 def test_adapter_never_calls_uncalibrated_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
-    from trading.analysis.candles import analyze_closed_candle
     import trading.definitions.candles as candle_definitions
 
     def fail_classifier(_candle: Candle) -> object:
@@ -128,6 +144,6 @@ def test_adapter_never_calls_uncalibrated_classifier(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(candle_definitions, "classify_candle", fail_classifier)
 
-    result = analyze_closed_candle(observation(), index=40)
+    result = run_adapter(observation(), index=40)
 
     assert result.candle_type.reason is EvaluationReason.CANDLE_TYPE_UNCALIBRATED
