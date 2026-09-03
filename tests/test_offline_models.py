@@ -312,3 +312,30 @@ def test_public_records_are_frozen_and_preserve_source_values() -> None:
         result.bms = None  # type: ignore[misc]
 
     assert result.selected_points == (resolved,)
+
+
+def test_sequence_inputs_are_snapshotted_as_immutable_tuples() -> None:
+    """Frozen records must not retain caller-owned mutable sequence state."""
+
+    intrabar_prices = [100.0, 99.0, 102.0, 101.0]
+    item = observation(0, intrabar_prices=intrabar_prices)
+    intrabar_prices.append(100.5)
+
+    candles = [item]
+    window = OfflineMarketWindow("MNQ", "1m", 0, candles)
+    candles.clear()
+
+    result = SegmentAnalysisResult(
+        SegmentAnalysisRequest(MarketSegment(0, 0), StructuralLevel.SHORT),
+        [],
+        Evaluation(EvaluationStatus.AVAILABLE, value=MarketState.NON_TREND),
+        None,
+        None,
+    )
+
+    assert item.intrabar_prices == (100.0, 99.0, 102.0, 101.0)
+    assert window.candles == (item,)
+    assert result.selected_points == ()
+    assert isinstance(item.intrabar_prices, tuple)
+    assert isinstance(window.candles, tuple)
+    assert isinstance(result.selected_points, tuple)

@@ -62,6 +62,8 @@ class ClosedCandleObservation:
     intrabar_prices: tuple[float, ...] | None = None
 
     def __post_init__(self) -> None:
+        if self.intrabar_prices is not None:
+            object.__setattr__(self, "intrabar_prices", tuple(self.intrabar_prices))
         if self.timestamp.utcoffset() is None:
             raise ValueError("timestamp must be timezone-aware")
         ohlc = (self.open, self.high, self.low, self.close)
@@ -92,6 +94,7 @@ class OfflineMarketWindow:
     candles: tuple[ClosedCandleObservation, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "candles", tuple(self.candles))
         if not self.instrument:
             raise ValueError("instrument must be non-empty")
         if not self.timeframe:
@@ -147,3 +150,6 @@ class SegmentAnalysisResult:
     market_state: Evaluation[MarketState]
     bms: Evaluation[BMSResult] | None
     sms: Evaluation[SMSResult] | None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "selected_points", tuple(self.selected_points))
