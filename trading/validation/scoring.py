@@ -291,6 +291,31 @@ def _isolated_metrics(
     )
 
 
+def _isolated_ambiguity_paths(
+    actual: tuple[dict[str, object], ...],
+    expected: tuple[ExpectedPoint, ...],
+    ambiguities: tuple[GroundTruthAmbiguity, ...],
+    price_tolerance: float,
+) -> frozenset[str]:
+    declared = {
+        item.item
+        for item in ambiguities
+        if item.layer == "isolated"
+    }
+    paths: set[str] = set()
+    for index, (actual_point, expected_point) in enumerate(zip(actual, expected)):
+        if _point_identity(expected_point) not in declared:
+            continue
+        if (
+            actual_point["index"] == expected_point.index
+            and actual_point["kind"] is expected_point.kind
+            and actual_point["recognition_basis"] is expected_point.recognition_basis
+            and abs(float(actual_point["price"]) - expected_point.price) > price_tolerance
+        ):
+            paths.add(f"isolated[{index}].price")
+    return frozenset(paths)
+
+
 def _layer(layer: str, actual: object, expected: object, price_tolerance: float) -> LayerScore:
     discrepancies = _differences(
         actual, expected, path=layer, price_tolerance=price_tolerance
@@ -317,15 +342,12 @@ def score_analysis(
     """Compare completed analysis with independently prepared ground truth only."""
 
     _validate_tolerance(price_tolerance)
-    expected_chapter1 = tuple(expected.chapter1)
-    candles_by_index = {candle.index: candle for candle in analysis.candles}
-    actual_chapter1 = tuple(
-        _native_chapter1(candles_by_index[candle.index])
-        if candle.index in candles_by_index
-        else {"index": candle.index, "missing": True}
-        for candle in expected_chapter1
+    actual_chapter1 = (
+        tuple(_native_chapter1(candle) for candle in analysis.candles)
+        if expected.chapter1
+        else ()
     )
-    chapter1 = _layer("chapter1", actual_chapter1, expected_chapter1, price_tolerance)
+    chapter1 = _layer("chapter1", actual_chapter1, expected.chapter1, price_tolerance)
 
     actual_isolated = tuple(
         _native_point(item.point, recognition_basis=item.basis)
@@ -333,6 +355,9 @@ def score_analysis(
     )
     isolated = _layer("isolated", actual_isolated, expected.isolated, price_tolerance)
     isolated_metrics, isolated_ambiguities = _isolated_metrics(
+        actual_isolated, expected.isolated, expected.ambiguities, price_tolerance
+    )
+    isolated_ambiguity_paths = _isolated_ambiguity_paths(
         actual_isolated, expected.isolated, expected.ambiguities, price_tolerance
     )
     short_term = _layer(
@@ -382,9 +407,7 @@ def score_analysis(
         for discrepancy in layer.discrepancies
         if not (
             layer.layer == "isolated"
-            and isolated_ambiguities
-            and not isolated_metrics.false_positives
-            and not isolated_metrics.false_negatives
+            and discrepancy in isolated_ambiguity_paths
         )
         if (layer.layer, discrepancy) not in ambiguity_paths
         and (layer.layer, discrepancy.removeprefix(f"{layer.layer}."))

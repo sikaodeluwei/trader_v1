@@ -282,6 +282,32 @@ def test_compares_chapter1_capabilities_structure_order_and_segment_statuses() -
     assert "segment.market_state.status" in changed_segment.segment.discrepancies
 
 
+def test_chapter1_reversed_expected_sequence_is_a_disagreement() -> None:
+    observation = ClosedCandleObservation(
+        datetime(2026, 1, 1, tzinfo=UTC), 10.0, 12.0, 9.0, 11.0
+    )
+    later = replace(observation, timestamp=datetime(2026, 1, 2, tzinfo=UTC))
+    analysis = _analysis(())
+    analysis = replace(
+        analysis,
+        window=OfflineMarketWindow("fixture", "1m", 0, (observation, later)),
+        candles=(
+            analyze_closed_candle(observation, index=0),
+            analyze_closed_candle(later, index=1),
+        ),
+    )
+    expected = _expected(
+        (),
+        chapter1=(replace(_expected_candle(), index=1), _expected_candle()),
+    )
+
+    report = score_analysis(analysis, expected)
+
+    assert report.chapter1.exact_match is False
+    assert "chapter1[0].index" in report.chapter1.discrepancies
+    assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in report.outcomes
+
+
 def test_compares_medium_long_provenance_potentials_suppressions_and_bms_sms_details() -> None:
     short_a = ShortTermPoint(1, IsolatedPointKind.HIGH, 110.0)
     short_b = ShortTermPoint(3, IsolatedPointKind.HIGH, 120.0)
@@ -393,6 +419,30 @@ def test_predeclared_exact_ambiguity_is_separate_and_excluded_but_unrelated_diff
     assert ambiguous.outcomes == (DiscrepancyClass.COURSE_AMBIGUITY,)
     assert (ambiguous.isolated_metrics.true_positives, ambiguous.isolated_metrics.false_positives, ambiguous.isolated_metrics.false_negatives) == (0, 0, 0)
     assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in unrelated.outcomes
+
+
+def test_isolated_reordering_remains_a_disagreement_when_one_identity_is_ambiguous() -> None:
+    first = _point(1, IsolatedPointKind.HIGH, 110.0)
+    second = _point(2, IsolatedPointKind.LOW, 90.0)
+    expected = _expected(
+        (first, second),
+        ambiguities=(
+            GroundTruthAmbiguity(
+                "isolated",
+                "index:1|kind:high|price:110.0|recognition_basis:strict",
+                "declared before scoring",
+            ),
+        ),
+    )
+
+    report = score_analysis(
+        _analysis((second, first), short_points=(first, second)),
+        expected,
+    )
+
+    assert report.isolated.exact_match is False
+    assert "isolated[0].index" in report.isolated.discrepancies
+    assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in report.outcomes
 
 
 def test_engine_failure_is_explicit_and_does_not_claim_layer_matches() -> None:
