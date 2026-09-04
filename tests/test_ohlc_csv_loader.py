@@ -145,6 +145,28 @@ def test_rejects_csv_without_header(tmp_path: Path) -> None:
         call_loader(path, instrument="MNQ", timeframe="1m")
 
 
+def test_rejects_duplicate_header_before_a_column_is_overwritten(tmp_path: Path) -> None:
+    path = write_csv(
+        tmp_path,
+        "timestamp,open,high,low,close,close\n"
+        "2026-08-28T09:30:00+00:00,100,102,99,101,999\n",
+    )
+
+    with pytest.raises(ValueError, match=r"header: duplicate column close"):
+        call_loader(path, instrument="MNQ", timeframe="1m")
+
+
+def test_rejects_surplus_cells_with_the_source_row_number(tmp_path: Path) -> None:
+    path = write_csv(
+        tmp_path,
+        "timestamp,open,high,low,close\n"
+        "2026-08-28T09:30:00+00:00,100,102,99,101,discarded\n",
+    )
+
+    with pytest.raises(ValueError, match=r"row 2: surplus cells"):
+        call_loader(path, instrument="MNQ", timeframe="1m")
+
+
 @pytest.mark.parametrize("column", ["timestamp", "open", "high", "low", "close"])
 def test_rejects_missing_cells_with_row_number(tmp_path: Path, column: str) -> None:
     values = {

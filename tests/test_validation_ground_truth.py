@@ -275,6 +275,34 @@ def test_loads_complete_v1_ground_truth_as_typed_immutable_records(tmp_path: Pat
         result.case_id = "changed"  # type: ignore[misc]
 
 
+def test_freezes_source_tolerance_with_a_source_format_justification(tmp_path: Path) -> None:
+    market_data = tmp_path / "fixture.csv"
+    market_data.write_bytes(b"fixture")
+    path = tmp_path / "ground-truth.json"
+    payload = document(file_hash(market_data))
+    payload["source"].update(  # type: ignore[index]
+        price_tolerance=0.25,
+        price_tolerance_justification="source CSV prices are rounded to the 0.25 tick",
+    )
+    write_json(path, payload)
+
+    case = load_ground_truth(path)
+
+    assert case.source.price_tolerance == 0.25
+    assert case.source.price_tolerance_justification == "source CSV prices are rounded to the 0.25 tick"
+
+    payload["source"].pop("price_tolerance_justification")  # type: ignore[index]
+    write_json(path, payload)
+    with pytest.raises(ValueError, match="price_tolerance_justification"):
+        load_ground_truth(path)
+
+    payload = document(file_hash(market_data))
+    payload["source"]["price_tolerance_justification"] = "not needed"  # type: ignore[index]
+    write_json(path, payload)
+    with pytest.raises(ValueError, match="price_tolerance_justification"):
+        load_ground_truth(path)
+
+
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
@@ -386,6 +414,46 @@ def test_rejects_nonterminal_bms_and_sms_event_details(tmp_path: Path) -> None:
 
     payload = document(file_hash(market_data))
     payload["expected"]["segment"]["sms"]["value"] = "pending"  # type: ignore[index]
+    write_json(path, payload)
+    with pytest.raises(ValueError, match="SMS"):
+        load_ground_truth(path)
+
+
+def test_rejects_capability_impossible_segment_status_reason_pairs(tmp_path: Path) -> None:
+    market_data = tmp_path / "fixture.csv"
+    market_data.write_bytes(b"fixture")
+    path = tmp_path / "ground-truth.json"
+
+    payload = document(file_hash(market_data))
+    payload["expected"]["segment"]["market_state"] = {  # type: ignore[index]
+        "status": "unavailable",
+        "reason": "parent_state_not_directional",
+        "value": None,
+    }
+    write_json(path, payload)
+    with pytest.raises(ValueError, match="market_state"):
+        load_ground_truth(path)
+
+    payload = document(file_hash(market_data))
+    payload["expected"]["segment"]["bms"].update(  # type: ignore[index]
+        status="unavailable",
+        reason="insufficient_structure",
+        value=None,
+        broken_point_index=None,
+        breakout_index=None,
+    )
+    write_json(path, payload)
+    with pytest.raises(ValueError, match="BMS"):
+        load_ground_truth(path)
+
+    payload = document(file_hash(market_data))
+    payload["expected"]["segment"]["sms"].update(  # type: ignore[index]
+        status="invalid",
+        reason="insufficient_structure",
+        value=None,
+        broken_point_index=None,
+        event_index=None,
+    )
     write_json(path, payload)
     with pytest.raises(ValueError, match="SMS"):
         load_ground_truth(path)

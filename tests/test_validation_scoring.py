@@ -217,19 +217,32 @@ def test_detection_metrics_treat_missing_extra_and_identity_mismatch_as_fp_and_f
     assert report.isolated.exact_match is False
 
 
-def test_price_tolerance_is_explicit_nonnegative_and_never_relaxes_point_identity() -> None:
+def test_price_tolerance_is_source_recorded_and_never_relaxes_point_identity() -> None:
     expected_points = (_point(1, IsolatedPointKind.HIGH, 110.0),)
     actual_points = (_point(1, IsolatedPointKind.HIGH, 110.25),)
+    exact_expected = _expected(expected_points)
+    tolerant_expected = replace(
+        exact_expected,
+        source=replace(
+            exact_expected.source,
+            price_tolerance=0.25,
+            price_tolerance_justification="source CSV prices are rounded to the 0.25 tick",
+        ),
+    )
 
-    exact = score_analysis(_analysis(actual_points), _expected(expected_points))
-    tolerant = score_analysis(_analysis(actual_points), _expected(expected_points), price_tolerance=0.25)
-    wrong_index = score_analysis(_analysis((_point(2, IsolatedPointKind.HIGH, 110.0),)), _expected(expected_points), price_tolerance=1.0)
+    exact = score_analysis(_analysis(actual_points), exact_expected)
+    tolerant = score_analysis(_analysis(actual_points), tolerant_expected, price_tolerance=0.25)
+    wrong_index = score_analysis(_analysis((_point(2, IsolatedPointKind.HIGH, 110.0),)), tolerant_expected, price_tolerance=0.25)
 
     assert (exact.isolated_metrics.false_positives, exact.isolated_metrics.false_negatives) == (1, 1)
     assert tolerant.isolated_metrics.true_positives == 1
     assert wrong_index.isolated_metrics.true_positives == 0
     with pytest.raises(ValueError, match="non-negative"):
-        score_analysis(_analysis(expected_points), _expected(expected_points), price_tolerance=-0.01)
+        score_analysis(_analysis(expected_points), exact_expected, price_tolerance=-0.01)
+    with pytest.raises(ValueError, match="match the recorded"):
+        score_analysis(_analysis(actual_points), exact_expected, price_tolerance=0.25)
+    with pytest.raises(ValueError, match="match the recorded"):
+        score_analysis(_analysis(actual_points), tolerant_expected)
 
 
 def test_empty_detection_denominators_have_documented_deterministic_semantics() -> None:

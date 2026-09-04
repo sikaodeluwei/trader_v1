@@ -36,6 +36,31 @@ class GroundTruthSource:
     timeframe: str
     start_index: int
     candle_count: int
+    price_tolerance: float = 0.0
+    price_tolerance_justification: str | None = None
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.price_tolerance, bool)
+            or not isinstance(self.price_tolerance, (int, float))
+            or not isfinite(self.price_tolerance)
+            or self.price_tolerance < 0
+        ):
+            raise ValueError(
+                "ground truth.source.price_tolerance must be a finite non-negative number"
+            )
+        tolerance = float(self.price_tolerance)
+        object.__setattr__(self, "price_tolerance", tolerance)
+        justification = self.price_tolerance_justification
+        if tolerance == 0.0:
+            if justification is not None:
+                raise ValueError(
+                    "ground truth.source.price_tolerance_justification is only valid for nonzero price_tolerance"
+                )
+        elif not isinstance(justification, str) or not justification.strip():
+            raise ValueError(
+                "ground truth.source.price_tolerance_justification is required for nonzero price_tolerance"
+            )
 
 
 @dataclass(frozen=True)
@@ -249,12 +274,18 @@ class GroundTruthCase:
 E = TypeVar("E", bound=Enum)
 
 
-def _object(value: object, path: str, keys: set[str]) -> dict[str, object]:
+def _object(
+    value: object,
+    path: str,
+    keys: set[str],
+    *,
+    optional_keys: set[str] | None = None,
+) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError(f"{path} must be an object")
     actual = set(value)
     missing = keys - actual
-    unknown = actual - keys
+    unknown = actual - (keys | (optional_keys or set()))
     if missing:
         raise ValueError(f"{path} is missing required keys: {', '.join(sorted(missing))}")
     if unknown:
@@ -326,6 +357,19 @@ def _status_value(
     elif reason is None or result is not None:
         raise ValueError(f"{path} unavailable or invalid status requires reason and no value")
     return status, reason, result
+
+
+def _validate_capability_pair(
+    status: EvaluationStatus,
+    reason: EvaluationReason | None,
+    path: str,
+    allowed: set[tuple[EvaluationStatus, EvaluationReason | None]],
+    *,
+    label: str | None = None,
+) -> None:
+    if (status, reason) not in allowed:
+        suffix = "" if label is None else f" ({label})"
+        raise ValueError(f"{path}{suffix} has an invalid status/reason combination")
 
 
 def _parse_point(
@@ -629,6 +673,19 @@ def _parse_bms(value: object, path: str) -> ExpectedBMS | None:
         PullbackStructureStatus,
         keys={"status", "reason", "value", "broken_point_index", "breakout_index"},
     )
+    _validate_capability_pair(
+        status,
+        reason,
+        path,
+        {
+            (EvaluationStatus.AVAILABLE, None),
+            (EvaluationStatus.UNAVAILABLE, EvaluationReason.PARENT_STATE_NOT_DIRECTIONAL),
+            (EvaluationStatus.INVALID, EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX),
+            (EvaluationStatus.INVALID, EvaluationReason.INVALID_CONTEXT),
+            (EvaluationStatus.INVALID, EvaluationReason.OHLC_INTRABAR_ORDER_AMBIGUOUS),
+        },
+        label="BMS",
+    )
     broken_point_index = _optional_integer(item["broken_point_index"], f"{path}.broken_point_index")
     breakout_index = _optional_integer(item["breakout_index"], f"{path}.breakout_index")
     has_event = broken_point_index is not None and breakout_index is not None
@@ -652,6 +709,19 @@ def _parse_sms(value: object, path: str) -> ExpectedSMS | None:
         path,
         SMSStructureStatus,
         keys={"status", "reason", "value", "broken_point_index", "event_index"},
+    )
+    _validate_capability_pair(
+        status,
+        reason,
+        path,
+        {
+            (EvaluationStatus.AVAILABLE, None),
+            (EvaluationStatus.UNAVAILABLE, EvaluationReason.PARENT_STATE_NOT_DIRECTIONAL),
+            (EvaluationStatus.INVALID, EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX),
+            (EvaluationStatus.INVALID, EvaluationReason.INVALID_CONTEXT),
+            (EvaluationStatus.INVALID, EvaluationReason.OHLC_INTRABAR_ORDER_AMBIGUOUS),
+        },
+        label="SMS",
     )
     broken_point_index = _optional_integer(item["broken_point_index"], f"{path}.broken_point_index")
     event_index = _optional_integer(item["event_index"], f"{path}.event_index")
@@ -677,6 +747,15 @@ def _parse_segment(value: object, path: str) -> ExpectedSegment | None:
     if start_index > end_index:
         raise ValueError(f"{path}.start_index must not be after end_index")
     market_status, market_reason, market_value = _status_value(item["market_state"], f"{path}.market_state", MarketState)
+    _validate_capability_pair(
+        market_status,
+        market_reason,
+        f"{path}.market_state",
+        {
+            (EvaluationStatus.AVAILABLE, None),
+            (EvaluationStatus.UNAVAILABLE, EvaluationReason.INSUFFICIENT_STRUCTURE),
+        },
+    )
     bms_request = _parse_request(item["bms_request"], f"{path}.bms_request", ("trend_origin_index", "previous_extreme_index", "pullback_extreme_index"))
     sms_request = _parse_request(item["sms_request"], f"{path}.sms_request", ("trend_extreme_index", "creator_point_index"))
     bms = _parse_bms(item["bms"], f"{path}.bms")
@@ -727,7 +806,12 @@ def load_ground_truth(path: str | Path) -> GroundTruthCase:
     if schema_version != 1:
         raise ValueError("ground truth.schema_version must be 1")
     case_id = _string(document["case_id"], "ground truth.case_id")
-    source_value = _object(document["source"], "ground truth.source", {"market_data_file", "sha256", "instrument", "timeframe", "start_index", "candle_count"})
+    source_value = _object(
+        document["source"],
+        "ground truth.source",
+        {"market_data_file", "sha256", "instrument", "timeframe", "start_index", "candle_count"},
+        optional_keys={"price_tolerance", "price_tolerance_justification"},
+    )
     source_hash = _string(source_value["sha256"], "ground truth.source.sha256")
     if len(source_hash) != 64 or any(character not in "0123456789abcdef" for character in source_hash):
         raise ValueError("ground truth.source.sha256 must be a lowercase SHA-256 digest")
@@ -741,6 +825,18 @@ def load_ground_truth(path: str | Path) -> GroundTruthCase:
         timeframe=_string(source_value["timeframe"], "ground truth.source.timeframe"),
         start_index=_integer(source_value["start_index"], "ground truth.source.start_index"),
         candle_count=candle_count,
+        price_tolerance=_number(
+            source_value.get("price_tolerance", 0.0),
+            "ground truth.source.price_tolerance",
+        ),
+        price_tolerance_justification=(
+            None
+            if source_value.get("price_tolerance_justification") is None
+            else _string(
+                source_value["price_tolerance_justification"],
+                "ground truth.source.price_tolerance_justification",
+            )
+        ),
     )
     expected = _object(document["expected"], "ground truth.expected", {"chapter1", "isolated", "short_term", "medium_term", "long_term", "segment"})
     chapter1 = tuple(_parse_chapter1(member, f"ground truth.expected.chapter1[{index}]") for index, member in enumerate(_list(expected["chapter1"], "ground truth.expected.chapter1")))

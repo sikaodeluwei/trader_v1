@@ -50,11 +50,19 @@ def load_ohlc_market_window(
         if fieldnames is None:
             raise ValueError("CSV is missing a header row")
 
+        seen_columns: set[str | None] = set()
+        for column in fieldnames:
+            if column in seen_columns:
+                raise ValueError(f"header: duplicate column {column}")
+            seen_columns.add(column)
+
         for column in required_columns:
             if column not in fieldnames:
                 raise ValueError(f"CSV is missing required column {column!r}")
 
         for row_number, row in enumerate(reader, start=2):
+            if None in row:
+                raise ValueError(f"row {row_number}: surplus cells")
             timestamp_text = _cell(row, timestamp_column, row_number)
             try:
                 timestamp = datetime.fromisoformat(timestamp_text)

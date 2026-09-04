@@ -342,6 +342,10 @@ def score_analysis(
     """Compare completed analysis with independently prepared ground truth only."""
 
     _validate_tolerance(price_tolerance)
+    if price_tolerance != expected.source.price_tolerance:
+        raise ValueError(
+            "price_tolerance must match the recorded ground-truth source tolerance"
+        )
     expected_chapter1_indexes = {candle.index for candle in expected.chapter1}
     actual_chapter1 = tuple(
         _native_chapter1(candle)
