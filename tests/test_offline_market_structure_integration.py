@@ -348,6 +348,63 @@ def test_c_supplied_recognitions_compose_cleaned_hierarchy_and_provenance() -> N
             assert not any(source is suppressed for suppressed in suppressed_medium)
             assert not any(source is points_only for points_only in medium_points_only)
 
+    nonvertex_medium = build_structural_hierarchy(
+        IsolatedPointScan(
+            tuple(
+                item
+                for position, (high, low) in enumerate(
+                    zip(
+                        (158, 134, 146, 125, 144, 117, 145, 150, 152),
+                        (66, 56, 109, 44, 102, 71, 85, 65, 110),
+                    )
+                )
+                for item in (
+                    confirmed(position * 2, IsolatedPointKind.HIGH, float(high)),
+                    confirmed(position * 2 + 1, IsolatedPointKind.LOW, float(low)),
+                )
+            ),
+            None,
+        )
+    )
+    assert [point.price for point in nonvertex_medium.medium_term.points] == [
+        56.0,
+        146.0,
+        44.0,
+        144.0,
+        71.0,
+        65.0,
+    ]
+    assert [
+        (point.pivot_index, point.confirmed_by_index)
+        for point in nonvertex_medium.medium_term.points
+    ] == [(3, 5), (4, 6), (7, 9), (8, 10), (11, 13), (15, 17)]
+    assert [point.price for point in nonvertex_medium.medium_term.vertices] == [
+        56.0,
+        146.0,
+        44.0,
+        144.0,
+        65.0,
+    ]
+    assert [
+        (point.pivot_index, point.confirmed_by_index)
+        for point in nonvertex_medium.medium_term.vertices
+    ] == [(3, 5), (4, 6), (7, 9), (8, 10), (15, 17)]
+    suppressed_medium_point = nonvertex_medium.medium_term.suppressed[0].point
+    assert suppressed_medium_point is nonvertex_medium.medium_term.points[4]
+    assert suppressed_medium_point.price == 71.0
+    assert nonvertex_medium.medium_term.suppressed[0].reason is (
+        MediumTermSuppressionReason.CONSECUTIVE_SAME_KIND
+    )
+
+    assert [point.price for point in nonvertex_medium.long_term.points] == [44.0]
+    long_low = nonvertex_medium.long_term.points[0]
+    assert (long_low.pivot_index, long_low.confirmed_by_index) == (7, 15)
+    assert long_low.pivot is nonvertex_medium.medium_term.vertices[2]
+    assert long_low.confirmed_by is nonvertex_medium.medium_term.vertices[4]
+    assert long_low.confirmed_by is nonvertex_medium.medium_term.points[5]
+    assert long_low.confirmed_by is not suppressed_medium_point
+    assert long_low.pivot is not suppressed_medium_point
+
     same_kind = build_structural_hierarchy(
         IsolatedPointScan(
             (
