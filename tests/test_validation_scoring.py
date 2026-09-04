@@ -308,6 +308,29 @@ def test_chapter1_reversed_expected_sequence_is_a_disagreement() -> None:
     assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in report.outcomes
 
 
+def test_chapter1_sparse_expectations_keep_only_declared_actual_indexes_in_order() -> None:
+    observation = ClosedCandleObservation(
+        datetime(2026, 1, 1, tzinfo=UTC), 10.0, 12.0, 9.0, 11.0
+    )
+    later = replace(observation, timestamp=datetime(2026, 1, 2, tzinfo=UTC))
+    analysis = replace(
+        _analysis(()),
+        window=OfflineMarketWindow("fixture", "1m", 0, (observation, later)),
+        candles=(
+            analyze_closed_candle(observation, index=0),
+            analyze_closed_candle(later, index=1),
+        ),
+    )
+
+    report = score_analysis(
+        analysis,
+        _expected((), chapter1=(replace(_expected_candle(), index=1),)),
+    )
+
+    assert report.chapter1.exact_match is True
+    assert report.chapter1.discrepancies == ()
+
+
 def test_compares_medium_long_provenance_potentials_suppressions_and_bms_sms_details() -> None:
     short_a = ShortTermPoint(1, IsolatedPointKind.HIGH, 110.0)
     short_b = ShortTermPoint(3, IsolatedPointKind.HIGH, 120.0)

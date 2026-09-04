@@ -342,10 +342,11 @@ def score_analysis(
     """Compare completed analysis with independently prepared ground truth only."""
 
     _validate_tolerance(price_tolerance)
-    actual_chapter1 = (
-        tuple(_native_chapter1(candle) for candle in analysis.candles)
-        if expected.chapter1
-        else ()
+    expected_chapter1_indexes = {candle.index for candle in expected.chapter1}
+    actual_chapter1 = tuple(
+        _native_chapter1(candle)
+        for candle in analysis.candles
+        if candle.index in expected_chapter1_indexes
     )
     chapter1 = _layer("chapter1", actual_chapter1, expected.chapter1, price_tolerance)
 
