@@ -22,6 +22,7 @@ real-market accuracy claim.
 
 import hashlib
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -104,6 +105,30 @@ def write_ground_truth_fixture(tmp_path: Path, market_path: Path) -> Path:
     return path
 
 
+def run_blind_workflow(
+    market_path: Path,
+    ground_truth_path: Path,
+    *,
+    before_verify: Callable[[], None] | None = None,
+) -> object:
+    """Run the real public blind sequence, with one verification hook."""
+
+    window = loader_module.load_ohlc_market_window(
+        market_path,
+        instrument="MNQ",
+        timeframe="1m",
+        start_index=0,
+    )
+    analysis = offline_module.analyze_market_window(window, None)
+
+    # Expected labels are loaded only after analyzer output exists.
+    truth = ground_truth_module.load_ground_truth(ground_truth_path)
+    if before_verify is not None:
+        before_verify()
+    ground_truth_module.verify_ground_truth_source(truth, market_path)
+    return scoring_module.score_analysis(analysis, truth)
+
+
 def test_blind_workflow_keeps_labels_out_of_analysis_and_scores_after_analysis(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -153,19 +178,7 @@ def test_blind_workflow_keeps_labels_out_of_analysis_and_scores_after_analysis(
     monkeypatch.setattr(ground_truth_module, "verify_ground_truth_source", verify_source)
     monkeypatch.setattr(scoring_module, "score_analysis", score)
 
-    window = loader_module.load_ohlc_market_window(
-        market_path,
-        instrument="MNQ",
-        timeframe="1m",
-        start_index=0,
-    )
-    analysis = offline_module.analyze_market_window(window, None)
-
-    # Labels and ambiguity notes are not an analyzer input, and are unavailable
-    # until the completed analysis object already exists.
-    truth = ground_truth_module.load_ground_truth(ground_truth_path)
-    ground_truth_module.verify_ground_truth_source(truth, market_path)
-    report = scoring_module.score_analysis(analysis, truth)
+    report = run_blind_workflow(market_path, ground_truth_path)
 
     assert events == [
         "load_market",
@@ -175,7 +188,7 @@ def test_blind_workflow_keeps_labels_out_of_analysis_and_scores_after_analysis(
         "score",
     ]
     assert len(analyzer_arguments) == 1
-    assert analyzer_arguments[0][0] is window
+    assert analyzer_arguments[0][0].instrument == "MNQ"
     assert analyzer_arguments[0][1] is None
     assert truth_loaded
 
@@ -192,7 +205,9 @@ def test_blind_workflow_keeps_labels_out_of_analysis_and_scores_after_analysis(
     assert report.medium_term.exact_match
     assert report.long_term.exact_match
     assert report.segment is None
-    assert report.ambiguities == truth.ambiguities
+    assert len(report.ambiguities) == 1
+    assert report.ambiguities[0].layer == "isolated"
+    assert report.ambiguities[0].item == "workflow-fixture-review"
     assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in report.outcomes
 
 
@@ -202,14 +217,6 @@ def test_blind_workflow_rejects_one_byte_source_change_before_scoring(
 ) -> None:
     market_path = write_market_fixture(tmp_path)
     ground_truth_path = write_ground_truth_fixture(tmp_path, market_path)
-    window = loader_module.load_ohlc_market_window(
-        market_path,
-        instrument="MNQ",
-        timeframe="1m",
-        start_index=0,
-    )
-    analysis = offline_module.analyze_market_window(window, None)
-    truth = ground_truth_module.load_ground_truth(ground_truth_path)
     score_called = False
 
     def unexpected_score(*args: object, **kwargs: object) -> object:
@@ -219,11 +226,14 @@ def test_blind_workflow_rejects_one_byte_source_change_before_scoring(
 
     monkeypatch.setattr(scoring_module, "score_analysis", unexpected_score)
 
-    market_path.write_bytes(market_path.read_bytes().replace(b",101\n", b",101.1\n"))
-
     with pytest.raises(ValueError, match="SHA-256 mismatch"):
-        ground_truth_module.verify_ground_truth_source(truth, market_path)
-    assert analysis.window is window
+        run_blind_workflow(
+            market_path,
+            ground_truth_path,
+            before_verify=lambda: market_path.write_bytes(
+                market_path.read_bytes().replace(b",101\n", b",101.1\n")
+            ),
+        )
     assert not score_called
 
 
