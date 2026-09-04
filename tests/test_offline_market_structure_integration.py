@@ -33,7 +33,12 @@ from trading.definitions.isolated_points import (
 )
 from trading.definitions.long_term_structure import LongTermStructure
 from trading.definitions.market_structure import MarketSegment, MarketState, StructurePoint, StructurePointKind
-from trading.definitions.medium_term_structure import MediumTermPoint, MediumTermStructure
+from trading.definitions.medium_term_structure import (
+    MediumTermPoint,
+    MediumTermStructure,
+    MediumTermSuppressionReason,
+    SuppressedMediumTermPoint,
+)
 from trading.definitions.movements import MovementSide, PriceLeg
 from trading.definitions.pullback_structure import PullbackStructureStatus
 from trading.definitions.short_term_structure import (
@@ -87,12 +92,22 @@ def short_point(index: int, kind: IsolatedPointKind, price: float) -> ShortTermP
     return ShortTermPoint(index, kind, price, IsolatedPointBasis.STRICT)
 
 
-def hand_built_hierarchy(*points: ShortTermPoint) -> StructuralHierarchy:
+def medium_point(index: int, kind: IsolatedPointKind, price: float) -> MediumTermPoint:
+    return MediumTermPoint(
+        short_point(index, kind, price),
+        short_point(index + 1, kind, price),
+    )
+
+
+def hand_built_hierarchy(
+    *points: ShortTermPoint,
+    medium: tuple[MediumTermPoint, ...] = (),
+) -> StructuralHierarchy:
     short = ShortTermStructure(tuple(points), tuple(points), ())
     return StructuralHierarchy(
         IsolatedPointScan((), None),
         short,
-        MediumTermStructure((), (), (), ()),
+        MediumTermStructure(medium, (), medium, ()),
         LongTermStructure((), (), (), ()),
     )
 
@@ -108,6 +123,9 @@ def test_a_exact_candle_and_intrabar_capabilities() -> None:
     result = analyze_closed_candle(observation, index=40)
 
     assert result.index == 40
+    assert result.timestamp == UTC_START
+    assert result.observation is observation
+    assert result.candle == Candle(100.0, 110.0, 99.0, 101.0)
     assert result.side is CandleSide.BULLISH
     assert result.geometry.body_ratio == pytest.approx(1 / 11)
     assert result.geometry.upper_wick_ratio == pytest.approx(9 / 11)
@@ -227,10 +245,41 @@ def test_c_supplied_recognitions_compose_cleaned_hierarchy_and_provenance() -> N
     hierarchy = build_structural_hierarchy(IsolatedPointScan(recognitions, None))
 
     assert hierarchy.isolated.recognitions == recognitions
-    assert [point.price for point in hierarchy.short_term.points] == [
-        100, 90, 110, 95, 105, 80, 120, 96, 107, 85, 115, 97, 100, 70,
+    expected_short_points = (
+        ShortTermPoint(1, IsolatedPointKind.HIGH, 100.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(2, IsolatedPointKind.LOW, 90.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(3, IsolatedPointKind.HIGH, 110.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(4, IsolatedPointKind.LOW, 95.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(5, IsolatedPointKind.HIGH, 105.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(6, IsolatedPointKind.LOW, 80.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(7, IsolatedPointKind.HIGH, 120.0, IsolatedPointBasis.RIGHT_INSIDE_BAR),
+        ShortTermPoint(8, IsolatedPointKind.LOW, 96.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(9, IsolatedPointKind.HIGH, 107.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(10, IsolatedPointKind.LOW, 85.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(11, IsolatedPointKind.HIGH, 115.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(12, IsolatedPointKind.LOW, 97.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(13, IsolatedPointKind.HIGH, 100.0, IsolatedPointBasis.STRICT),
+        ShortTermPoint(14, IsolatedPointKind.LOW, 70.0, IsolatedPointBasis.STRICT),
+    )
+    assert hierarchy.short_term.points == expected_short_points
+    assert [point.index for point in hierarchy.short_term.points] == list(range(1, 15))
+    assert [point.recognition_basis for point in hierarchy.short_term.points] == [
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.RIGHT_INSIDE_BAR,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
+        IsolatedPointBasis.STRICT,
     ]
-    assert hierarchy.short_term.vertices == hierarchy.short_term.points
+    assert hierarchy.short_term.vertices == expected_short_points
     assert hierarchy.short_term.suppressed == ()
     assert [point.price for point in hierarchy.medium_term.points] == [110, 80, 120, 85, 115]
     assert len(hierarchy.medium_term.potentials) == 1
@@ -249,6 +298,55 @@ def test_c_supplied_recognitions_compose_cleaned_hierarchy_and_provenance() -> N
     assert long_high.confirmed_by is hierarchy.medium_term.vertices[4]
     assert long_high.pivot.pivot is hierarchy.short_term.vertices[6]
     assert long_high.pivot.pivot.recognition_basis is IsolatedPointBasis.RIGHT_INSIDE_BAR
+
+    cleaned = build_structural_hierarchy(
+        IsolatedPointScan(
+            (
+                confirmed(1, IsolatedPointKind.HIGH, 100.0),
+                confirmed(2, IsolatedPointKind.LOW, 90.0),
+                confirmed(3, IsolatedPointKind.HIGH, 108.0),
+                confirmed(4, IsolatedPointKind.HIGH, 110.0),
+                confirmed(5, IsolatedPointKind.HIGH, 109.0),
+                confirmed(6, IsolatedPointKind.LOW, 95.0),
+                confirmed(7, IsolatedPointKind.HIGH, 105.0),
+                confirmed(8, IsolatedPointKind.LOW, 80.0),
+                confirmed(9, IsolatedPointKind.HIGH, 120.0),
+                confirmed(10, IsolatedPointKind.LOW, 96.0),
+                confirmed(11, IsolatedPointKind.HIGH, 107.0),
+                confirmed(12, IsolatedPointKind.LOW, 85.0),
+                confirmed(13, IsolatedPointKind.HIGH, 115.0),
+                confirmed(14, IsolatedPointKind.LOW, 97.0),
+                confirmed(15, IsolatedPointKind.HIGH, 100.0),
+                confirmed(16, IsolatedPointKind.LOW, 70.0),
+            ),
+            None,
+        )
+    )
+    suppressed_short = tuple(item.point for item in cleaned.short_term.suppressed)
+    short_points_only = tuple(
+        point
+        for point in cleaned.short_term.points
+        if not any(point is vertex for vertex in cleaned.short_term.vertices)
+    )
+    assert [point.price for point in suppressed_short] == [108.0, 109.0]
+    assert cleaned.medium_term.points
+    assert cleaned.long_term.points
+    for medium_point in cleaned.medium_term.points:
+        for source in (medium_point.pivot, medium_point.confirmed_by):
+            assert any(source is vertex for vertex in cleaned.short_term.vertices)
+            assert not any(source is suppressed for suppressed in suppressed_short)
+            assert not any(source is points_only for points_only in short_points_only)
+    medium_points_only = tuple(
+        point
+        for point in cleaned.medium_term.points
+        if not any(point is vertex for vertex in cleaned.medium_term.vertices)
+    )
+    suppressed_medium = tuple(item.point for item in cleaned.medium_term.suppressed)
+    for long_point in cleaned.long_term.points:
+        for source in (long_point.pivot, long_point.confirmed_by):
+            assert any(source is vertex for vertex in cleaned.medium_term.vertices)
+            assert not any(source is suppressed for suppressed in suppressed_medium)
+            assert not any(source is points_only for points_only in medium_points_only)
 
     same_kind = build_structural_hierarchy(
         IsolatedPointScan(
@@ -480,6 +578,80 @@ def test_e_bms_requires_selected_level_vertices_and_preserves_touch_and_break() 
     assert invalid.bms is not None
     assert invalid.bms.status is EvaluationStatus.INVALID
     assert invalid.bms.reason is EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX
+
+
+def test_e_medium_selection_uses_only_competing_medium_vertices() -> None:
+    """Test E catches ignored levels and same-level nonvertex boundaries."""
+
+    short_vertices = (
+        short_point(0, IsolatedPointKind.HIGH, 100.0),
+        short_point(1, IsolatedPointKind.LOW, 90.0),
+        short_point(2, IsolatedPointKind.HIGH, 99.0),
+        short_point(3, IsolatedPointKind.LOW, 95.0),
+        short_point(4, IsolatedPointKind.HIGH, 101.0),
+    )
+    medium_vertices = (
+        medium_point(0, IsolatedPointKind.HIGH, 200.0),
+        medium_point(1, IsolatedPointKind.LOW, 180.0),
+        medium_point(2, IsolatedPointKind.HIGH, 220.0),
+        medium_point(3, IsolatedPointKind.LOW, 190.0),
+        medium_point(4, IsolatedPointKind.HIGH, 240.0),
+    )
+    nonvertex_pullback = medium_point(6, IsolatedPointKind.LOW, 205.0)
+    hierarchy = StructuralHierarchy(
+        IsolatedPointScan((), None),
+        ShortTermStructure(short_vertices, short_vertices, ()),
+        MediumTermStructure(
+            medium_vertices + (nonvertex_pullback,),
+            (),
+            medium_vertices,
+            (
+                SuppressedMediumTermPoint(
+                    nonvertex_pullback,
+                    MediumTermSuppressionReason.CONSECUTIVE_SAME_KIND,
+                ),
+            ),
+        ),
+        LongTermStructure((), (), (), ()),
+    )
+    selected_window = closed_window({}, count=8)
+    medium_result = evaluate_selected_segment(
+        selected_window,
+        hierarchy,
+        SegmentAnalysisRequest(MarketSegment(0, 4), StructuralLevel.MEDIUM),
+    )
+    short_result = evaluate_selected_segment(
+        selected_window,
+        hierarchy,
+        SegmentAnalysisRequest(MarketSegment(0, 4), StructuralLevel.SHORT),
+    )
+
+    assert medium_result.market_state.value is MarketState.UPTREND
+    assert short_result.market_state.value is MarketState.NON_TREND
+    assert [item.point.index for item in medium_result.selected_points] == [0, 1, 2, 3, 4]
+    assert [item.point.price for item in medium_result.selected_points] == [200, 180, 220, 190, 240]
+    assert all(item.level is StructuralLevel.MEDIUM for item in medium_result.selected_points)
+    assert all(
+        item.source_vertex is source_vertex
+        for item, source_vertex in zip(medium_result.selected_points, medium_vertices)
+    )
+    assert all(
+        not any(item.source_vertex is short_vertex for short_vertex in short_vertices)
+        for item in medium_result.selected_points
+    )
+
+    rejected_boundary = evaluate_selected_segment(
+        selected_window,
+        hierarchy,
+        SegmentAnalysisRequest(
+            MarketSegment(0, 4),
+            StructuralLevel.MEDIUM,
+            bms=BMSAnalysisRequest(3, 4, 6),
+        ),
+    )
+    assert rejected_boundary.bms is not None
+    assert rejected_boundary.bms.status is EvaluationStatus.INVALID
+    assert rejected_boundary.bms.reason is EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX
 
 
 def test_e_sms_preserves_touch_first_event_and_dual_crossing_ambiguity() -> None:
