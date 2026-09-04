@@ -459,6 +459,82 @@ def test_rejects_capability_impossible_segment_status_reason_pairs(tmp_path: Pat
         load_ground_truth(path)
 
 
+@pytest.mark.parametrize(
+    ("market_state", "child_key", "child_label"),
+    [
+        (
+            {"status": "unavailable", "reason": "insufficient_structure", "value": None},
+            "bms",
+            "BMS",
+        ),
+        (
+            {"status": "unavailable", "reason": "insufficient_structure", "value": None},
+            "sms",
+            "SMS",
+        ),
+        (
+            {"status": "available", "reason": None, "value": "non_trend"},
+            "bms",
+            "BMS",
+        ),
+        (
+            {"status": "available", "reason": None, "value": "non_trend"},
+            "sms",
+            "SMS",
+        ),
+    ],
+)
+def test_rejects_child_results_that_conflict_with_nondirectional_parent(
+    tmp_path: Path,
+    market_state: dict[str, object],
+    child_key: str,
+    child_label: str,
+) -> None:
+    market_data = tmp_path / "fixture.csv"
+    market_data.write_bytes(b"fixture")
+    path = tmp_path / "ground-truth.json"
+    payload = document(file_hash(market_data))
+    payload["expected"]["segment"]["market_state"] = market_state  # type: ignore[index]
+    if child_key == "sms":
+        payload["expected"]["segment"]["bms"] = {  # type: ignore[index]
+            "status": "unavailable",
+            "reason": "parent_state_not_directional",
+            "value": None,
+            "broken_point_index": None,
+            "breakout_index": None,
+        }
+    write_json(path, payload)
+
+    with pytest.raises(ValueError, match=child_label):
+        load_ground_truth(path)
+
+
+@pytest.mark.parametrize("child_key", ["bms", "sms"])
+@pytest.mark.parametrize("market_state_value", ["uptrend", "downtrend"])
+def test_rejects_parent_state_reason_for_directional_child(
+    tmp_path: Path,
+    child_key: str,
+    market_state_value: str,
+) -> None:
+    market_data = tmp_path / "fixture.csv"
+    market_data.write_bytes(b"fixture")
+    path = tmp_path / "ground-truth.json"
+    payload = document(file_hash(market_data))
+    payload["expected"]["segment"]["market_state"]["value"] = market_state_value  # type: ignore[index]
+    child_result: dict[str, object] = {
+        "status": "unavailable",
+        "reason": "parent_state_not_directional",
+        "value": None,
+        "broken_point_index": None,
+    }
+    child_result["breakout_index" if child_key == "bms" else "event_index"] = None
+    payload["expected"]["segment"][child_key] = child_result  # type: ignore[index]
+    write_json(path, payload)
+
+    with pytest.raises(ValueError, match=child_key.upper()):
+        load_ground_truth(path)
+
+
 def test_public_sequence_records_snapshot_mutable_inputs(tmp_path: Path) -> None:
     point_value = ExpectedPoint(1, IsolatedPointKind.HIGH, 110.0)
     points = [point_value]

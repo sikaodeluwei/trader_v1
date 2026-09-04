@@ -372,6 +372,36 @@ def _validate_capability_pair(
         raise ValueError(f"{path}{suffix} has an invalid status/reason combination")
 
 
+def _validate_parent_child_capability(
+    *,
+    market_status: EvaluationStatus,
+    market_value: MarketState | None,
+    child: ExpectedBMS | ExpectedSMS | None,
+    path: str,
+    label: str,
+) -> None:
+    if child is None:
+        return
+    parent_is_nondirectional = (
+        market_status is EvaluationStatus.UNAVAILABLE
+        or market_value is MarketState.NON_TREND
+    )
+    child_is_parent_blocked = (
+        child.status is EvaluationStatus.UNAVAILABLE
+        and child.reason is EvaluationReason.PARENT_STATE_NOT_DIRECTIONAL
+    )
+    if parent_is_nondirectional and not child_is_parent_blocked:
+        raise ValueError(
+            f"{path} {label} must be unavailable with "
+            "PARENT_STATE_NOT_DIRECTIONAL when market state is not directional"
+        )
+    if not parent_is_nondirectional and child_is_parent_blocked:
+        raise ValueError(
+            f"{path} {label} cannot be unavailable with "
+            "PARENT_STATE_NOT_DIRECTIONAL for a directional market state"
+        )
+
+
 def _parse_point(
     value: object,
     path: str,
@@ -762,6 +792,20 @@ def _parse_segment(value: object, path: str) -> ExpectedSegment | None:
     sms = _parse_sms(item["sms"], f"{path}.sms")
     if (bms_request is None) != (bms is None) or (sms_request is None) != (sms is None):
         raise ValueError(f"{path} request and expected result presence must match")
+    _validate_parent_child_capability(
+        market_status=market_status,
+        market_value=market_value,
+        child=bms,
+        path=path,
+        label="BMS",
+    )
+    _validate_parent_child_capability(
+        market_status=market_status,
+        market_value=market_value,
+        child=sms,
+        path=path,
+        label="SMS",
+    )
     return ExpectedSegment(
         start_index=start_index,
         end_index=end_index,
