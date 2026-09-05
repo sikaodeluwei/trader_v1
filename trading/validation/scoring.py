@@ -125,12 +125,101 @@ def _differences(
     return () if actual == expected else (path,)
 
 
-def _point_identity(point: ExpectedPoint) -> str:
-    basis = "none" if point.recognition_basis is None else point.recognition_basis.value
-    return (
-        f"index:{point.index}|kind:{point.kind.value}|price:{point.price}"
-        f"|recognition_basis:{basis}"
+@dataclass(frozen=True)
+class _IsolatedIdentity:
+    index: int
+    kind: str
+    price: float
+    recognition_basis: str
+
+    @property
+    def anchor(self) -> tuple[int, str, str]:
+        return (self.index, self.kind, self.recognition_basis)
+
+
+@dataclass(frozen=True)
+class _IsolatedAmbiguityResolution:
+    expected_indices: frozenset[int]
+    actual_indices: frozenset[int]
+    used: tuple[GroundTruthAmbiguity, ...]
+
+
+def _expected_identity(point: ExpectedPoint) -> _IsolatedIdentity:
+    return _IsolatedIdentity(
+        point.index,
+        point.kind.value,
+        point.price,
+        "none" if point.recognition_basis is None else point.recognition_basis.value,
     )
+
+
+def _native_identity(point: dict[str, object]) -> _IsolatedIdentity:
+    kind = point["kind"]
+    basis = point["recognition_basis"]
+    return _IsolatedIdentity(
+        int(point["index"]),
+        kind.value,  # type: ignore[union-attr]
+        float(point["price"]),
+        "none" if basis is None else basis.value,  # type: ignore[union-attr]
+    )
+
+
+def _parse_isolated_identity(value: str) -> _IsolatedIdentity | None:
+    parts = value.split("|")
+    if len(parts) != 4:
+        return None
+    fields: dict[str, str] = {}
+    for part in parts:
+        key, separator, item = part.partition(":")
+        if not separator or key in fields:
+            return None
+        fields[key] = item
+    if set(fields) != {"index", "kind", "price", "recognition_basis"}:
+        return None
+    try:
+        index = int(fields["index"])
+        price = float(fields["price"])
+    except ValueError:
+        return None
+    if not isfinite(price) or not fields["kind"] or not fields["recognition_basis"]:
+        return None
+    return _IsolatedIdentity(index, fields["kind"], price, fields["recognition_basis"])
+
+
+def _resolve_isolated_ambiguities(
+    actual: tuple[dict[str, object], ...],
+    expected: tuple[ExpectedPoint, ...],
+    ambiguities: tuple[GroundTruthAmbiguity, ...],
+) -> _IsolatedAmbiguityResolution:
+    declared = tuple(
+        (ambiguity, identity)
+        for ambiguity in ambiguities
+        if ambiguity.layer == "isolated"
+        for identity in (_parse_isolated_identity(ambiguity.item),)
+        if identity is not None
+    )
+    expected_identities = tuple(_expected_identity(point) for point in expected)
+    actual_identities = tuple(_native_identity(point) for point in actual)
+    expected_indices = frozenset(
+        index
+        for index, identity in enumerate(expected_identities)
+        if any(identity == declared_identity for _, declared_identity in declared)
+    )
+    expected_anchors = {
+        expected_identities[index].anchor for index in expected_indices
+    }
+    actual_indices = frozenset(
+        index
+        for index, identity in enumerate(actual_identities)
+        if any(identity == declared_identity for _, declared_identity in declared)
+        or identity.anchor in expected_anchors
+    )
+    used = tuple(
+        ambiguity
+        for ambiguity, identity in declared
+        if identity in expected_identities or identity in actual_identities
+    )
+    return _IsolatedAmbiguityResolution(expected_indices, actual_indices, used)
 
 
 def _native_point(point: object, *, recognition_basis: object | None = None) -> dict[str, object]:
@@ -246,24 +335,13 @@ def _isolated_metrics(
     ambiguities: tuple[GroundTruthAmbiguity, ...],
     price_tolerance: float,
 ) -> tuple[DetectionMetrics, tuple[GroundTruthAmbiguity, ...]]:
-    declared = {
-        item.item
-        for item in ambiguities
-        if item.layer == "isolated" and item.item in {_point_identity(point) for point in expected}
-    }
-    ambiguous_expected = tuple(point for point in expected if _point_identity(point) in declared)
-    ambiguous_actual = tuple(
-        point
-        for point in actual
-        if any(
-            point["index"] == expected_point.index
-            and point["kind"] is expected_point.kind
-            and point["recognition_basis"] is expected_point.recognition_basis
-            for expected_point in ambiguous_expected
-        )
+    resolution = _resolve_isolated_ambiguities(actual, expected, ambiguities)
+    filtered_expected = tuple(
+        point for index, point in enumerate(expected) if index not in resolution.expected_indices
     )
-    filtered_expected = tuple(point for point in expected if point not in ambiguous_expected)
-    filtered_actual = tuple(point for point in actual if point not in ambiguous_actual)
+    filtered_actual = tuple(
+        point for index, point in enumerate(actual) if index not in resolution.actual_indices
+    )
     unmatched_actual = list(filtered_actual)
     true_positives = 0
     for expected_point in filtered_expected:
@@ -287,33 +365,83 @@ def _isolated_metrics(
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     return (
         DetectionMetrics(true_positives, false_positives, false_negatives, precision, recall, f1),
-        tuple(item for item in ambiguities if item.layer == "isolated" and item.item in declared),
+        resolution.used,
     )
 
 
-def _isolated_ambiguity_paths(
+def _isolated_difference_is_only_declared_ambiguity(
     actual: tuple[dict[str, object], ...],
     expected: tuple[ExpectedPoint, ...],
     ambiguities: tuple[GroundTruthAmbiguity, ...],
     price_tolerance: float,
-) -> frozenset[str]:
-    declared = {
-        item.item
-        for item in ambiguities
-        if item.layer == "isolated"
-    }
-    paths: set[str] = set()
-    for index, (actual_point, expected_point) in enumerate(zip(actual, expected)):
-        if _point_identity(expected_point) not in declared:
+) -> bool:
+    resolution = _resolve_isolated_ambiguities(actual, expected, ambiguities)
+    unmatched_actual = [
+        index for index in range(len(actual)) if index not in resolution.actual_indices
+    ]
+    matched: dict[int, int] = {}
+    for expected_index, expected_point in enumerate(expected):
+        if expected_index in resolution.expected_indices:
             continue
-        if (
-            actual_point["index"] == expected_point.index
-            and actual_point["kind"] is expected_point.kind
-            and actual_point["recognition_basis"] is expected_point.recognition_basis
-            and abs(float(actual_point["price"]) - expected_point.price) > price_tolerance
-        ):
-            paths.add(f"isolated[{index}].price")
-    return frozenset(paths)
+        for position, actual_index in enumerate(unmatched_actual):
+            if _point_matches(actual[actual_index], expected_point, price_tolerance):
+                matched[expected_index] = actual_index
+                del unmatched_actual[position]
+                break
+        else:
+            return False
+    if unmatched_actual:
+        return False
+
+    expected_identities = tuple(_expected_identity(point) for point in expected)
+    actual_identities = tuple(_native_identity(point) for point in actual)
+    shared_ambiguous_anchors = {
+        expected_identities[expected_index].anchor
+        for expected_index in resolution.expected_indices
+        if any(
+            actual_identities[actual_index].anchor
+            == expected_identities[expected_index].anchor
+            for actual_index in resolution.actual_indices
+        )
+    }
+    reverse_matches = {
+        actual_index: expected_index
+        for expected_index, actual_index in matched.items()
+    }
+    expected_order: list[tuple[str, object]] = []
+    for index, identity in enumerate(expected_identities):
+        if index in resolution.expected_indices:
+            if identity.anchor in shared_ambiguous_anchors:
+                expected_order.append(("ambiguous", identity.anchor))
+        elif index in matched:
+            expected_order.append(("unambiguous", index))
+    actual_order: list[tuple[str, object]] = []
+    for index, identity in enumerate(actual_identities):
+        if index in resolution.actual_indices:
+            if identity.anchor in shared_ambiguous_anchors:
+                actual_order.append(("ambiguous", identity.anchor))
+        elif index in reverse_matches:
+            actual_order.append(("unambiguous", reverse_matches[index]))
+    return tuple(expected_order) == tuple(actual_order)
+
+
+def _validate_analysis_source(
+    analysis: OfflineMarketAnalysis,
+    expected: GroundTruthCase,
+) -> None:
+    window = analysis.window
+    source = expected.source
+    bindings = (
+        ("instrument", window.instrument, source.instrument),
+        ("timeframe", window.timeframe, source.timeframe),
+        ("start_index", window.start_index, source.start_index),
+        ("candle_count", len(window.candles), source.candle_count),
+    )
+    for field, actual, expected_value in bindings:
+        if actual != expected_value:
+            raise ValueError(
+                f"analysis window {field} does not match ground-truth source"
+            )
 
 
 def _layer(layer: str, actual: object, expected: object, price_tolerance: float) -> LayerScore:
@@ -342,6 +470,7 @@ def score_analysis(
     """Compare completed analysis with independently prepared ground truth only."""
 
     _validate_tolerance(price_tolerance)
+    _validate_analysis_source(analysis, expected)
     if price_tolerance != expected.source.price_tolerance:
         raise ValueError(
             "price_tolerance must match the recorded ground-truth source tolerance"
@@ -362,7 +491,7 @@ def score_analysis(
     isolated_metrics, isolated_ambiguities = _isolated_metrics(
         actual_isolated, expected.isolated, expected.ambiguities, price_tolerance
     )
-    isolated_ambiguity_paths = _isolated_ambiguity_paths(
+    isolated_difference_is_only_ambiguity = _isolated_difference_is_only_declared_ambiguity(
         actual_isolated, expected.isolated, expected.ambiguities, price_tolerance
     )
     short_term = _layer(
@@ -410,10 +539,7 @@ def score_analysis(
         discrepancy
         for layer in layers
         for discrepancy in layer.discrepancies
-        if not (
-            layer.layer == "isolated"
-            and discrepancy in isolated_ambiguity_paths
-        )
+        if not (layer.layer == "isolated" and isolated_difference_is_only_ambiguity)
         if (layer.layer, discrepancy) not in ambiguity_paths
         and (layer.layer, discrepancy.removeprefix(f"{layer.layer}."))
         not in ambiguity_paths

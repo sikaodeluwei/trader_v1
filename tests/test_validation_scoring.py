@@ -138,13 +138,14 @@ def _expected(
     chapter1: tuple[ExpectedChapter1Candle, ...] = (),
     segment: ExpectedSegment | None = None,
     ambiguities: tuple[GroundTruthAmbiguity, ...] = (),
+    candle_count: int = 1,
 ) -> GroundTruthCase:
     short = ExpectedStructure(points, (), points, ())
     empty = ExpectedStructure((), (), (), ())
     return GroundTruthCase(
         1,
         "scoring-fixture",
-        GroundTruthSource("fixture.csv", "source-hash", "fixture", "1m", 0, 1),
+        GroundTruthSource("fixture.csv", "source-hash", "fixture", "1m", 0, candle_count),
         chapter1,
         points,
         short,
@@ -312,6 +313,7 @@ def test_chapter1_reversed_expected_sequence_is_a_disagreement() -> None:
     expected = _expected(
         (),
         chapter1=(replace(_expected_candle(), index=1), _expected_candle()),
+        candle_count=2,
     )
 
     report = score_analysis(analysis, expected)
@@ -337,11 +339,49 @@ def test_chapter1_sparse_expectations_keep_only_declared_actual_indexes_in_order
 
     report = score_analysis(
         analysis,
-        _expected((), chapter1=(replace(_expected_candle(), index=1),)),
+        _expected(
+            (),
+            chapter1=(replace(_expected_candle(), index=1),),
+            candle_count=2,
+        ),
     )
 
     assert report.chapter1.exact_match is True
     assert report.chapter1.discrepancies == ()
+
+
+def test_scoring_rejects_analysis_window_source_metadata_mismatches_before_comparison() -> None:
+    analysis = _analysis(())
+    expected = _expected(())
+    mismatches = (
+        (
+            replace(analysis, window=replace(analysis.window, instrument="other")),
+            expected,
+            "instrument",
+        ),
+        (
+            replace(analysis, window=replace(analysis.window, timeframe="5m")),
+            expected,
+            "timeframe",
+        ),
+        (
+            replace(analysis, window=replace(analysis.window, start_index=1)),
+            expected,
+            "start_index",
+        ),
+        (
+            analysis,
+            replace(expected, source=replace(expected.source, candle_count=2)),
+            "candle_count",
+        ),
+    )
+
+    for mismatched_analysis, mismatched_expected, field in mismatches:
+        with pytest.raises(
+            ValueError,
+            match=rf"analysis window {field} does not match ground-truth source",
+        ):
+            score_analysis(mismatched_analysis, mismatched_expected)
 
 
 def test_compares_medium_long_provenance_potentials_suppressions_and_bms_sms_details() -> None:
@@ -440,7 +480,7 @@ def test_compares_medium_long_provenance_potentials_suppressions_and_bms_sms_det
     assert "segment.sms.event_index" in wrong_sms.segment.discrepancies
 
 
-def test_predeclared_exact_ambiguity_is_separate_and_excluded_but_unrelated_difference_is_not() -> None:
+def test_predeclared_isolated_price_variance_is_separate_and_excluded() -> None:
     expected_points = (_point(1, IsolatedPointKind.HIGH, 110.0),)
     actual_points = (_point(1, IsolatedPointKind.HIGH, 111.0),)
     item = "index:1|kind:high|price:110.0|recognition_basis:strict"
@@ -450,11 +490,77 @@ def test_predeclared_exact_ambiguity_is_separate_and_excluded_but_unrelated_diff
     )
 
     ambiguous = score_analysis(_analysis(actual_points, short_points=expected_points), expected)
-    unrelated = score_analysis(_analysis((_point(2, IsolatedPointKind.HIGH, 111.0),)), expected)
 
     assert ambiguous.outcomes == (DiscrepancyClass.COURSE_AMBIGUITY,)
     assert (ambiguous.isolated_metrics.true_positives, ambiguous.isolated_metrics.false_positives, ambiguous.isolated_metrics.false_negatives) == (0, 0, 0)
-    assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in unrelated.outcomes
+
+
+def test_predeclared_actual_only_isolated_ambiguity_is_separate_and_excluded() -> None:
+    actual_point = _point(1, IsolatedPointKind.HIGH, 110.0)
+    expected = _expected(
+        (),
+        ambiguities=(
+            GroundTruthAmbiguity(
+                "isolated",
+                "index:1|kind:high|price:110.0|recognition_basis:strict",
+                "declared before scoring",
+            ),
+        ),
+    )
+
+    report = score_analysis(_analysis((actual_point,), short_points=()), expected)
+
+    assert report.outcomes == (DiscrepancyClass.COURSE_AMBIGUITY,)
+    assert (
+        report.isolated_metrics.true_positives,
+        report.isolated_metrics.false_positives,
+        report.isolated_metrics.false_negatives,
+    ) == (0, 0, 0)
+
+
+def test_predeclared_missing_expected_isolated_ambiguity_is_separate_and_excluded() -> None:
+    expected_point = _point(1, IsolatedPointKind.HIGH, 110.0)
+    expected = _expected(
+        (expected_point,),
+        ambiguities=(
+            GroundTruthAmbiguity(
+                "isolated",
+                "index:1|kind:high|price:110.0|recognition_basis:strict",
+                "declared before scoring",
+            ),
+        ),
+    )
+
+    report = score_analysis(_analysis((), short_points=(expected_point,)), expected)
+
+    assert report.outcomes == (DiscrepancyClass.COURSE_AMBIGUITY,)
+    assert (
+        report.isolated_metrics.true_positives,
+        report.isolated_metrics.false_positives,
+        report.isolated_metrics.false_negatives,
+    ) == (0, 0, 0)
+
+
+def test_unrelated_isolated_difference_remains_a_disagreement_with_ambiguity() -> None:
+    expected_point = _point(1, IsolatedPointKind.HIGH, 110.0)
+    expected = _expected(
+        (expected_point,),
+        ambiguities=(
+            GroundTruthAmbiguity(
+                "isolated",
+                "index:1|kind:high|price:110.0|recognition_basis:strict",
+                "declared before scoring",
+            ),
+        ),
+    )
+
+    report = score_analysis(
+        _analysis((_point(2, IsolatedPointKind.HIGH, 111.0),), short_points=(expected_point,)),
+        expected,
+    )
+
+    assert DiscrepancyClass.COURSE_AMBIGUITY in report.outcomes
+    assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in report.outcomes
 
 
 def test_isolated_reordering_remains_a_disagreement_when_one_identity_is_ambiguous() -> None:
@@ -478,6 +584,7 @@ def test_isolated_reordering_remains_a_disagreement_when_one_identity_is_ambiguo
 
     assert report.isolated.exact_match is False
     assert "isolated[0].index" in report.isolated.discrepancies
+    assert DiscrepancyClass.COURSE_AMBIGUITY in report.outcomes
     assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in report.outcomes
 
 
