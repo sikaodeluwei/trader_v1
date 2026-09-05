@@ -588,6 +588,29 @@ def test_isolated_reordering_remains_a_disagreement_when_one_identity_is_ambiguo
     assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in report.outcomes
 
 
+def test_isolated_path_ambiguity_cannot_hide_reordering_or_create_course_ambiguity() -> None:
+    first = _point(1, IsolatedPointKind.HIGH, 110.0)
+    second = _point(2, IsolatedPointKind.LOW, 90.0)
+    expected = _expected(
+        (first, second),
+        ambiguities=(
+            GroundTruthAmbiguity(
+                "isolated",
+                "isolated[0].index",
+                "path entries cannot declare an isolated ambiguity",
+            ),
+        ),
+    )
+
+    report = score_analysis(
+        _analysis((second, first), short_points=(first, second)),
+        expected,
+    )
+
+    assert DiscrepancyClass.GROUND_TRUTH_DISAGREEMENT in report.outcomes
+    assert DiscrepancyClass.COURSE_AMBIGUITY not in report.outcomes
+
+
 def test_engine_failure_is_explicit_and_does_not_claim_layer_matches() -> None:
     report = report_engine_failure(_expected(()), RuntimeError("analyzer crashed"))
 

@@ -524,10 +524,12 @@ def score_analysis(
     ambiguity_paths = {
         (item.layer, item.item)
         for item in expected.ambiguities
+        if item.layer != "isolated"
     }
     used_path_ambiguities = tuple(
         item
         for item in expected.ambiguities
+        if item.layer != "isolated"
         if any(
             item.layer == layer.layer
             and item.item in {discrepancy, discrepancy.removeprefix(f"{layer.layer}.")}
