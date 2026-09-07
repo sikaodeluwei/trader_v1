@@ -150,6 +150,7 @@ class SegmentAnalysisResult:
     market_state: Evaluation[MarketState]
     bms: Evaluation[BMSResult] | None
     sms: Evaluation[SMSResult] | None
+    trend_start_anchor: ResolvedStructurePoint | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "selected_points", tuple(self.selected_points))

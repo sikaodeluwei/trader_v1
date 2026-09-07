@@ -212,6 +212,36 @@ def select_canonical_vertices(
     )
 
 
+def _resolve_trend_start_anchor(
+    hierarchy: StructuralHierarchy,
+    request: SegmentAnalysisRequest,
+    market_state: Evaluation,
+) -> ResolvedStructurePoint | None:
+    if (
+        request.level not in {StructuralLevel.MEDIUM, StructuralLevel.LONG}
+        or market_state.status is not EvaluationStatus.AVAILABLE
+        or market_state.value
+        not in {
+            market_structure.MarketState.UPTREND,
+            market_structure.MarketState.DOWNTREND,
+        }
+    ):
+        return None
+
+    anchor_kind = (
+        StructurePointKind.LOW
+        if market_state.value is market_structure.MarketState.UPTREND
+        else StructurePointKind.HIGH
+    )
+    candidates = (
+        item
+        for item in select_canonical_vertices(hierarchy, StructuralLevel.SHORT)
+        if request.segment.start_index <= item.point.index <= request.segment.end_index
+        and item.point.kind is anchor_kind
+    )
+    return min(candidates, key=lambda item: item.point.index, default=None)
+
+
 def evaluate_selected_segment(
     window: OfflineMarketWindow,
     hierarchy: StructuralHierarchy,
@@ -248,6 +278,7 @@ def evaluate_selected_segment(
             value=market_structure.classify_market_state(request.segment, points),
         )
 
+    trend_start_anchor = _resolve_trend_start_anchor(hierarchy, request, market_state)
     bms = (
         None
         if request.bms is None
@@ -265,4 +296,5 @@ def evaluate_selected_segment(
         market_state=market_state,
         bms=bms,
         sms=sms,
+        trend_start_anchor=trend_start_anchor,
     )

@@ -11,6 +11,7 @@ from trading.analysis.isolated import IsolatedPointScan
 from trading.analysis.models import (
     BMSAnalysisRequest,
     ClosedCandleObservation,
+    Evaluation,
     EvaluationReason,
     EvaluationStatus,
     OfflineMarketWindow,
@@ -207,6 +208,235 @@ def resolved_state(
         source,
         request(0, len(points) - 1),
     )
+
+
+def directional_hierarchy(
+    level: StructuralLevel,
+    state: MarketState,
+    *,
+    include_matching_anchor: bool = True,
+) -> tuple[StructuralHierarchy, ShortTermPoint | None]:
+    if state is MarketState.UPTREND:
+        definitions = (
+            (2, IsolatedPointKind.HIGH, 110.0),
+            (4, IsolatedPointKind.LOW, 90.0),
+            (6, IsolatedPointKind.HIGH, 120.0),
+            (8, IsolatedPointKind.LOW, 95.0),
+        )
+        anchor_kind = IsolatedPointKind.LOW
+        anchor_price = 88.0
+    else:
+        definitions = (
+            (2, IsolatedPointKind.HIGH, 120.0),
+            (4, IsolatedPointKind.LOW, 100.0),
+            (6, IsolatedPointKind.HIGH, 110.0),
+            (8, IsolatedPointKind.LOW, 90.0),
+        )
+        anchor_kind = IsolatedPointKind.HIGH
+        anchor_price = 122.0
+
+    anchor = short_point(1, anchor_kind, anchor_price)
+    later = short_point(
+        5,
+        anchor_kind,
+        anchor_price + (1.0 if state is MarketState.UPTREND else -1.0),
+    )
+    opposite_kind = (
+        IsolatedPointKind.HIGH
+        if anchor_kind is IsolatedPointKind.LOW
+        else IsolatedPointKind.LOW
+    )
+    short = (
+        short_point(0, anchor_kind, anchor_price),
+        *(
+            (anchor, later)
+            if include_matching_anchor
+            else (short_point(5, opposite_kind, 100.0),)
+        ),
+    )
+    medium = tuple(
+        medium_point(index, kind, price) for index, kind, price in definitions
+    )
+    long = tuple(long_point(index, kind, price) for index, kind, price in definitions)
+    source = hierarchy(
+        short=short,
+        medium=medium if level is StructuralLevel.MEDIUM else (),
+        long=long if level is StructuralLevel.LONG else (),
+    )
+    return source, anchor if include_matching_anchor else None
+
+
+@pytest.mark.parametrize(
+    ("level", "state", "anchor_kind"),
+    [
+        (StructuralLevel.MEDIUM, MarketState.UPTREND, IsolatedPointKind.LOW),
+        (StructuralLevel.MEDIUM, MarketState.DOWNTREND, IsolatedPointKind.HIGH),
+        (StructuralLevel.LONG, MarketState.UPTREND, IsolatedPointKind.LOW),
+        (StructuralLevel.LONG, MarketState.DOWNTREND, IsolatedPointKind.HIGH),
+    ],
+)
+def test_directional_medium_and_long_segments_resolve_earliest_short_anchor(
+    level: StructuralLevel,
+    state: MarketState,
+    anchor_kind: IsolatedPointKind,
+) -> None:
+    source, expected_anchor = directional_hierarchy(level, state)
+
+    result = load_segments_api().evaluate_selected_segment(
+        window(count=12),
+        source,
+        request(1, 8, level),
+    )
+
+    assert expected_anchor is not None
+    assert result.market_state == Evaluation(EvaluationStatus.AVAILABLE, value=state)
+    assert result.trend_start_anchor is not None
+    assert result.trend_start_anchor.level is StructuralLevel.SHORT
+    assert result.trend_start_anchor.source_vertex is expected_anchor
+    assert result.trend_start_anchor.point == StructurePoint(
+        1,
+        StructurePointKind(anchor_kind.value),
+        expected_anchor.price,
+    )
+    assert result.trend_start_anchor not in result.selected_points
+    assert all(item.level is level for item in result.selected_points)
+
+
+def test_anchor_is_not_part_of_market_state_classification_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    segments = load_segments_api()
+    source, expected_anchor = directional_hierarchy(
+        StructuralLevel.MEDIUM,
+        MarketState.UPTREND,
+    )
+    received: list[tuple[StructurePoint, ...]] = []
+    original = segments.market_structure.classify_market_state
+
+    def spy(segment: MarketSegment, points: tuple[StructurePoint, ...]) -> MarketState:
+        received.append(points)
+        return original(segment, points)
+
+    monkeypatch.setattr(segments.market_structure, "classify_market_state", spy)
+    result = segments.evaluate_selected_segment(
+        window(count=12),
+        source,
+        request(1, 8, StructuralLevel.MEDIUM),
+    )
+
+    assert received == [tuple(item.point for item in result.selected_points)]
+    assert all(point.index != expected_anchor.index for point in received[0])
+    assert result.market_state.value is MarketState.UPTREND
+
+
+def test_short_selected_level_has_no_trend_start_anchor() -> None:
+    result = resolved_state(
+        (
+            (IsolatedPointKind.HIGH, 100.0),
+            (IsolatedPointKind.LOW, 90.0),
+            (IsolatedPointKind.HIGH, 110.0),
+            (IsolatedPointKind.LOW, 95.0),
+        )
+    )
+
+    assert result.market_state.value is MarketState.UPTREND
+    assert result.trend_start_anchor is None
+
+
+@pytest.mark.parametrize(
+    "definitions",
+    [
+        (
+            (2, IsolatedPointKind.HIGH, 110.0),
+            (4, IsolatedPointKind.LOW, 90.0),
+            (6, IsolatedPointKind.HIGH, 120.0),
+        ),
+        (
+            (2, IsolatedPointKind.HIGH, 110.0),
+            (4, IsolatedPointKind.LOW, 90.0),
+            (6, IsolatedPointKind.HIGH, 105.0),
+            (8, IsolatedPointKind.LOW, 95.0),
+        ),
+    ],
+)
+def test_insufficient_or_nontrend_medium_segment_has_no_anchor(
+    definitions: tuple[tuple[int, IsolatedPointKind, float], ...],
+) -> None:
+    medium = tuple(medium_point(index, kind, price) for index, kind, price in definitions)
+    source = hierarchy(
+        short=(short_point(1, IsolatedPointKind.LOW, 88.0),),
+        medium=medium,
+    )
+
+    result = load_segments_api().evaluate_selected_segment(
+        window(count=12),
+        source,
+        request(1, 8, StructuralLevel.MEDIUM),
+    )
+
+    assert result.market_state.value is not MarketState.UPTREND
+    assert result.market_state.value is not MarketState.DOWNTREND
+    assert result.trend_start_anchor is None
+
+
+def test_directional_segment_without_matching_short_vertex_has_no_anchor() -> None:
+    source, _ = directional_hierarchy(
+        StructuralLevel.LONG,
+        MarketState.UPTREND,
+        include_matching_anchor=False,
+    )
+
+    result = load_segments_api().evaluate_selected_segment(
+        window(count=12),
+        source,
+        request(1, 8, StructuralLevel.LONG),
+    )
+
+    assert result.market_state.value is MarketState.UPTREND
+    assert result.trend_start_anchor is None
+
+
+@pytest.mark.parametrize(
+    "boundary_request",
+    [
+        BMSAnalysisRequest(1, 6, 8),
+        SMSAnalysisRequest(6, 1),
+    ],
+)
+def test_short_anchor_does_not_become_a_medium_bms_or_sms_boundary(
+    boundary_request: BMSAnalysisRequest | SMSAnalysisRequest,
+) -> None:
+    source, expected_anchor = directional_hierarchy(
+        StructuralLevel.MEDIUM,
+        MarketState.UPTREND,
+    )
+    request_value = SegmentAnalysisRequest(
+        MarketSegment(1, 8),
+        StructuralLevel.MEDIUM,
+        bms=(
+            boundary_request
+            if isinstance(boundary_request, BMSAnalysisRequest)
+            else None
+        ),
+        sms=(
+            boundary_request
+            if isinstance(boundary_request, SMSAnalysisRequest)
+            else None
+        ),
+    )
+
+    result = load_segments_api().evaluate_selected_segment(
+        window(count=12),
+        source,
+        request_value,
+    )
+
+    evaluation = result.bms if result.bms is not None else result.sms
+    assert result.trend_start_anchor is not None
+    assert result.trend_start_anchor.source_vertex is expected_anchor
+    assert evaluation is not None
+    assert evaluation.status is EvaluationStatus.INVALID
+    assert evaluation.reason is EvaluationReason.BOUNDARY_NOT_CANONICAL_VERTEX
 
 
 @pytest.mark.parametrize(
