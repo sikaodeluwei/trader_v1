@@ -1,0 +1,50 @@
+{
+  "alignment_rule": {
+    "classification": "engineering_choice",
+    "identifier": "fixed_left_anchored_pairs_v1",
+    "revisable_with_future_approved_evidence": true
+  },
+  "approved_clarification": {
+    "commit_sha": "b6d6eca1cc112fcccf8c6f4db24f2f67c2ec69a5",
+    "spec_path": "docs/superpowers/specs/2026-09-10-short-term-pair-alignment-clarification-design.md"
+  },
+  "case_id": "real-mnq-case-2",
+  "correction_version": 2,
+  "future_revision_policy": "Fixed-left pairing may be revisited only with future approved course or design evidence and a new immutable oracle version.",
+  "history": {
+    "original_blind_project_output_commit": "3b812f63beb4b54f1cd2628a28b55fce519293fc",
+    "original_oracle_commit": "2fccf1302be8e695807a3b41ef47b4f0f8cf10d0",
+    "original_v1_artifacts_remain_immutable_historical_evidence": true,
+    "supersedes": [
+      "MNQ_2026-09-03_1601-2010_short_term_ground_truth.json",
+      "MNQ_2026-09-03_1601-2010_medium_term_ground_truth.json",
+      "MNQ_2026-09-03_1601-2010_long_term_ground_truth.json"
+    ],
+    "supersession_reason": "original v1 silently applied sliding/every-alignment pairing despite the course leaving alignment unspecified"
+  },
+  "layers": {
+    "isolated": {
+      "filename": "MNQ_2026-09-03_1601-2010_isolated_ground_truth.json",
+      "sha256": "85278477a104149f4236dfe756994bf8c17133850e92cb7bbe9f36221fa10024",
+      "status": "UNCHANGED_V1_SOURCE"
+    },
+    "long": {
+      "filename": "MNQ_2026-09-03_1601-2010_long_term_ground_truth_v2.json",
+      "sha256": "2dc1e7bf351f412fa7eea91e8dfa4b3b13be0f6ec8106d629bcdf930e31e6d6f"
+    },
+    "medium": {
+      "filename": "MNQ_2026-09-03_1601-2010_medium_term_ground_truth_v2.json",
+      "sha256": "94b7632b377a9b77978a2264aeb85a609694df28e01575bceaa32d43a7af7a83"
+    },
+    "short": {
+      "filename": "MNQ_2026-09-03_1601-2010_short_term_ground_truth_v2.json",
+      "sha256": "eeb7ffb04c4d757ab1f4b932ab47454c449c6861fb0abd4401d90a342500e483"
+    }
+  },
+  "schema_version": 1,
+  "source": {
+    "filename": "MNQ_2026-09-03_1601-2010_250bars.txt",
+    "sha256": "0e23f45bf44c6772a583ff065f0f873643b7ac08810af2ec1bd92b831f13178e"
+  },
+  "status": "FROZEN_AWAITING_COMPARISON"
+}
