@@ -1,0 +1,50 @@
+{
+  "case_id": "real-mnq-case-2",
+  "correction_version": 2,
+  "counts": {
+    "isolated_recognitions": 87,
+    "isolated_unresolved_potential": 1,
+    "long_points": 2,
+    "long_potentials": 1,
+    "long_suppressed": 0,
+    "long_vertices": 2,
+    "medium_points": 11,
+    "medium_potentials": 0,
+    "medium_suppressed": 3,
+    "medium_vertices": 8,
+    "short_points": 87,
+    "short_suppressed": 36,
+    "short_vertices": 51
+  },
+  "frozen_project_output": {
+    "commit_sha": "3b812f63beb4b54f1cd2628a28b55fce519293fc",
+    "filename": "MNQ_2026-09-03_1601-2010_project_blind_result.json",
+    "rerun": false,
+    "sha256": "3345facb0d98f3bac7f11e53a1374f136df4f2fdd5a78b135dac6b42b5b4bee4"
+  },
+  "layers": {
+    "isolated": {
+      "mismatches": [],
+      "status": "EXACT_MATCH"
+    },
+    "long": {
+      "mismatches": [],
+      "status": "EXACT_MATCH"
+    },
+    "medium": {
+      "mismatches": [],
+      "status": "EXACT_MATCH"
+    },
+    "short": {
+      "mismatches": [],
+      "status": "EXACT_MATCH"
+    }
+  },
+  "mismatches": [],
+  "oracle_manifest": {
+    "filename": "MNQ_2026-09-03_1601-2010_oracle_v2_manifest.json",
+    "sha256": "2a8db332b677fdf58cf41883a10add98f0f6000078103fdbafe05f6130c13641"
+  },
+  "schema_version": 1,
+  "status": "EXACT_MATCH"
+}
