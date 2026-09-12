@@ -1,0 +1,275 @@
+{
+  "adapter_definitions": {
+    "isolated_direct_projection": "Retains index, kind, exact price, source clock, basis, status, and immediate next-candle confirmer.",
+    "long_canonical_medium_vertex_projection": "Resolves LONG pivot through source_vertex and its nested MEDIUM provenance; this deliberately uses source_vertex.confirmed_by rather than the LONG point's own confirmed_by.",
+    "medium_canonical_short_vertex_projection": "Resolves oracle SHORT references and project nested SHORT points to complete canonical SHORT records; previous same-kind provenance is derived only from ordered canonical SHORT vertices.",
+    "representation_only_fields": "Enum casing and the zero-offset technical timestamp suffix are normalized. No ordered identity, price, source clock, basis, status, confirmer, source level, potential, vertex, or suppression semantics are omitted.",
+    "short_confirmation_join_projection": "Joins by unique source index to canonical isolated evidence and verifies nested kind, exact price, and recognition basis."
+  },
+  "artifacts": {
+    "blind_result": {
+      "commit": "8034a82432a43e019de73d1d665da686930e729c",
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_project_blind_result.json",
+      "sha256": "fee435a71fd22de80248d111ba9ebae2640baa7b7c9ce9103eadfae931df6539"
+    },
+    "historical_manifest": {
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_oracle_manifest.json",
+      "sha256": "21cae55737561858abfb62b33b2e24722f7ba5f3e7b35a14b578b892c26595b2"
+    },
+    "historical_report": {
+      "commit": "db60db2e5b6d2088b38e302483cae1d8e0028533",
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_comparison_report.json",
+      "sha256": "abb989c24a520769b0b3715baee671ace7d94462c7e3e7573b133e805c673d4d"
+    },
+    "manifest_v2": {
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_oracle_manifest_v2.json",
+      "sha256": "82c5f4624bc26a914813980b2a8343f2b75853978f14a7c4f57b693338f66a3e"
+    },
+    "oracle": {
+      "isolated": {
+        "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_isolated_ground_truth.json",
+        "sha256": "d959ad47c8be21b8bd2b44c004ba2db5bf73f7490b513d004a03d6d19ec48b1b"
+      },
+      "long": {
+        "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_long_term_ground_truth.json",
+        "sha256": "fe140083ca657eed130d50f5011247a3bd2001ba3c660f9bd70818c55b5e424b"
+      },
+      "medium": {
+        "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_medium_term_ground_truth.json",
+        "sha256": "960a5a518ce54ae67bb92a6e31237912afc6e643da1188dee31a5b75c34f4b8b"
+      },
+      "short": {
+        "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_short_term_ground_truth.json",
+        "sha256": "1012836c3d616ff73e00738148b5fbbacb1c05d042afcb6bf9146b1e84259ba1"
+      }
+    },
+    "source": {
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_250bars.txt",
+      "sha256": "51b6877ad1d306580c6eb45ed8823198fe95b874a522d96beaa03609f32f2af9"
+    }
+  },
+  "base_main_commit": "dd09611f6d29f46dab5f4d488e9bf7c3b4a81902",
+  "checks": [
+    {
+      "adapter": "source_clock_and_decimal_ohlc_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "source.candles",
+      "passed": true
+    },
+    {
+      "adapter": "isolated_direct_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "isolated.confirmed",
+      "passed": true
+    },
+    {
+      "adapter": "isolated_right_edge_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "isolated.unresolved",
+      "passed": true
+    },
+    {
+      "adapter": "short_confirmation_join_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "short.points",
+      "passed": true
+    },
+    {
+      "adapter": "short_confirmation_join_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "short.vertices",
+      "passed": true
+    },
+    {
+      "adapter": "suppression_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "short.suppressed",
+      "passed": true
+    },
+    {
+      "adapter": "medium_canonical_short_vertex_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "medium.points",
+      "passed": true
+    },
+    {
+      "adapter": "medium_canonical_short_vertex_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "medium.potentials",
+      "passed": true
+    },
+    {
+      "adapter": "medium_canonical_short_vertex_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "medium.vertices",
+      "passed": true
+    },
+    {
+      "adapter": "suppression_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "medium.suppressed",
+      "passed": true
+    },
+    {
+      "adapter": "long_canonical_medium_vertex_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "long.points",
+      "passed": true
+    },
+    {
+      "adapter": "long_canonical_medium_vertex_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "long.potentials",
+      "passed": true
+    },
+    {
+      "adapter": "long_canonical_medium_vertex_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "long.vertices",
+      "passed": true
+    },
+    {
+      "adapter": "suppression_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "long.suppressed",
+      "passed": true
+    },
+    {
+      "adapter": "direct_count_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "hierarchy.counts",
+      "passed": true
+    },
+    {
+      "adapter": "canonical_point_source_geometry_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "source.structural_geometry",
+      "passed": true
+    }
+  ],
+  "counts": {
+    "isolated_recognitions": 77,
+    "isolated_unresolved_potential": 1,
+    "long_points": 1,
+    "long_potentials": 0,
+    "long_suppressed": 0,
+    "long_vertices": 1,
+    "medium_points": 9,
+    "medium_potentials": 1,
+    "medium_suppressed": 0,
+    "medium_vertices": 9,
+    "short_points": 77,
+    "short_suppressed": 33,
+    "short_vertices": 44
+  },
+  "historical_evidence": {
+    "new_v2_evidence": [
+      "retained standalone oracle reproducer",
+      "external isolated byte-identical oracle reproduction",
+      "retained exact order-sensitive comparator",
+      "negative mutation controls with stable mismatch paths"
+    ],
+    "not_provable": [
+      "exact contents or behavior of the deleted historical helper",
+      "whether uncommitted production output was ever inspected before the historical oracle commit"
+    ],
+    "provable": [
+      "oracle commit precedes blind-result commit",
+      "frozen oracle and blind-result bytes remain unchanged",
+      "the retained comparator reports zero current semantic mismatches"
+    ]
+  },
+  "mismatch_count": 0,
+  "negative_controls": [
+    {
+      "actual_result": "MISMATCH",
+      "expected_result": "MISMATCH",
+      "first_mismatch": {
+        "explanation": "short point is not a confirmed isolated point",
+        "oracle": "valid semantic schema",
+        "path": "/project/short/vertices/0/index",
+        "project": "AdapterError"
+      },
+      "name": "short_vertex_source_index",
+      "passed": true
+    },
+    {
+      "actual_result": "MISMATCH",
+      "expected_result": "MISMATCH",
+      "first_mismatch": {
+        "explanation": "short point disagrees with isolated provenance",
+        "oracle": "valid semantic schema",
+        "path": "/project/medium/points/0/confirmed_by",
+        "project": "AdapterError"
+      },
+      "name": "confirmed_by_provenance",
+      "passed": true
+    },
+    {
+      "actual_result": "MISMATCH",
+      "expected_result": "MISMATCH",
+      "first_mismatch": {
+        "explanation": "exact values differ",
+        "oracle": "STRICT",
+        "path": "/short/vertices/0/basis",
+        "project": "RIGHT_INSIDE_BAR"
+      },
+      "name": "ordered_vertex_reordering",
+      "passed": true
+    },
+    {
+      "actual_result": "MISMATCH",
+      "expected_result": "MISMATCH",
+      "first_mismatch": {
+        "explanation": "exact values differ",
+        "oracle": "29128",
+        "path": "/source/candles/0/high",
+        "project": "29128.25"
+      },
+      "name": "one_tick_source_geometry",
+      "passed": true
+    },
+    {
+      "actual_result": "MISMATCH",
+      "expected_result": "MISMATCH",
+      "first_mismatch": {
+        "explanation": "text field is missing or has an invalid type",
+        "oracle": "valid semantic schema",
+        "path": "/project/isolated/recognitions/0/point/status",
+        "project": "AdapterError"
+      },
+      "name": "missing_status",
+      "passed": true
+    },
+    {
+      "actual_result": "EXACT_MATCH",
+      "expected_result": "EXACT_MATCH",
+      "first_mismatch": null,
+      "name": "enum_casing_representation_only",
+      "passed": true
+    }
+  ],
+  "oracle_commit": "6445460c25798a491c4a2182cb6107519f5bf552",
+  "overall_classification": "EXACT_MATCH",
+  "schema_version": 2,
+  "tool": {
+    "filename": "mnq_5m_exact_compare.py",
+    "sha256": "1da0b5dce9370251e88e187b9aa5f7e67993c93860cd8c7ffeedd129ff3a0253"
+  }
+}
