@@ -1,0 +1,109 @@
+{
+  "case_id": "real-mnq-5m-validation",
+  "comparison": {
+    "checks": [
+      {
+        "match": true,
+        "name": "isolated.confirmed"
+      },
+      {
+        "match": true,
+        "name": "isolated.unresolved_potential"
+      },
+      {
+        "match": true,
+        "name": "isolated.statuses"
+      },
+      {
+        "match": true,
+        "name": "source.ohlc"
+      },
+      {
+        "match": true,
+        "name": "isolated.source_geometry"
+      },
+      {
+        "match": true,
+        "name": "short.points"
+      },
+      {
+        "match": true,
+        "name": "short.vertices"
+      },
+      {
+        "match": true,
+        "name": "short.suppressed"
+      },
+      {
+        "match": true,
+        "name": "medium.points"
+      },
+      {
+        "match": true,
+        "name": "medium.vertices"
+      },
+      {
+        "match": true,
+        "name": "medium.potentials"
+      },
+      {
+        "match": true,
+        "name": "medium.suppressed"
+      },
+      {
+        "match": true,
+        "name": "long.points"
+      },
+      {
+        "match": true,
+        "name": "long.vertices"
+      },
+      {
+        "match": true,
+        "name": "long.potentials"
+      },
+      {
+        "match": true,
+        "name": "long.suppressed"
+      }
+    ],
+    "failed_checks": [],
+    "per_layer": {
+      "isolated": "EXACT_MATCH",
+      "long": "EXACT_MATCH",
+      "medium": "EXACT_MATCH",
+      "short": "EXACT_MATCH",
+      "source": "EXACT_MATCH"
+    },
+    "result": "EXACT_MATCH",
+    "shared_semantics": "ordered identities, source indexes and timestamps, HIGH/LOW kind, source OHLC geometry and pivot price, recognition status and basis, confirmer provenance, right-edge potentials, canonical vertices, suppression membership and reason, and recursive hierarchy provenance"
+  },
+  "counts": {
+    "isolated_recognitions": 77,
+    "isolated_unresolved_potential": 1,
+    "long_points": 1,
+    "long_potentials": 0,
+    "long_suppressed": 0,
+    "long_vertices": 1,
+    "medium_points": 9,
+    "medium_potentials": 1,
+    "medium_suppressed": 0,
+    "medium_vertices": 9,
+    "short_points": 77,
+    "short_suppressed": 33,
+    "short_vertices": 44
+  },
+  "oracle_manifest": {
+    "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_oracle_manifest.json",
+    "sha256": "21cae55737561858abfb62b33b2e24722f7ba5f3e7b35a14b578b892c26595b2"
+  },
+  "project_result": {
+    "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_project_blind_result.json",
+    "sha256": "fee435a71fd22de80248d111ba9ebae2640baa7b7c9ce9103eadfae931df6539"
+  },
+  "schema_version": 1,
+  "source": {
+    "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_250bars.txt",
+    "sha256": "51b6877ad1d306580c6eb45ed8823198fe95b874a522d96beaa03609f32f2af9"
+  }
+}
