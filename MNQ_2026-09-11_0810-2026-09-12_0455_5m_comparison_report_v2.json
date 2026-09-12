@@ -4,7 +4,9 @@
     "long_canonical_medium_vertex_projection": "Resolves LONG pivot through source_vertex and its nested MEDIUM provenance; this deliberately uses source_vertex.confirmed_by rather than the LONG point's own confirmed_by.",
     "medium_canonical_short_vertex_projection": "Resolves oracle SHORT references and project nested SHORT points to complete canonical SHORT records; previous same-kind provenance is derived only from ordered canonical SHORT vertices.",
     "representation_only_fields": "Enum casing and the zero-offset technical timestamp suffix are normalized. No ordered identity, price, source clock, basis, status, confirmer, source level, potential, vertex, or suppression semantics are omitted.",
-    "short_confirmation_join_projection": "Joins by unique source index to canonical isolated evidence and verifies nested kind, exact price, and recognition basis."
+    "short_confirmation_join_projection": "Joins by unique source index to canonical isolated evidence and verifies nested kind, exact price, and recognition basis.",
+    "short_no_potential_projection": "The canonical SHORT model has no potential collection. The oracle's explicit list and any project list are compared to the required empty ordered representation; missing project storage is the documented schema representation.",
+    "short_suppression_provenance_projection": "Compares every stored suppressed point and reason, then deterministically reconstructs the oracle-only retained_vertex or containing_pair plus suppression_event from the project's ordered canonical SHORT points under the approved fixed-left rule."
   },
   "artifacts": {
     "blind_result": {
@@ -23,7 +25,7 @@
     },
     "manifest_v2": {
       "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_oracle_manifest_v2.json",
-      "sha256": "82c5f4624bc26a914813980b2a8343f2b75853978f14a7c4f57b693338f66a3e"
+      "sha256": "6c30937d8dd9f52e0ee53979757b442ef2002b4b2f4fdb80e287e0c24b643c5a"
     },
     "oracle": {
       "isolated": {
@@ -86,7 +88,14 @@
       "passed": true
     },
     {
-      "adapter": "suppression_projection",
+      "adapter": "short_no_potential_projection",
+      "mismatch_count": 0,
+      "mismatches": [],
+      "name": "short.potentials",
+      "passed": true
+    },
+    {
+      "adapter": "short_suppression_provenance_projection",
       "mismatch_count": 0,
       "mismatches": [],
       "name": "short.suppressed",
@@ -263,6 +272,30 @@
       "first_mismatch": null,
       "name": "enum_casing_representation_only",
       "passed": true
+    },
+    {
+      "actual_result": "MISMATCH",
+      "expected_result": "MISMATCH",
+      "first_mismatch": {
+        "explanation": "reference is not a canonical SHORT point",
+        "oracle": "valid semantic schema",
+        "path": "/oracle/short/suppressed/0/retained_vertex/index",
+        "project": "AdapterError"
+      },
+      "name": "short_suppression_provenance",
+      "passed": true
+    },
+    {
+      "actual_result": "MISMATCH",
+      "expected_result": "MISMATCH",
+      "first_mismatch": {
+        "explanation": "ordered lengths differ",
+        "oracle": 1,
+        "path": "/short/potentials",
+        "project": 0
+      },
+      "name": "short_potential_injection",
+      "passed": true
     }
   ],
   "oracle_commit": "6445460c25798a491c4a2182cb6107519f5bf552",
@@ -270,6 +303,6 @@
   "schema_version": 2,
   "tool": {
     "filename": "mnq_5m_exact_compare.py",
-    "sha256": "1da0b5dce9370251e88e187b9aa5f7e67993c93860cd8c7ffeedd129ff3a0253"
+    "sha256": "50882bc50cd1abd6edf2eadce53950cdc5e9efd67af36be433b70d198ca1257d"
   }
 }
