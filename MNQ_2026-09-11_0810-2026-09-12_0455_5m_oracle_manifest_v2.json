@@ -97,9 +97,9 @@
   },
   "tools": {
     "comparator": {
-      "commit": "1c38bc246f221e718a824744df93a0aa468e90bf",
+      "commit": "97f3cc108c6669087f40cb301765eb522bac1ef9",
       "filename": "tools/validation/mnq_5m_exact_compare.py",
-      "sha256": "1da0b5dce9370251e88e187b9aa5f7e67993c93860cd8c7ffeedd129ff3a0253"
+      "sha256": "50882bc50cd1abd6edf2eadce53950cdc5e9efd67af36be433b70d198ca1257d"
     },
     "oracle_reproducer": {
       "commit": "602428ef639224dcc62cd882e166406f931b4571",
