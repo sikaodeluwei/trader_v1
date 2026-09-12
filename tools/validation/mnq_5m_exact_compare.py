@@ -266,6 +266,174 @@ def point_ref(point: Json) -> Json:
     }
 
 
+def validate_expected_short_point_ref(
+    raw: object,
+    short_by_index: dict[int, Json],
+    path: str,
+) -> Json:
+    """Resolve one oracle SHORT reference without discarding its identity."""
+
+    if not isinstance(raw, dict):
+        raise AdapterError(path, "missing SHORT point reference")
+    index = integer(raw.get("index"), f"{path}/index")
+    if index not in short_by_index:
+        raise AdapterError(f"{path}/index", "reference is not a canonical SHORT point")
+    canonical = short_by_index[index]
+    observed = {
+        "index": index,
+        "kind": canonical_token(raw.get("kind"), f"{path}/kind"),
+        "price": decimal(raw.get("price"), f"{path}/price"),
+        "timestamp": text(raw.get("timestamp"), f"{path}/timestamp"),
+    }
+    if observed != point_ref(canonical):
+        raise AdapterError(path, "SHORT point reference is not exact")
+    return canonical
+
+
+def _short_is_more_extreme(candidate: Json, current: Json) -> bool:
+    if current["kind"] == "HIGH":
+        return candidate["price"] > current["price"]
+    return candidate["price"] < current["price"]
+
+
+def _short_pair_bounds(first: Json, second: Json) -> tuple[Decimal, Decimal] | None:
+    if first["kind"] == second["kind"]:
+        return None
+    high = first if first["kind"] == "HIGH" else second
+    low = first if first["kind"] == "LOW" else second
+    return high["price"], low["price"]
+
+
+def derive_short_suppression_provenance(points: list[Json]) -> list[Json]:
+    """Reconstruct deterministic suppression evidence from canonical points.
+
+    The production structure stores only the suppressed point and reason.  The
+    oracle additionally records the retained same-kind vertex or fixed-left
+    containing pair and event.  Replaying the approved normalization makes
+    those oracle-only fields independently comparable instead of dropping
+    them from the cross-schema audit.
+    """
+
+    vertices: list[Json] = []
+    same_kind_suppressed: list[Json] = []
+    run: list[Json] = []
+
+    def flush() -> None:
+        if not run:
+            return
+        winner = run[0]
+        for candidate in run[1:]:
+            if _short_is_more_extreme(candidate, winner):
+                winner = candidate
+        vertices.append(winner)
+        for point in run:
+            if point is not winner:
+                same_kind_suppressed.append(
+                    {
+                        "point": point,
+                        "reason": "CONSECUTIVE_SAME_KIND",
+                        "retained_vertex": point_ref(winner),
+                    }
+                )
+
+    for point in points:
+        if run and point["kind"] != run[-1]["kind"]:
+            flush()
+            run = []
+        run.append(point)
+    flush()
+
+    normalized = list(vertices)
+    inside_suppressed: list[Json] = []
+    event = 0
+    changed = True
+    while changed:
+        changed = False
+        pair_start = 0
+        while pair_start + 3 < len(normalized):
+            earlier = normalized[pair_start : pair_start + 2]
+            later = normalized[pair_start + 2 : pair_start + 4]
+            earlier_bounds = _short_pair_bounds(*earlier)
+            later_bounds = _short_pair_bounds(*later)
+            contained = (
+                earlier_bounds is not None
+                and later_bounds is not None
+                and later_bounds[0] <= earlier_bounds[0]
+                and later_bounds[1] >= earlier_bounds[1]
+            )
+            if not contained:
+                pair_start += 2
+                continue
+            event += 1
+            for point in later:
+                inside_suppressed.append(
+                    {
+                        "containing_pair": [point_ref(item) for item in earlier],
+                        "point": point,
+                        "reason": "INSIDE_STRUCTURE",
+                        "suppression_event": event,
+                    }
+                )
+            del normalized[pair_start + 2 : pair_start + 4]
+            changed = True
+    return same_kind_suppressed + inside_suppressed
+
+
+def expected_short_suppression(
+    item: Json,
+    short_by_index: dict[int, Json],
+    path: str,
+) -> Json:
+    """Canonicalize every rich oracle suppression-provenance field."""
+
+    reason = canonical_token(item.get("reason"), f"{path}/reason")
+    point_raw = item.get("point")
+    if not isinstance(point_raw, dict):
+        raise AdapterError(f"{path}/point", "missing suppressed SHORT point")
+    point = expected_short_point(point_raw, f"{path}/point")
+    if point["index"] not in short_by_index or point != short_by_index[point["index"]]:
+        raise AdapterError(f"{path}/point", "suppressed point is not canonical SHORT evidence")
+
+    if reason == "CONSECUTIVE_SAME_KIND":
+        if set(item) != {"point", "reason", "retained_vertex"}:
+            raise AdapterError(path, "same-kind suppression fields are incomplete or unexpected")
+        retained = validate_expected_short_point_ref(
+            item.get("retained_vertex"),
+            short_by_index,
+            f"{path}/retained_vertex",
+        )
+        return {
+            "point": point,
+            "reason": reason,
+            "retained_vertex": point_ref(retained),
+        }
+
+    if reason == "INSIDE_STRUCTURE":
+        if set(item) != {"containing_pair", "point", "reason", "suppression_event"}:
+            raise AdapterError(path, "inside suppression fields are incomplete or unexpected")
+        pair_raw = item.get("containing_pair")
+        if not isinstance(pair_raw, list) or len(pair_raw) != 2:
+            raise AdapterError(f"{path}/containing_pair", "containing pair must have two points")
+        pair = [
+            validate_expected_short_point_ref(
+                raw,
+                short_by_index,
+                f"{path}/containing_pair/{index}",
+            )
+            for index, raw in enumerate(pair_raw)
+        ]
+        return {
+            "containing_pair": [point_ref(value) for value in pair],
+            "point": point,
+            "reason": reason,
+            "suppression_event": integer(
+                item.get("suppression_event"), f"{path}/suppression_event"
+            ),
+        }
+
+    raise AdapterError(f"{path}/reason", "unknown SHORT suppression reason")
+
+
 def validate_expected_short_ref(
     raw: object,
     short_by_index: dict[int, Json],
@@ -739,17 +907,14 @@ def compare_payloads(
             )
 
         expected_short_suppressed = [
-            {
-                "point": expected_short_point(
-                    item["point"], f"/oracle/short/suppressed/{index}/point"
-                ),
-                "reason": canonical_token(
-                    item.get("reason"), f"/oracle/short/suppressed/{index}/reason"
-                ),
-            }
+            expected_short_suppression(
+                item,
+                expected_short_by_index,
+                f"/oracle/short/suppressed/{index}",
+            )
             for index, item in enumerate(short["suppressed"])
         ]
-        actual_short_suppressed = [
+        actual_short_suppressed_stored = [
             {
                 "point": actual_short_point(
                     item["point"],
@@ -762,6 +927,27 @@ def compare_payloads(
             }
             for index, item in enumerate(hierarchy["short_term"]["suppressed"])
         ]
+        actual_short_suppressed = derive_short_suppression_provenance(actual_short)
+        stored_projection = [
+            {"point": item["point"], "reason": item["reason"]}
+            for item in actual_short_suppressed
+        ]
+        if actual_short_suppressed_stored != stored_projection:
+            raise AdapterError(
+                "/project/short/suppressed",
+                "stored suppression evidence disagrees with deterministic provenance",
+            )
+
+        expected_short_potentials = short.get("potentials")
+        if not isinstance(expected_short_potentials, list):
+            raise AdapterError(
+                "/oracle/short/potentials", "SHORT potentials must be an ordered list"
+            )
+        actual_short_potentials = hierarchy["short_term"].get("potentials", [])
+        if not isinstance(actual_short_potentials, list):
+            raise AdapterError(
+                "/project/short/potentials", "SHORT potentials must be an ordered list"
+            )
 
         expected_medium_potentials = [
             expected_medium_point(
@@ -911,7 +1097,8 @@ def compare_payloads(
             make_check("isolated.unresolved", expected_unresolved(isolated["unresolved_right_edge_potential"], "/oracle/isolated/unresolved"), actual_unresolved(hierarchy["isolated"]["unresolved_potential"], source_rows, "/project/isolated/unresolved"), "isolated_right_edge_projection"),
             make_check("short.points", expected_short, actual_short, "short_confirmation_join_projection"),
             make_check("short.vertices", expected_short_vertices, actual_short_vertices, "short_confirmation_join_projection"),
-            make_check("short.suppressed", expected_short_suppressed, actual_short_suppressed, "suppression_projection"),
+            make_check("short.potentials", expected_short_potentials, actual_short_potentials, "short_no_potential_projection"),
+            make_check("short.suppressed", expected_short_suppressed, actual_short_suppressed, "short_suppression_provenance_projection"),
             make_check("medium.points", expected_medium, actual_medium, "medium_canonical_short_vertex_projection"),
             make_check("medium.potentials", expected_medium_potentials, actual_medium_potentials, "medium_canonical_short_vertex_projection"),
             make_check("medium.vertices", expected_medium_vertices, actual_medium_vertices, "medium_canonical_short_vertex_projection"),
@@ -981,29 +1168,55 @@ def mutate_representation_only(payload: Json) -> None:
     recognition["point"]["status"] = recognition["point"]["status"].upper()
 
 
+def mutate_short_suppression_provenance(payload: Json) -> None:
+    item = next(
+        value for value in payload["suppressed"] if "retained_vertex" in value
+    )
+    item["retained_vertex"]["index"] += 10_000
+
+
+def mutate_short_potential(payload: Json) -> None:
+    payload["potentials"].append(deepcopy(payload["points"][0]))
+
+
 def run_negative_controls(
     source_rows: list[Json],
     oracle_payloads: tuple[Json, Json, Json, Json],
     project: Json,
 ) -> list[Json]:
-    controls: list[tuple[str, Callable[[Json], None], str]] = [
-        ("short_vertex_source_index", mutate_short_index, "MISMATCH"),
-        ("confirmed_by_provenance", mutate_confirmed_by, "MISMATCH"),
-        ("ordered_vertex_reordering", mutate_order, "MISMATCH"),
-        ("one_tick_source_geometry", mutate_ohlc, "MISMATCH"),
-        ("missing_status", mutate_missing_status, "MISMATCH"),
-        ("enum_casing_representation_only", mutate_representation_only, "EXACT_MATCH"),
+    controls: list[tuple[str, str, Callable[[Json], None], str]] = [
+        ("short_vertex_source_index", "project", mutate_short_index, "MISMATCH"),
+        ("confirmed_by_provenance", "project", mutate_confirmed_by, "MISMATCH"),
+        ("ordered_vertex_reordering", "project", mutate_order, "MISMATCH"),
+        ("one_tick_source_geometry", "project", mutate_ohlc, "MISMATCH"),
+        ("missing_status", "project", mutate_missing_status, "MISMATCH"),
+        ("enum_casing_representation_only", "project", mutate_representation_only, "EXACT_MATCH"),
+        ("short_suppression_provenance", "short", mutate_short_suppression_provenance, "MISMATCH"),
+        ("short_potential_injection", "short", mutate_short_potential, "MISMATCH"),
     ]
     results = []
     with tempfile.TemporaryDirectory(prefix="mnq-5m-negative-controls-") as directory:
         root = Path(directory)
-        for name, mutate, expected in controls:
+        for name, target, mutate, expected in controls:
             candidate = deepcopy(project)
-            mutate(candidate)
+            candidate_oracles = deepcopy(oracle_payloads)
+            if target == "project":
+                mutate(candidate)
+            else:
+                mutate(candidate_oracles[1])
             path = root / f"{name}.json"
-            path.write_bytes(mutation_bytes(candidate))
-            reloaded = load_json(path)
-            checks = compare_payloads(source_rows, *oracle_payloads, reloaded)
+            if target == "project":
+                path.write_bytes(mutation_bytes(candidate))
+                candidate = load_json(path)
+            else:
+                path.write_bytes(mutation_bytes(candidate_oracles[1]))
+                candidate_oracles = (
+                    candidate_oracles[0],
+                    load_json(path),
+                    candidate_oracles[2],
+                    candidate_oracles[3],
+                )
+            checks = compare_payloads(source_rows, *candidate_oracles, candidate)
             actual, count = outcome(checks)
             first = next(
                 (
@@ -1069,6 +1282,8 @@ def main() -> None:
         "adapter_definitions": {
             "isolated_direct_projection": "Retains index, kind, exact price, source clock, basis, status, and immediate next-candle confirmer.",
             "short_confirmation_join_projection": "Joins by unique source index to canonical isolated evidence and verifies nested kind, exact price, and recognition basis.",
+            "short_no_potential_projection": "The canonical SHORT model has no potential collection. The oracle's explicit list and any project list are compared to the required empty ordered representation; missing project storage is the documented schema representation.",
+            "short_suppression_provenance_projection": "Compares every stored suppressed point and reason, then deterministically reconstructs the oracle-only retained_vertex or containing_pair plus suppression_event from the project's ordered canonical SHORT points under the approved fixed-left rule.",
             "medium_canonical_short_vertex_projection": "Resolves oracle SHORT references and project nested SHORT points to complete canonical SHORT records; previous same-kind provenance is derived only from ordered canonical SHORT vertices.",
             "long_canonical_medium_vertex_projection": "Resolves LONG pivot through source_vertex and its nested MEDIUM provenance; this deliberately uses source_vertex.confirmed_by rather than the LONG point's own confirmed_by.",
             "representation_only_fields": "Enum casing and the zero-offset technical timestamp suffix are normalized. No ordered identity, price, source clock, basis, status, confirmer, source level, potential, vertex, or suppression semantics are omitted.",
