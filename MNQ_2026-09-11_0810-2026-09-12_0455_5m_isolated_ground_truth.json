@@ -1,0 +1,869 @@
+{
+  "case_id": "real-mnq-5m-validation",
+  "confirmed": [
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 5,
+        "timestamp": "2026-09-11 08:35:00"
+      },
+      "index": 4,
+      "kind": "HIGH",
+      "price": 29145.0,
+      "timestamp": "2026-09-11 08:30:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 7,
+        "timestamp": "2026-09-11 08:45:00"
+      },
+      "index": 6,
+      "kind": "HIGH",
+      "price": 29166.0,
+      "timestamp": "2026-09-11 08:40:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 8,
+        "timestamp": "2026-09-11 08:50:00"
+      },
+      "index": 7,
+      "kind": "LOW",
+      "price": 29115.25,
+      "timestamp": "2026-09-11 08:45:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 12,
+        "timestamp": "2026-09-11 09:10:00"
+      },
+      "index": 11,
+      "kind": "HIGH",
+      "price": 29171.75,
+      "timestamp": "2026-09-11 09:05:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 16,
+        "timestamp": "2026-09-11 09:30:00"
+      },
+      "index": 15,
+      "kind": "LOW",
+      "price": 29124.25,
+      "timestamp": "2026-09-11 09:25:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 22,
+        "timestamp": "2026-09-11 10:00:00"
+      },
+      "index": 21,
+      "kind": "LOW",
+      "price": 29104.25,
+      "timestamp": "2026-09-11 09:55:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 24,
+        "timestamp": "2026-09-11 10:10:00"
+      },
+      "index": 23,
+      "kind": "HIGH",
+      "price": 29138.25,
+      "timestamp": "2026-09-11 10:05:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 25,
+        "timestamp": "2026-09-11 10:15:00"
+      },
+      "index": 24,
+      "kind": "LOW",
+      "price": 29120.75,
+      "timestamp": "2026-09-11 10:10:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 30,
+        "timestamp": "2026-09-11 10:40:00"
+      },
+      "index": 29,
+      "kind": "LOW",
+      "price": 29083.5,
+      "timestamp": "2026-09-11 10:35:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 34,
+        "timestamp": "2026-09-11 11:00:00"
+      },
+      "index": 33,
+      "kind": "HIGH",
+      "price": 29112.0,
+      "timestamp": "2026-09-11 10:55:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 38,
+        "timestamp": "2026-09-11 11:20:00"
+      },
+      "index": 37,
+      "kind": "LOW",
+      "price": 29060.75,
+      "timestamp": "2026-09-11 11:15:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 39,
+        "timestamp": "2026-09-11 11:25:00"
+      },
+      "index": 38,
+      "kind": "HIGH",
+      "price": 29084.25,
+      "timestamp": "2026-09-11 11:20:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 40,
+        "timestamp": "2026-09-11 11:30:00"
+      },
+      "index": 39,
+      "kind": "LOW",
+      "price": 29063.0,
+      "timestamp": "2026-09-11 11:25:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 42,
+        "timestamp": "2026-09-11 11:40:00"
+      },
+      "index": 41,
+      "kind": "LOW",
+      "price": 29048.25,
+      "timestamp": "2026-09-11 11:35:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 44,
+        "timestamp": "2026-09-11 11:50:00"
+      },
+      "index": 43,
+      "kind": "HIGH",
+      "price": 29089.5,
+      "timestamp": "2026-09-11 11:45:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 46,
+        "timestamp": "2026-09-11 12:00:00"
+      },
+      "index": 45,
+      "kind": "LOW",
+      "price": 29050.75,
+      "timestamp": "2026-09-11 11:55:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 54,
+        "timestamp": "2026-09-11 12:40:00"
+      },
+      "index": 53,
+      "kind": "HIGH",
+      "price": 29131.75,
+      "timestamp": "2026-09-11 12:35:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 55,
+        "timestamp": "2026-09-11 12:45:00"
+      },
+      "index": 54,
+      "kind": "LOW",
+      "price": 29116.75,
+      "timestamp": "2026-09-11 12:40:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 58,
+        "timestamp": "2026-09-11 13:00:00"
+      },
+      "index": 57,
+      "kind": "HIGH",
+      "price": 29151.5,
+      "timestamp": "2026-09-11 12:55:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 63,
+        "timestamp": "2026-09-11 13:25:00"
+      },
+      "index": 62,
+      "kind": "HIGH",
+      "price": 29165.0,
+      "timestamp": "2026-09-11 13:20:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 65,
+        "timestamp": "2026-09-11 13:35:00"
+      },
+      "index": 64,
+      "kind": "LOW",
+      "price": 29130.75,
+      "timestamp": "2026-09-11 13:30:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 71,
+        "timestamp": "2026-09-11 14:05:00"
+      },
+      "index": 70,
+      "kind": "HIGH",
+      "price": 29243.25,
+      "timestamp": "2026-09-11 14:00:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 79,
+        "timestamp": "2026-09-11 14:45:00"
+      },
+      "index": 78,
+      "kind": "HIGH",
+      "price": 29239.75,
+      "timestamp": "2026-09-11 14:40:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 80,
+        "timestamp": "2026-09-11 14:50:00"
+      },
+      "index": 79,
+      "kind": "LOW",
+      "price": 29218.0,
+      "timestamp": "2026-09-11 14:45:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 81,
+        "timestamp": "2026-09-11 14:55:00"
+      },
+      "index": 80,
+      "kind": "HIGH",
+      "price": 29261.0,
+      "timestamp": "2026-09-11 14:50:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 85,
+        "timestamp": "2026-09-11 15:15:00"
+      },
+      "index": 84,
+      "kind": "HIGH",
+      "price": 29268.5,
+      "timestamp": "2026-09-11 15:10:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 90,
+        "timestamp": "2026-09-11 15:40:00"
+      },
+      "index": 89,
+      "kind": "LOW",
+      "price": 29227.75,
+      "timestamp": "2026-09-11 15:35:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 92,
+        "timestamp": "2026-09-11 15:50:00"
+      },
+      "index": 91,
+      "kind": "HIGH",
+      "price": 29243.25,
+      "timestamp": "2026-09-11 15:45:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 93,
+        "timestamp": "2026-09-11 15:55:00"
+      },
+      "index": 92,
+      "kind": "LOW",
+      "price": 29226.0,
+      "timestamp": "2026-09-11 15:50:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 96,
+        "timestamp": "2026-09-11 16:10:00"
+      },
+      "index": 95,
+      "kind": "HIGH",
+      "price": 29271.25,
+      "timestamp": "2026-09-11 16:05:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 100,
+        "timestamp": "2026-09-11 16:30:00"
+      },
+      "index": 99,
+      "kind": "HIGH",
+      "price": 29317.0,
+      "timestamp": "2026-09-11 16:25:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 102,
+        "timestamp": "2026-09-11 16:40:00"
+      },
+      "index": 101,
+      "kind": "HIGH",
+      "price": 29313.25,
+      "timestamp": "2026-09-11 16:35:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 108,
+        "timestamp": "2026-09-11 17:10:00"
+      },
+      "index": 107,
+      "kind": "HIGH",
+      "price": 29333.75,
+      "timestamp": "2026-09-11 17:05:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 112,
+        "timestamp": "2026-09-11 17:30:00"
+      },
+      "index": 111,
+      "kind": "HIGH",
+      "price": 29315.0,
+      "timestamp": "2026-09-11 17:25:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 113,
+        "timestamp": "2026-09-11 17:35:00"
+      },
+      "index": 112,
+      "kind": "LOW",
+      "price": 29298.75,
+      "timestamp": "2026-09-11 17:30:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 117,
+        "timestamp": "2026-09-11 17:55:00"
+      },
+      "index": 116,
+      "kind": "LOW",
+      "price": 29304.0,
+      "timestamp": "2026-09-11 17:50:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 125,
+        "timestamp": "2026-09-11 18:35:00"
+      },
+      "index": 124,
+      "kind": "LOW",
+      "price": 29308.5,
+      "timestamp": "2026-09-11 18:30:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 127,
+        "timestamp": "2026-09-11 18:45:00"
+      },
+      "index": 126,
+      "kind": "HIGH",
+      "price": 29329.0,
+      "timestamp": "2026-09-11 18:40:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 129,
+        "timestamp": "2026-09-11 18:55:00"
+      },
+      "index": 128,
+      "kind": "LOW",
+      "price": 29305.25,
+      "timestamp": "2026-09-11 18:50:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 130,
+        "timestamp": "2026-09-11 19:00:00"
+      },
+      "index": 129,
+      "kind": "HIGH",
+      "price": 29318.25,
+      "timestamp": "2026-09-11 18:55:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 133,
+        "timestamp": "2026-09-11 19:15:00"
+      },
+      "index": 132,
+      "kind": "LOW",
+      "price": 29289.75,
+      "timestamp": "2026-09-11 19:10:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 137,
+        "timestamp": "2026-09-11 19:35:00"
+      },
+      "index": 136,
+      "kind": "HIGH",
+      "price": 29325.0,
+      "timestamp": "2026-09-11 19:30:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 139,
+        "timestamp": "2026-09-11 19:45:00"
+      },
+      "index": 138,
+      "kind": "LOW",
+      "price": 29296.75,
+      "timestamp": "2026-09-11 19:40:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 141,
+        "timestamp": "2026-09-11 19:55:00"
+      },
+      "index": 140,
+      "kind": "HIGH",
+      "price": 29338.0,
+      "timestamp": "2026-09-11 19:50:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 145,
+        "timestamp": "2026-09-11 20:15:00"
+      },
+      "index": 144,
+      "kind": "LOW",
+      "price": 29304.5,
+      "timestamp": "2026-09-11 20:10:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 147,
+        "timestamp": "2026-09-11 20:25:00"
+      },
+      "index": 146,
+      "kind": "HIGH",
+      "price": 29347.75,
+      "timestamp": "2026-09-11 20:20:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 156,
+        "timestamp": "2026-09-11 21:10:00"
+      },
+      "index": 155,
+      "kind": "HIGH",
+      "price": 29500.75,
+      "timestamp": "2026-09-11 21:05:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 162,
+        "timestamp": "2026-09-11 21:40:00"
+      },
+      "index": 161,
+      "kind": "LOW",
+      "price": 29347.25,
+      "timestamp": "2026-09-11 21:35:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 165,
+        "timestamp": "2026-09-11 21:55:00"
+      },
+      "index": 164,
+      "kind": "HIGH",
+      "price": 29472.5,
+      "timestamp": "2026-09-11 21:50:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 166,
+        "timestamp": "2026-09-11 22:00:00"
+      },
+      "index": 165,
+      "kind": "LOW",
+      "price": 29383.25,
+      "timestamp": "2026-09-11 21:55:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 167,
+        "timestamp": "2026-09-11 22:05:00"
+      },
+      "index": 166,
+      "kind": "HIGH",
+      "price": 29475.0,
+      "timestamp": "2026-09-11 22:00:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 169,
+        "timestamp": "2026-09-11 22:15:00"
+      },
+      "index": 168,
+      "kind": "LOW",
+      "price": 29365.5,
+      "timestamp": "2026-09-11 22:10:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 173,
+        "timestamp": "2026-09-11 22:35:00"
+      },
+      "index": 172,
+      "kind": "HIGH",
+      "price": 29467.0,
+      "timestamp": "2026-09-11 22:30:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 177,
+        "timestamp": "2026-09-11 22:55:00"
+      },
+      "index": 176,
+      "kind": "LOW",
+      "price": 29334.0,
+      "timestamp": "2026-09-11 22:50:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 178,
+        "timestamp": "2026-09-11 23:00:00"
+      },
+      "index": 177,
+      "kind": "HIGH",
+      "price": 29401.5,
+      "timestamp": "2026-09-11 22:55:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 179,
+        "timestamp": "2026-09-11 23:05:00"
+      },
+      "index": 178,
+      "kind": "LOW",
+      "price": 29349.0,
+      "timestamp": "2026-09-11 23:00:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 181,
+        "timestamp": "2026-09-11 23:15:00"
+      },
+      "index": 180,
+      "kind": "HIGH",
+      "price": 29433.0,
+      "timestamp": "2026-09-11 23:10:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 182,
+        "timestamp": "2026-09-11 23:20:00"
+      },
+      "index": 181,
+      "kind": "LOW",
+      "price": 29375.25,
+      "timestamp": "2026-09-11 23:15:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 186,
+        "timestamp": "2026-09-11 23:40:00"
+      },
+      "index": 185,
+      "kind": "HIGH",
+      "price": 29499.5,
+      "timestamp": "2026-09-11 23:35:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 187,
+        "timestamp": "2026-09-11 23:45:00"
+      },
+      "index": 186,
+      "kind": "LOW",
+      "price": 29462.75,
+      "timestamp": "2026-09-11 23:40:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 191,
+        "timestamp": "2026-09-12 00:05:00"
+      },
+      "index": 190,
+      "kind": "LOW",
+      "price": 29441.0,
+      "timestamp": "2026-09-12 00:00:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 193,
+        "timestamp": "2026-09-12 00:15:00"
+      },
+      "index": 192,
+      "kind": "HIGH",
+      "price": 29485.0,
+      "timestamp": "2026-09-12 00:10:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 201,
+        "timestamp": "2026-09-12 00:55:00"
+      },
+      "index": 200,
+      "kind": "HIGH",
+      "price": 29435.75,
+      "timestamp": "2026-09-12 00:50:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 205,
+        "timestamp": "2026-09-12 01:15:00"
+      },
+      "index": 204,
+      "kind": "HIGH",
+      "price": 29465.0,
+      "timestamp": "2026-09-12 01:10:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 206,
+        "timestamp": "2026-09-12 01:20:00"
+      },
+      "index": 205,
+      "kind": "LOW",
+      "price": 29435.75,
+      "timestamp": "2026-09-12 01:15:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 209,
+        "timestamp": "2026-09-12 01:35:00"
+      },
+      "index": 208,
+      "kind": "HIGH",
+      "price": 29479.25,
+      "timestamp": "2026-09-12 01:30:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 213,
+        "timestamp": "2026-09-12 01:55:00"
+      },
+      "index": 212,
+      "kind": "LOW",
+      "price": 29454.0,
+      "timestamp": "2026-09-12 01:50:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 215,
+        "timestamp": "2026-09-12 02:05:00"
+      },
+      "index": 214,
+      "kind": "LOW",
+      "price": 29448.5,
+      "timestamp": "2026-09-12 02:00:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 220,
+        "timestamp": "2026-09-12 02:30:00"
+      },
+      "index": 219,
+      "kind": "LOW",
+      "price": 29416.5,
+      "timestamp": "2026-09-12 02:25:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 223,
+        "timestamp": "2026-09-12 02:45:00"
+      },
+      "index": 222,
+      "kind": "HIGH",
+      "price": 29459.25,
+      "timestamp": "2026-09-12 02:40:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 230,
+        "timestamp": "2026-09-12 03:20:00"
+      },
+      "index": 229,
+      "kind": "LOW",
+      "price": 29405.25,
+      "timestamp": "2026-09-12 03:15:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 231,
+        "timestamp": "2026-09-12 03:25:00"
+      },
+      "index": 230,
+      "kind": "HIGH",
+      "price": 29425.75,
+      "timestamp": "2026-09-12 03:20:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 234,
+        "timestamp": "2026-09-12 03:40:00"
+      },
+      "index": 233,
+      "kind": "LOW",
+      "price": 29411.5,
+      "timestamp": "2026-09-12 03:35:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 239,
+        "timestamp": "2026-09-12 04:05:00"
+      },
+      "index": 238,
+      "kind": "LOW",
+      "price": 29380.25,
+      "timestamp": "2026-09-12 04:00:00"
+    },
+    {
+      "confirmation_basis": "RIGHT_INSIDE_BAR",
+      "confirmed_by": {
+        "index": 244,
+        "timestamp": "2026-09-12 04:30:00"
+      },
+      "index": 243,
+      "kind": "HIGH",
+      "price": 29387.0,
+      "timestamp": "2026-09-12 04:25:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 247,
+        "timestamp": "2026-09-12 04:45:00"
+      },
+      "index": 246,
+      "kind": "HIGH",
+      "price": 29396.75,
+      "timestamp": "2026-09-12 04:40:00"
+    },
+    {
+      "confirmation_basis": "STRICT",
+      "confirmed_by": {
+        "index": 249,
+        "timestamp": "2026-09-12 04:55:00"
+      },
+      "index": 248,
+      "kind": "LOW",
+      "price": 29383.25,
+      "timestamp": "2026-09-12 04:50:00"
+    }
+  ],
+  "level": "ISOLATED",
+  "schema_version": 1,
+  "source": {
+    "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_250bars.txt",
+    "instrument": "MNQ",
+    "row_count": 250,
+    "sha256": "51b6877ad1d306580c6eb45ed8823198fe95b874a522d96beaa03609f32f2af9",
+    "start_index": 0,
+    "timeframe": "5 minute"
+  },
+  "unresolved_right_edge_potential": {
+    "compared_with_left_index": 248,
+    "index": 249,
+    "kind": "HIGH",
+    "price": 29393.25,
+    "timestamp": "2026-09-12 04:55:00"
+  }
+}

@@ -1,0 +1,201 @@
+{
+  "case_id": "real-mnq-5m-validation",
+  "level": "LONG",
+  "points": [
+    {
+      "confirmed_by": {
+        "confirmed_by": {
+          "index": 192,
+          "kind": "HIGH",
+          "price": 29485.0,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-12 00:10:00"
+        },
+        "index": 185,
+        "kind": "HIGH",
+        "previous_same_kind": {
+          "index": 172,
+          "kind": "HIGH",
+          "price": 29467.0,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 22:30:00"
+        },
+        "price": 29499.5,
+        "source_level": "MEDIUM",
+        "source_vertex": {
+          "index": 185,
+          "kind": "HIGH",
+          "price": 29499.5,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 23:35:00"
+        },
+        "timestamp": "2026-09-11 23:35:00"
+      },
+      "index": 155,
+      "kind": "HIGH",
+      "previous_same_kind": {
+        "confirmed_by": {
+          "index": 129,
+          "kind": "HIGH",
+          "price": 29318.25,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 18:55:00"
+        },
+        "index": 107,
+        "kind": "HIGH",
+        "previous_same_kind": {
+          "index": 91,
+          "kind": "HIGH",
+          "price": 29243.25,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 15:45:00"
+        },
+        "price": 29333.75,
+        "source_level": "MEDIUM",
+        "source_vertex": {
+          "index": 107,
+          "kind": "HIGH",
+          "price": 29333.75,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 17:05:00"
+        },
+        "timestamp": "2026-09-11 17:05:00"
+      },
+      "price": 29500.75,
+      "source_level": "MEDIUM",
+      "source_vertex": {
+        "confirmed_by": {
+          "index": 172,
+          "kind": "HIGH",
+          "price": 29467.0,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 22:30:00"
+        },
+        "index": 155,
+        "kind": "HIGH",
+        "previous_same_kind": {
+          "index": 140,
+          "kind": "HIGH",
+          "price": 29338.0,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 19:50:00"
+        },
+        "price": 29500.75,
+        "source_level": "MEDIUM",
+        "source_vertex": {
+          "index": 155,
+          "kind": "HIGH",
+          "price": 29500.75,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 21:05:00"
+        },
+        "timestamp": "2026-09-11 21:05:00"
+      },
+      "timestamp": "2026-09-11 21:05:00"
+    }
+  ],
+  "potentials": [],
+  "schema_version": 1,
+  "source": {
+    "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_250bars.txt",
+    "instrument": "MNQ",
+    "row_count": 250,
+    "sha256": "51b6877ad1d306580c6eb45ed8823198fe95b874a522d96beaa03609f32f2af9",
+    "start_index": 0,
+    "timeframe": "5 minute"
+  },
+  "suppressed": [],
+  "vertices": [
+    {
+      "confirmed_by": {
+        "confirmed_by": {
+          "index": 192,
+          "kind": "HIGH",
+          "price": 29485.0,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-12 00:10:00"
+        },
+        "index": 185,
+        "kind": "HIGH",
+        "previous_same_kind": {
+          "index": 172,
+          "kind": "HIGH",
+          "price": 29467.0,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 22:30:00"
+        },
+        "price": 29499.5,
+        "source_level": "MEDIUM",
+        "source_vertex": {
+          "index": 185,
+          "kind": "HIGH",
+          "price": 29499.5,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 23:35:00"
+        },
+        "timestamp": "2026-09-11 23:35:00"
+      },
+      "index": 155,
+      "kind": "HIGH",
+      "previous_same_kind": {
+        "confirmed_by": {
+          "index": 129,
+          "kind": "HIGH",
+          "price": 29318.25,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 18:55:00"
+        },
+        "index": 107,
+        "kind": "HIGH",
+        "previous_same_kind": {
+          "index": 91,
+          "kind": "HIGH",
+          "price": 29243.25,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 15:45:00"
+        },
+        "price": 29333.75,
+        "source_level": "MEDIUM",
+        "source_vertex": {
+          "index": 107,
+          "kind": "HIGH",
+          "price": 29333.75,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 17:05:00"
+        },
+        "timestamp": "2026-09-11 17:05:00"
+      },
+      "price": 29500.75,
+      "source_level": "MEDIUM",
+      "source_vertex": {
+        "confirmed_by": {
+          "index": 172,
+          "kind": "HIGH",
+          "price": 29467.0,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 22:30:00"
+        },
+        "index": 155,
+        "kind": "HIGH",
+        "previous_same_kind": {
+          "index": 140,
+          "kind": "HIGH",
+          "price": 29338.0,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 19:50:00"
+        },
+        "price": 29500.75,
+        "source_level": "MEDIUM",
+        "source_vertex": {
+          "index": 155,
+          "kind": "HIGH",
+          "price": 29500.75,
+          "source_level": "SHORT",
+          "timestamp": "2026-09-11 21:05:00"
+        },
+        "timestamp": "2026-09-11 21:05:00"
+      },
+      "timestamp": "2026-09-11 21:05:00"
+    }
+  ]
+}

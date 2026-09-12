@@ -1,0 +1,71 @@
+{
+  "alignment_rule": {
+    "classification": "engineering_choice",
+    "identifier": "fixed_left_anchored_pairs_v1",
+    "rule": "compare adjacent non-overlapping pairs from the left; suppress a later pair only when both boundaries are inclusively contained; restart from the left after suppression"
+  },
+  "artifacts": {
+    "isolated": {
+      "confirmed": 77,
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_isolated_ground_truth.json",
+      "sha256": "d959ad47c8be21b8bd2b44c004ba2db5bf73f7490b513d004a03d6d19ec48b1b",
+      "unresolved_potential": 1
+    },
+    "long": {
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_long_term_ground_truth.json",
+      "points": 1,
+      "potentials": 0,
+      "sha256": "fe140083ca657eed130d50f5011247a3bd2001ba3c660f9bd70818c55b5e424b",
+      "suppressed": 0,
+      "vertices": 1
+    },
+    "medium": {
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_medium_term_ground_truth.json",
+      "points": 9,
+      "potentials": 1,
+      "sha256": "960a5a518ce54ae67bb92a6e31237912afc6e643da1188dee31a5b75c34f4b8b",
+      "suppressed": 0,
+      "vertices": 9
+    },
+    "short": {
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_short_term_ground_truth.json",
+      "points": 77,
+      "potentials": 0,
+      "sha256": "1012836c3d616ff73e00738148b5fbbacb1c05d042afcb6bf9146b1e84259ba1",
+      "suppressed": 33,
+      "vertices": 44
+    }
+  },
+  "baseline_commit": "dd09611f6d29f46dab5f4d488e9bf7c3b4a81902",
+  "case_id": "real-mnq-5m-validation",
+  "independence": {
+    "production_analyzer_called": false,
+    "production_modules_imported": false,
+    "production_result_read": false,
+    "standard_library_only": true
+  },
+  "provenance": {
+    "definition_files": [
+      "trading/definitions/isolated_points.py",
+      "trading/definitions/isolated_point_deformations.py",
+      "trading/definitions/short_term_structure.py",
+      "trading/definitions/medium_term_structure.py",
+      "trading/definitions/long_term_structure.py"
+    ],
+    "specification": "docs/superpowers/specs/2026-09-10-short-term-inside-pair-alignment-clarification.md"
+  },
+  "schema_version": 1,
+  "source": {
+    "calculation_mode": "Calculate.OnBarClose",
+    "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_250bars.txt",
+    "instrument": "MNQ",
+    "provenance": "NinjaTrader chart-generated closed bars",
+    "resampled": false,
+    "row_count": 250,
+    "sha256": "51b6877ad1d306580c6eb45ed8823198fe95b874a522d96beaa03609f32f2af9",
+    "start_index": 0,
+    "timeframe": "5 minute",
+    "timestamp_semantics": "source-provided clock values; no timezone conversion"
+  },
+  "status": "FROZEN_INDEPENDENT_ORACLE"
+}
