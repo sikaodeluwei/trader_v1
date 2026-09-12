@@ -1,0 +1,110 @@
+{
+  "alignment_rule": {
+    "classification": "engineering_choice",
+    "identifier": "fixed_left_anchored_pairs_v1",
+    "rule": "compare adjacent non-overlapping pairs from the left; suppress a later pair only when both boundaries are inclusively contained; restart from the left after suppression"
+  },
+  "artifacts": {
+    "blind_result": {
+      "commit": "8034a82432a43e019de73d1d665da686930e729c",
+      "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_project_blind_result.json",
+      "sha256": "fee435a71fd22de80248d111ba9ebae2640baa7b7c9ce9103eadfae931df6539"
+    },
+    "oracle": {
+      "isolated": {
+        "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_isolated_ground_truth.json",
+        "sha256": "d959ad47c8be21b8bd2b44c004ba2db5bf73f7490b513d004a03d6d19ec48b1b"
+      },
+      "long": {
+        "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_long_term_ground_truth.json",
+        "sha256": "fe140083ca657eed130d50f5011247a3bd2001ba3c660f9bd70818c55b5e424b"
+      },
+      "medium": {
+        "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_medium_term_ground_truth.json",
+        "sha256": "960a5a518ce54ae67bb92a6e31237912afc6e643da1188dee31a5b75c34f4b8b"
+      },
+      "short": {
+        "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_short_term_ground_truth.json",
+        "sha256": "1012836c3d616ff73e00738148b5fbbacb1c05d042afcb6bf9146b1e84259ba1"
+      }
+    }
+  },
+  "case_id": "real-mnq-5m-validation",
+  "historical_commits": {
+    "blind_result": "8034a82432a43e019de73d1d665da686930e729c",
+    "comparison": "db60db2e5b6d2088b38e302483cae1d8e0028533",
+    "oracle": "6445460c25798a491c4a2182cb6107519f5bf552",
+    "source": "736251f4504af87f4957d2272f198e504bb0e772"
+  },
+  "historical_limitations": {
+    "cannot_prove": [
+      "the exact contents or behavior of the deleted temporary historical helper",
+      "whether uncommitted production output was ever inspected before the historical oracle commit"
+    ],
+    "can_prove": [
+      "the oracle commit precedes the blind-result commit",
+      "the historical frozen oracle values did not change after the blind result existed",
+      "the frozen blind-result bytes did not change after their commit"
+    ],
+    "v2_scope": "V2 establishes present independent reproducibility from the frozen source and approved rules; it does not claim to reconstruct unknowable historical execution details."
+  },
+  "oracle_values": {
+    "historical_frozen_values_unchanged": true,
+    "reproduction": {
+      "external_isolation": {
+        "contents": [
+          "mnq_5m_oracle_reproducer.py",
+          "MNQ_2026-09-11_0810-2026-09-12_0455_5m_250bars.txt"
+        ],
+        "project_code_present": false,
+        "project_result_present": false,
+        "python_isolated_mode": true,
+        "result": "BYTE_IDENTICAL"
+      },
+      "method": "Copy only the retained reproducer and raw source to a temporary directory outside the repository, run Python with -I and explicit --source/--out-dir arguments, then compare each reproduced artifact SHA-256 to its frozen oracle SHA-256.",
+      "production_imports": false,
+      "production_result_reads": false,
+      "result": "BYTE_IDENTICAL_ALL_FOUR_LAYERS",
+      "standard_library_only": true
+    }
+  },
+  "provenance": {
+    "approved_specification": {
+      "commit": "b6d6eca1cc112fcccf8c6f4db24f2f67c2ec69a5",
+      "path": "docs/superpowers/specs/2026-09-10-short-term-pair-alignment-clarification-design.md"
+    },
+    "base_main_commit": "dd09611f6d29f46dab5f4d488e9bf7c3b4a81902"
+  },
+  "schema_version": 2,
+  "source": {
+    "bar_count": 250,
+    "calculation_mode": "Calculate.OnBarClose",
+    "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_250bars.txt",
+    "first_timestamp": "2026-09-11 08:10:00",
+    "instrument": "MNQ",
+    "last_timestamp": "2026-09-12 04:55:00",
+    "no_resampling_performed": true,
+    "provenance": "NinjaTrader chart-generated 5-minute bars",
+    "sha256": "51b6877ad1d306580c6eb45ed8823198fe95b874a522d96beaa03609f32f2af9",
+    "timeframe": "5 minute",
+    "timestamp_semantics": "source-provided clock values; no timezone conversion"
+  },
+  "status": "FROZEN_REPRODUCIBLE_AUDIT_V2",
+  "supersedes": {
+    "defect": "V1 references a nonexistent specification path; V2 records the correct approved specification path and commit without modifying V1.",
+    "filename": "MNQ_2026-09-11_0810-2026-09-12_0455_5m_oracle_manifest.json",
+    "sha256": "21cae55737561858abfb62b33b2e24722f7ba5f3e7b35a14b578b892c26595b2"
+  },
+  "tools": {
+    "comparator": {
+      "commit": "1c38bc246f221e718a824744df93a0aa468e90bf",
+      "filename": "tools/validation/mnq_5m_exact_compare.py",
+      "sha256": "1da0b5dce9370251e88e187b9aa5f7e67993c93860cd8c7ffeedd129ff3a0253"
+    },
+    "oracle_reproducer": {
+      "commit": "602428ef639224dcc62cd882e166406f931b4571",
+      "filename": "tools/validation/mnq_5m_oracle_reproducer.py",
+      "sha256": "946ef61db1fc0482dbd28e3478df178212ef119e7c27a10bbcc5aa01f89f2531"
+    }
+  }
+}
