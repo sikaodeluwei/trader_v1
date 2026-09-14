@@ -240,7 +240,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
             object runtimeCapture = new
             {
-                schema_version = "1.0",
+                schema_version = "1.1",
                 acquisition_id = AcquisitionId,
                 cohort_id = CohortId,
                 case_id = CaseId,

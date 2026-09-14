@@ -18,7 +18,12 @@ from typing import Any, Mapping
 from xml.etree import ElementTree
 
 
-SCHEMA_VERSION = "1.0"
+ACQUISITION_SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.1"
+BOUND_ARTIFACT_SCHEMA_VERSION = "1.0"
+PINNED_PRODUCTION_HIERARCHY_COMMIT = (
+    "04a73e1401d44688660b211d9db6918113482856"
+)
 APPROVED_CONTRACT = {
     "contract_label": "MNQ SEP26",
     "full_name": "MNQ 09-26",
@@ -56,6 +61,75 @@ CASE_ID_RE = re.compile(
     r"^mnq-202609-5m-td(?P<trading_date>\d{4}-\d{2}-\d{2})-w(?P<stratum>0[1-9]|10)$"
 )
 COHORT_ID = "mnq-202609-5m-v1"
+APPROVED_CONTRACT_POLICY = {
+    "contract_label": "MNQ SEP26",
+    "full_name": "MNQ 09-26",
+    "expiry_month": 9,
+    "expiry_year": 2026,
+    "candidate_date_start": APPROVED_RANGE_START.isoformat(),
+    "candidate_date_end": APPROVED_RANGE_END.isoformat(),
+}
+APPROVED_SELECTION_ALGORITHM = {
+    "id": "CHRONOLOGICAL_TEN_STRATA_EARLIEST",
+    "version": "1.0",
+    "stratum_count": 10,
+}
+APPROVED_WINDOW_POLICY = "FIRST_250_NATIVE_5M_SESSION_BARS"
+APPROVED_CANONICALIZATION = (
+    "JSON_UTF8_SORTED_KEYS_COMPACT_EXCLUDE_AGGREGATE_PAYLOAD_SHA256"
+)
+APPROVED_TOOLSET_STAGE = "SOURCE_ACQUISITION"
+APPROVED_FROZEN_STATUS = "FROZEN_FOR_SOURCE_ACQUISITION"
+APPROVED_INVENTORY_STATUS = "FROZEN_PRE_EXECUTION"
+APPROVED_DEFERRED_COMPONENTS = {
+    "independent_oracle",
+    "blind_project_runner",
+    "comparator",
+    "cohort_aggregator",
+}
+APPROVED_EXCLUSION_REASONS = {
+    "OUTSIDE_POLICY",
+    "INCOMPLETE_PROVENANCE",
+    "FEWER_THAN_250_NATIVE_BARS",
+    "DUPLICATE_OR_NON_MONOTONIC_TIMESTAMPS",
+    "TRADING_HOURS_INCONSISTENCY",
+    "MALFORMED_OR_NON_FINITE_OHLCV",
+    "INVALID_OHLC_GEOMETRY",
+    "UNEXPECTED_MISSING_BARS",
+    "SOURCE_CORRUPTION",
+    "SOURCE_HASH_MISMATCH",
+}
+SELECTION_REFERENCE_PATHS = {
+    "source_inventory": "validation/mnq_5m_multiwindow/source_inventory.json",
+    "exclusion_ledger": "validation/mnq_5m_multiwindow/exclusions.json",
+}
+TOOLSET_COMPONENT_PATHS = {
+    "protocol_spec": (
+        "docs/superpowers/specs/"
+        "2026-09-13-mnq-5m-multiwindow-validation-design.md"
+    ),
+    "acquisition_exporter": (
+        "tools/validation/ninjatrader/ExportMnq5mCohortSource.cs"
+    ),
+    "acquisition_finalizer": "tools/validation/mnq_5m_acquisition.py",
+    "provenance_schema": (
+        "validation/mnq_5m_multiwindow/schemas/provenance.schema.json"
+    ),
+    "selection_registry_schema": (
+        "validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json"
+    ),
+    "toolset_manifest_schema": (
+        "validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json"
+    ),
+    "source_inventory_schema": (
+        "validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json"
+    ),
+    "exclusion_ledger_schema": (
+        "validation/mnq_5m_multiwindow/schemas/exclusions.schema.json"
+    ),
+}
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 class AcquisitionValidationError(ValueError):
@@ -87,6 +161,13 @@ def _mapping(value: object, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         _fail(f"missing or invalid {label}")
     return value
+
+
+def _require_exact_keys(
+    value: Mapping[str, Any], expected: set[str], label: str
+) -> None:
+    if set(value) != expected:
+        _fail(f"missing or invalid {label} fields")
 
 
 def _text(value: object, label: str) -> str:
@@ -373,13 +454,516 @@ def _validate_evidence_files(
         relative = Path(_text(entry.get("path"), f"{role} path"))
         if relative.is_absolute() or ".." in relative.parts:
             _fail("evidence paths must be relative and contained")
-        path = evidence_path.parent / relative
+        path = _contained_artifact_path(
+            evidence_path.parent, relative.as_posix(), f"evidence {role}"
+        )
         hashes[role] = _verify_hash(path, entry.get("sha256"), role)
         try:
             contents[role] = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as error:
             raise AcquisitionValidationError(f"cannot read evidence file {role}") from error
     return hashes, contents
+
+
+def _canonical_payload_sha256(
+    value: Mapping[str, Any], hash_field: str = "aggregate_payload_sha256"
+) -> str:
+    payload = dict(value)
+    payload.pop(hash_field, None)
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_payload_hash(value: Mapping[str, Any], label: str) -> str:
+    declared = _text(value.get("aggregate_payload_sha256"), f"{label} aggregate hash")
+    if SHA256_RE.fullmatch(declared) is None:
+        _fail(f"invalid {label} aggregate hash")
+    actual = _canonical_payload_sha256(value)
+    if declared != actual:
+        _fail(f"{label} aggregate hash mismatch")
+    return declared
+
+
+def _parse_json_text(value: str, label: str) -> dict[str, Any]:
+    try:
+        result = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise AcquisitionValidationError(f"invalid {label}") from error
+    if not isinstance(result, dict):
+        _fail(f"invalid {label}")
+    return result
+
+
+def _contained_artifact_path(root: Path, value: object, label: str) -> Path:
+    relative = Path(_text(value, f"{label} bundle path"))
+    if relative.is_absolute() or ".." in relative.parts:
+        _fail(f"{label} bundle path must be relative and contained")
+    root_resolved = root.resolve()
+    path = (root / relative).resolve()
+    try:
+        path.relative_to(root_resolved)
+    except ValueError:
+        _fail(f"{label} bundle path must be relative and contained")
+    return path
+
+
+def _validate_commit(value: object, label: str) -> str:
+    commit = _text(value, label)
+    if COMMIT_RE.fullmatch(commit) is None:
+        _fail(f"invalid {label}")
+    return commit
+
+
+def _parse_policy_date(value: object, label: str) -> date:
+    try:
+        return date.fromisoformat(_text(value, label))
+    except ValueError as error:
+        raise AcquisitionValidationError(f"invalid {label}") from error
+
+
+def _validate_contract_policy(value: object, label: str) -> dict[str, Any]:
+    policy = _mapping(value, label)
+    if policy != APPROVED_CONTRACT_POLICY:
+        _fail(f"{label} does not match the approved contract/date policy")
+    return dict(policy)
+
+
+def _load_bound_reference(
+    *,
+    bundle_root: Path,
+    reference_value: object,
+    reference_name: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    label = reference_name.replace("_", " ")
+    reference = _mapping(reference_value, f"selection registry {label} reference")
+    _require_exact_keys(
+        reference,
+        {"path", "bundle_path", "schema_version", "sha256", "producing_checkpoint"},
+        f"selection registry {label} reference",
+    )
+    if reference.get("path") != SELECTION_REFERENCE_PATHS[reference_name]:
+        _fail(f"selection registry {label} path is not approved")
+    if reference.get("schema_version") != BOUND_ARTIFACT_SCHEMA_VERSION:
+        _fail(f"selection registry {label} schema version is not supported")
+    checkpoint = _validate_commit(
+        reference.get("producing_checkpoint"),
+        f"selection registry {label} producing checkpoint",
+    )
+    path = _contained_artifact_path(
+        bundle_root, reference.get("bundle_path"), f"selection registry {label}"
+    )
+    declared_hash = _text(
+        reference.get("sha256"), f"selection registry {label} SHA-256"
+    )
+    if SHA256_RE.fullmatch(declared_hash) is None or _sha256(path) != declared_hash:
+        _fail(f"{label} hash mismatch")
+    document = _load_object(path, label)
+    return document, {
+        "path": reference["path"],
+        "schema_version": reference["schema_version"],
+        "sha256": declared_hash,
+        "producing_checkpoint": checkpoint,
+    }
+
+
+def _validate_inventory(
+    value: Mapping[str, Any], *, expected_checkpoint: str
+) -> tuple[list[str], dict[str, tuple[str, ...]]]:
+    label = "source inventory"
+    _require_exact_keys(
+        value,
+        {
+            "schema_version",
+            "status",
+            "cohort_id",
+            "contract_policy",
+            "producing_checkpoint",
+            "entries",
+            "aggregate_payload_sha256",
+        },
+        label,
+    )
+    if (
+        value.get("schema_version") != BOUND_ARTIFACT_SCHEMA_VERSION
+        or value.get("status") != APPROVED_INVENTORY_STATUS
+        or value.get("cohort_id") != COHORT_ID
+    ):
+        _fail(f"invalid {label}")
+    _validate_contract_policy(value.get("contract_policy"), label)
+    if value.get("producing_checkpoint") != expected_checkpoint:
+        _fail(f"{label} producing checkpoint mismatch")
+    _validate_payload_hash(value, label)
+
+    entries = value.get("entries")
+    if not isinstance(entries, list):
+        _fail(f"invalid {label} entries")
+    eligible_dates: list[str] = []
+    observed_dates: list[date] = []
+    exclusions: dict[str, tuple[str, ...]] = {}
+    previous: date | None = None
+    seen: set[date] = set()
+    for entry_value in entries:
+        entry = _mapping(entry_value, f"{label} entry")
+        _require_exact_keys(
+            entry,
+            {"trading_date", "eligible", "exclusion_reasons"},
+            f"{label} entry",
+        )
+        trading_date = _parse_policy_date(
+            entry.get("trading_date"), f"{label} trading date"
+        )
+        if trading_date in seen or (previous is not None and trading_date <= previous):
+            _fail(f"{label} dates must be strictly chronological and unique")
+        if not APPROVED_RANGE_START <= trading_date <= APPROVED_RANGE_END:
+            _fail(f"{label} date is outside the approved policy")
+        seen.add(trading_date)
+        observed_dates.append(trading_date)
+        previous = trading_date
+        eligible = entry.get("eligible")
+        reasons = entry.get("exclusion_reasons")
+        if not isinstance(eligible, bool) or not isinstance(reasons, list):
+            _fail(f"invalid {label} eligibility")
+        if (
+            any(
+                not isinstance(reason, str)
+                or reason not in APPROVED_EXCLUSION_REASONS
+                for reason in reasons
+            )
+            or len(reasons) != len(set(reasons))
+            or (eligible and reasons)
+            or (not eligible and not reasons)
+        ):
+            _fail(f"invalid {label} eligibility")
+        iso_date = trading_date.isoformat()
+        if eligible:
+            eligible_dates.append(iso_date)
+        else:
+            exclusions[iso_date] = tuple(reasons)
+    expected_dates: list[date] = []
+    candidate = APPROVED_RANGE_START
+    while candidate <= APPROVED_RANGE_END:
+        if candidate.weekday() < 5:
+            expected_dates.append(candidate)
+        candidate += timedelta(days=1)
+    if observed_dates != expected_dates:
+        _fail(f"{label} must cover every candidate trading date")
+    if len(eligible_dates) < 10:
+        _fail(f"{label} has fewer than ten eligible dates")
+    return eligible_dates, exclusions
+
+
+def _validate_exclusion_ledger(
+    value: Mapping[str, Any],
+    *,
+    expected_checkpoint: str,
+    inventory_exclusions: Mapping[str, tuple[str, ...]],
+) -> None:
+    label = "exclusion ledger"
+    _require_exact_keys(
+        value,
+        {
+            "schema_version",
+            "status",
+            "cohort_id",
+            "producing_checkpoint",
+            "entries",
+            "aggregate_payload_sha256",
+        },
+        label,
+    )
+    if (
+        value.get("schema_version") != BOUND_ARTIFACT_SCHEMA_VERSION
+        or value.get("status") != APPROVED_INVENTORY_STATUS
+        or value.get("cohort_id") != COHORT_ID
+        or value.get("producing_checkpoint") != expected_checkpoint
+    ):
+        _fail(f"invalid {label}")
+    _validate_payload_hash(value, label)
+    entries = value.get("entries")
+    if not isinstance(entries, list):
+        _fail(f"invalid {label} entries")
+    observed: dict[str, tuple[str, ...]] = {}
+    previous: date | None = None
+    for entry_value in entries:
+        entry = _mapping(entry_value, f"{label} entry")
+        _require_exact_keys(
+            entry, {"trading_date", "reasons"}, f"{label} entry"
+        )
+        trading_date = _parse_policy_date(
+            entry.get("trading_date"), f"{label} trading date"
+        )
+        if previous is not None and trading_date <= previous:
+            _fail(f"{label} dates must be strictly chronological and unique")
+        if not APPROVED_RANGE_START <= trading_date <= APPROVED_RANGE_END:
+            _fail(f"{label} date is outside the approved policy")
+        previous = trading_date
+        reasons = entry.get("reasons")
+        if (
+            not isinstance(reasons, list)
+            or not reasons
+            or len(reasons) != len(set(reasons))
+            or any(
+                not isinstance(reason, str) or reason not in APPROVED_EXCLUSION_REASONS
+                for reason in reasons
+            )
+        ):
+            _fail(f"invalid {label} reasons")
+        observed[trading_date.isoformat()] = tuple(reasons)
+    if observed != dict(inventory_exclusions):
+        _fail(f"{label} does not exactly match source inventory exclusions")
+
+
+def _validate_selection_registry(
+    *,
+    evidence_path: Path,
+    evidence: Mapping[str, Any],
+    registry_text: str,
+    cohort_id: str,
+    case_id: str,
+    trading_date: date,
+    trusted_checkpoint: str,
+) -> dict[str, Any]:
+    label = "selection registry"
+    registry = _parse_json_text(registry_text, label)
+    _require_exact_keys(
+        registry,
+        {
+            "schema_version",
+            "status",
+            "cohort_id",
+            "contract_policy",
+            "selection_algorithm",
+            "selection_count",
+            "source_inventory",
+            "exclusion_ledger",
+            "producing_checkpoint",
+            "selection_influence",
+            "selections",
+            "aggregate_payload_sha256",
+        },
+        label,
+    )
+    if (
+        registry.get("schema_version") != BOUND_ARTIFACT_SCHEMA_VERSION
+        or registry.get("status") != APPROVED_FROZEN_STATUS
+        or registry.get("cohort_id") != cohort_id
+        or registry.get("selection_algorithm") != APPROVED_SELECTION_ALGORITHM
+        or registry.get("selection_count") != 10
+    ):
+        _fail(f"invalid {label}")
+    _validate_contract_policy(registry.get("contract_policy"), label)
+    checkpoint = _validate_commit(
+        registry.get("producing_checkpoint"), f"{label} producing checkpoint"
+    )
+    if (
+        checkpoint != trusted_checkpoint
+        or evidence.get("expected_selection_checkpoint") != trusted_checkpoint
+    ):
+        _fail(f"{label} producing checkpoint mismatch")
+    influence = _mapping(registry.get("selection_influence"), f"{label} influence")
+    if influence != {
+        "hierarchy_output_used": False,
+        "oracle_output_used": False,
+        "project_output_used": False,
+    }:
+        _fail(f"{label} must explicitly exclude hierarchy/oracle/project influence")
+    aggregate_hash = _validate_payload_hash(registry, label)
+
+    inventory, inventory_binding = _load_bound_reference(
+        bundle_root=evidence_path.parent,
+        reference_value=registry.get("source_inventory"),
+        reference_name="source_inventory",
+    )
+    exclusions, exclusions_binding = _load_bound_reference(
+        bundle_root=evidence_path.parent,
+        reference_value=registry.get("exclusion_ledger"),
+        reference_name="exclusion_ledger",
+    )
+    eligible_dates, inventory_exclusions = _validate_inventory(
+        inventory,
+        expected_checkpoint=inventory_binding["producing_checkpoint"],
+    )
+    _validate_exclusion_ledger(
+        exclusions,
+        expected_checkpoint=exclusions_binding["producing_checkpoint"],
+        inventory_exclusions=inventory_exclusions,
+    )
+    if inventory_binding["producing_checkpoint"] != exclusions_binding["producing_checkpoint"]:
+        _fail(f"{label} inventory/exclusion checkpoints disagree")
+
+    selections = registry.get("selections")
+    if not isinstance(selections, list) or len(selections) != 10:
+        _fail(f"invalid {label} selections")
+    selected_case_ids: set[str] = set()
+    selected_dates: set[str] = set()
+    count = len(eligible_dates)
+    normalized: list[dict[str, Any]] = []
+    for zero_index, selection_value in enumerate(selections):
+        selection = _mapping(selection_value, f"{label} selection")
+        stratum = zero_index + 1
+        start = zero_index * count // 10
+        end = (zero_index + 1) * count // 10 - 1
+        expected_date = eligible_dates[start]
+        expected_case = f"mnq-202609-5m-td{expected_date}-w{stratum:02d}"
+        expected = {
+            "case_id": expected_case,
+            "trading_date": expected_date,
+            "stratum_number": stratum,
+            "stratum_start_index": start,
+            "stratum_end_index": end,
+            "selected_eligible_index": start,
+            "window_policy": APPROVED_WINDOW_POLICY,
+        }
+        if selection != expected:
+            _fail(f"{label} selection does not match deterministic ten-stratum policy")
+        if expected_case in selected_case_ids or expected_date in selected_dates:
+            _fail(f"{label} selections must have unique case IDs and dates")
+        selected_case_ids.add(expected_case)
+        selected_dates.add(expected_date)
+        normalized.append(dict(selection))
+    matches = [item for item in normalized if item["case_id"] == case_id]
+    if (
+        len(matches) != 1
+        or matches[0]["trading_date"] != trading_date.isoformat()
+    ):
+        _fail(f"{label} does not contain the current case/date exactly once")
+    return {
+        "status": APPROVED_FROZEN_STATUS,
+        "producing_checkpoint": checkpoint,
+        "aggregate_payload_sha256": aggregate_hash,
+        "selection": matches[0],
+        "inventory": inventory_binding,
+        "exclusion_ledger": exclusions_binding,
+    }
+
+
+def _validate_toolset_manifest(
+    *,
+    evidence_path: Path,
+    evidence: Mapping[str, Any],
+    manifest_text: str,
+    exporter_hash: str,
+    trusted_checkpoint: str,
+) -> dict[str, Any]:
+    label = "toolset manifest"
+    manifest = _parse_json_text(manifest_text, label)
+    _require_exact_keys(
+        manifest,
+        {
+            "schema_version",
+            "stage",
+            "status",
+            "cohort_id",
+            "producing_checkpoint",
+            "pinned_production_hierarchy_commit",
+            "runtime",
+            "canonicalization",
+            "components",
+            "deferred_components",
+            "aggregate_payload_sha256",
+        },
+        label,
+    )
+    if (
+        manifest.get("schema_version") != BOUND_ARTIFACT_SCHEMA_VERSION
+        or manifest.get("stage") != APPROVED_TOOLSET_STAGE
+        or manifest.get("status") != APPROVED_FROZEN_STATUS
+        or manifest.get("cohort_id") != COHORT_ID
+        or manifest.get("pinned_production_hierarchy_commit")
+        != PINNED_PRODUCTION_HIERARCHY_COMMIT
+        or manifest.get("canonicalization") != APPROVED_CANONICALIZATION
+    ):
+        _fail(f"invalid {label}")
+    checkpoint = _validate_commit(
+        manifest.get("producing_checkpoint"), f"{label} producing checkpoint"
+    )
+    if (
+        checkpoint != trusted_checkpoint
+        or evidence.get("expected_toolset_checkpoint") != trusted_checkpoint
+    ):
+        _fail(f"{label} producing checkpoint mismatch")
+    runtime = _mapping(manifest.get("runtime"), f"{label} runtime")
+    _require_exact_keys(
+        runtime, {"implementation", "version", "dependencies"}, f"{label} runtime"
+    )
+    _text(runtime.get("implementation"), f"{label} runtime implementation")
+    _text(runtime.get("version"), f"{label} runtime version")
+    dependencies = runtime.get("dependencies")
+    if not isinstance(dependencies, list) or not dependencies:
+        _fail(f"invalid {label} runtime dependencies")
+    dependency_names: set[str] = set()
+    for dependency_value in dependencies:
+        dependency = _mapping(dependency_value, f"{label} runtime dependency")
+        _require_exact_keys(
+            dependency, {"name", "version"}, f"{label} runtime dependency"
+        )
+        dependency_name = _text(
+            dependency.get("name"), f"{label} dependency name"
+        )
+        if dependency_name in dependency_names:
+            _fail(f"duplicate {label} runtime dependency")
+        dependency_names.add(dependency_name)
+        _text(dependency.get("version"), f"{label} dependency version")
+    deferred = manifest.get("deferred_components")
+    if (
+        not isinstance(deferred, list)
+        or len(deferred) != len(set(deferred))
+        or set(deferred) != APPROVED_DEFERRED_COMPONENTS
+    ):
+        _fail(f"invalid {label} deferred components")
+    aggregate_hash = _validate_payload_hash(manifest, label)
+
+    components = manifest.get("components")
+    if not isinstance(components, list):
+        _fail(f"invalid {label} components")
+    roles = [
+        component.get("role") for component in components if isinstance(component, dict)
+    ]
+    if (
+        len(components) != len(TOOLSET_COMPONENT_PATHS)
+        or len(roles) != len(set(roles))
+        or set(roles) != set(TOOLSET_COMPONENT_PATHS)
+    ):
+        _fail(f"{label} component roles are missing or duplicated")
+    for component_value in components:
+        component = _mapping(component_value, f"{label} component")
+        _require_exact_keys(
+            component,
+            {"role", "path", "bundle_path", "sha256", "producing_commit"},
+            f"{label} component",
+        )
+        role = _text(component.get("role"), f"{label} component role")
+        if component.get("path") != TOOLSET_COMPONENT_PATHS[role]:
+            _fail(f"{label} component path mismatch for {role}")
+        component_commit = _validate_commit(
+            component.get("producing_commit"),
+            f"{label} component producing commit for {role}",
+        )
+        if component_commit != checkpoint:
+            _fail(f"{label} component producing commit mismatch for {role}")
+        path = _contained_artifact_path(
+            evidence_path.parent,
+            component.get("bundle_path"),
+            f"{label} component {role}",
+        )
+        declared_hash = _text(
+            component.get("sha256"), f"{label} component {role} SHA-256"
+        )
+        if SHA256_RE.fullmatch(declared_hash) is None or _sha256(path) != declared_hash:
+            _fail(f"{label} component hash mismatch for {role}")
+        if role == "acquisition_exporter" and declared_hash != exporter_hash:
+            _fail(f"{label} acquisition exporter is not the supplied exporter")
+        if role == "acquisition_finalizer" and declared_hash != _sha256(Path(__file__)):
+            _fail(f"{label} acquisition finalizer is not the executing finalizer")
+    return {
+        "status": APPROVED_FROZEN_STATUS,
+        "stage": APPROVED_TOOLSET_STAGE,
+        "producing_checkpoint": checkpoint,
+        "pinned_production_hierarchy_commit": PINNED_PRODUCTION_HIERARCHY_COMMIT,
+        "aggregate_payload_sha256": aggregate_hash,
+    }
 
 
 def _event_time(line: str) -> datetime | None:
@@ -643,6 +1227,8 @@ def finalize_provenance(
     runtime_capture_path: str | Path,
     acquisition_evidence_path: str | Path,
     exporter_path: str | Path,
+    trusted_selection_checkpoint: str,
+    trusted_toolset_checkpoint: str,
     output_path: str | Path | None = None,
 ) -> dict[str, object]:
     """Validate an acquisition bundle and return its frozen provenance."""
@@ -651,9 +1237,18 @@ def finalize_provenance(
     runtime_path = Path(runtime_capture_path)
     evidence_path = Path(acquisition_evidence_path)
     exporter = Path(exporter_path)
+    trusted_selection_checkpoint = _validate_commit(
+        trusted_selection_checkpoint, "trusted selection checkpoint"
+    )
+    trusted_toolset_checkpoint = _validate_commit(
+        trusted_toolset_checkpoint, "trusted toolset checkpoint"
+    )
     runtime = _load_object(runtime_path, "runtime capture")
     evidence = _load_object(evidence_path, "acquisition evidence")
-    if runtime.get("schema_version") != SCHEMA_VERSION or evidence.get("schema_version") != SCHEMA_VERSION:
+    if (
+        runtime.get("schema_version") != ACQUISITION_SCHEMA_VERSION
+        or evidence.get("schema_version") != ACQUISITION_SCHEMA_VERSION
+    ):
         _fail("unsupported acquisition schema version")
 
     source_hash = _sha256(source)
@@ -695,6 +1290,23 @@ def finalize_provenance(
         for field in ("cohort_id", "case_id", "trading_date")
     ):
         _fail("runtime/evidence identity mismatch")
+
+    selection_binding = _validate_selection_registry(
+        evidence_path=evidence_path,
+        evidence=evidence,
+        registry_text=evidence_contents["selection_registry"],
+        cohort_id=cohort_id,
+        case_id=case_id,
+        trading_date=trading_date,
+        trusted_checkpoint=trusted_selection_checkpoint,
+    )
+    toolset_binding = _validate_toolset_manifest(
+        evidence_path=evidence_path,
+        evidence=evidence,
+        manifest_text=evidence_contents["toolset_manifest"],
+        exporter_hash=exporter_hash,
+        trusted_checkpoint=trusted_toolset_checkpoint,
+    )
 
     contract = _validate_contract(runtime)
     bar_series = _validate_bar_series(runtime)
@@ -776,6 +1388,8 @@ def finalize_provenance(
             "known_limitations": known_limitations,
         },
         "artifact_hashes": artifact_hashes,
+        "selection_binding": selection_binding,
+        "toolset_binding": toolset_binding,
         "source_quality_findings": quality_findings,
         "transformations": transformations,
         "approved_policy": {
@@ -808,6 +1422,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runtime-capture", required=True, type=Path)
     parser.add_argument("--acquisition-evidence", required=True, type=Path)
     parser.add_argument("--exporter", required=True, type=Path)
+    parser.add_argument("--trusted-selection-checkpoint", required=True)
+    parser.add_argument("--trusted-toolset-checkpoint", required=True)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
@@ -816,6 +1432,8 @@ def main(argv: list[str] | None = None) -> int:
             runtime_capture_path=args.runtime_capture,
             acquisition_evidence_path=args.acquisition_evidence,
             exporter_path=args.exporter,
+            trusted_selection_checkpoint=args.trusted_selection_checkpoint,
+            trusted_toolset_checkpoint=args.trusted_toolset_checkpoint,
             output_path=args.output,
         )
     except AcquisitionValidationError as error:

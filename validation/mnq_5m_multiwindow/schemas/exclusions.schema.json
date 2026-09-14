@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sikaodeluwei/trader_v1/validation/mnq_5m_multiwindow/schemas/exclusions.schema.json",
+  "title": "MNQ 5-minute source exclusion ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "cohort_id",
+    "producing_checkpoint",
+    "entries",
+    "aggregate_payload_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "status": { "const": "FROZEN_PRE_EXECUTION" },
+    "cohort_id": { "const": "mnq-202609-5m-v1" },
+    "producing_checkpoint": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trading_date", "reasons"],
+        "properties": {
+          "trading_date": { "type": "string", "format": "date" },
+          "reasons": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "OUTSIDE_POLICY",
+                "INCOMPLETE_PROVENANCE",
+                "FEWER_THAN_250_NATIVE_BARS",
+                "DUPLICATE_OR_NON_MONOTONIC_TIMESTAMPS",
+                "TRADING_HOURS_INCONSISTENCY",
+                "MALFORMED_OR_NON_FINITE_OHLCV",
+                "INVALID_OHLC_GEOMETRY",
+                "UNEXPECTED_MISSING_BARS",
+                "SOURCE_CORRUPTION",
+                "SOURCE_HASH_MISMATCH"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "aggregate_payload_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

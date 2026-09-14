@@ -17,12 +17,14 @@
     "bar_series",
     "source",
     "artifact_hashes",
+    "selection_binding",
+    "toolset_binding",
     "source_quality_findings",
     "transformations",
     "approved_policy"
   ],
   "properties": {
-    "schema_version": { "const": "1.0" },
+    "schema_version": { "const": "1.1" },
     "cohort_id": { "type": "string", "minLength": 1 },
     "case_id": { "type": "string", "minLength": 1 },
     "contract": {
@@ -303,6 +305,67 @@
         "toolset_manifest": { "$ref": "#/$defs/sha256" }
       }
     },
+    "selection_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "producing_checkpoint",
+        "aggregate_payload_sha256",
+        "selection",
+        "inventory",
+        "exclusion_ledger"
+      ],
+      "properties": {
+        "status": { "const": "FROZEN_FOR_SOURCE_ACQUISITION" },
+        "producing_checkpoint": { "$ref": "#/$defs/commit" },
+        "aggregate_payload_sha256": { "$ref": "#/$defs/sha256" },
+        "selection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "case_id",
+            "trading_date",
+            "stratum_number",
+            "stratum_start_index",
+            "stratum_end_index",
+            "selected_eligible_index",
+            "window_policy"
+          ],
+          "properties": {
+            "case_id": { "type": "string", "minLength": 1 },
+            "trading_date": { "type": "string", "format": "date" },
+            "stratum_number": { "type": "integer", "minimum": 1, "maximum": 10 },
+            "stratum_start_index": { "type": "integer", "minimum": 0 },
+            "stratum_end_index": { "type": "integer", "minimum": 0 },
+            "selected_eligible_index": { "type": "integer", "minimum": 0 },
+            "window_policy": { "const": "FIRST_250_NATIVE_5M_SESSION_BARS" }
+          }
+        },
+        "inventory": { "$ref": "#/$defs/artifact_binding" },
+        "exclusion_ledger": { "$ref": "#/$defs/artifact_binding" }
+      }
+    },
+    "toolset_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "stage",
+        "producing_checkpoint",
+        "pinned_production_hierarchy_commit",
+        "aggregate_payload_sha256"
+      ],
+      "properties": {
+        "status": { "const": "FROZEN_FOR_SOURCE_ACQUISITION" },
+        "stage": { "const": "SOURCE_ACQUISITION" },
+        "producing_checkpoint": { "$ref": "#/$defs/commit" },
+        "pinned_production_hierarchy_commit": {
+          "const": "04a73e1401d44688660b211d9db6918113482856"
+        },
+        "aggregate_payload_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
     "source_quality_findings": {
       "type": "array",
       "items": { "type": "string" }
@@ -352,6 +415,21 @@
     "sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "artifact_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "schema_version", "sha256", "producing_checkpoint"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "schema_version": { "const": "1.0" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "producing_checkpoint": { "$ref": "#/$defs/commit" }
+      }
     }
   }
 }

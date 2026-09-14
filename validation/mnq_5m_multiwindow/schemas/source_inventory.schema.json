@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sikaodeluwei/trader_v1/validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json",
+  "title": "MNQ 5-minute source inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "cohort_id",
+    "contract_policy",
+    "producing_checkpoint",
+    "entries",
+    "aggregate_payload_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "status": { "const": "FROZEN_PRE_EXECUTION" },
+    "cohort_id": { "const": "mnq-202609-5m-v1" },
+    "contract_policy": { "$ref": "#/$defs/contract_policy" },
+    "producing_checkpoint": { "$ref": "#/$defs/commit" },
+    "entries": {
+      "type": "array",
+      "minItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["trading_date", "eligible", "exclusion_reasons"],
+        "properties": {
+          "trading_date": { "type": "string", "format": "date" },
+          "eligible": { "type": "boolean" },
+          "exclusion_reasons": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/exclusion_reason" }
+          }
+        }
+      }
+    },
+    "aggregate_payload_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "contract_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_label",
+        "full_name",
+        "expiry_month",
+        "expiry_year",
+        "candidate_date_start",
+        "candidate_date_end"
+      ],
+      "properties": {
+        "contract_label": { "const": "MNQ SEP26" },
+        "full_name": { "const": "MNQ 09-26" },
+        "expiry_month": { "const": 9 },
+        "expiry_year": { "const": 2026 },
+        "candidate_date_start": { "const": "2026-06-22" },
+        "candidate_date_end": { "const": "2026-07-24" }
+      }
+    },
+    "exclusion_reason": {
+      "enum": [
+        "OUTSIDE_POLICY",
+        "INCOMPLETE_PROVENANCE",
+        "FEWER_THAN_250_NATIVE_BARS",
+        "DUPLICATE_OR_NON_MONOTONIC_TIMESTAMPS",
+        "TRADING_HOURS_INCONSISTENCY",
+        "MALFORMED_OR_NON_FINITE_OHLCV",
+        "INVALID_OHLC_GEOMETRY",
+        "UNEXPECTED_MISSING_BARS",
+        "SOURCE_CORRUPTION",
+        "SOURCE_HASH_MISMATCH"
+      ]
+    },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

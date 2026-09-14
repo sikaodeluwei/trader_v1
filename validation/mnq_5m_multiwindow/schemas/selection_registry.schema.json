@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sikaodeluwei/trader_v1/validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json",
+  "title": "MNQ 5-minute frozen cohort selection registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "cohort_id",
+    "contract_policy",
+    "selection_algorithm",
+    "selection_count",
+    "source_inventory",
+    "exclusion_ledger",
+    "producing_checkpoint",
+    "selection_influence",
+    "selections",
+    "aggregate_payload_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "status": { "const": "FROZEN_FOR_SOURCE_ACQUISITION" },
+    "cohort_id": { "const": "mnq-202609-5m-v1" },
+    "contract_policy": { "$ref": "#/$defs/contract_policy" },
+    "selection_algorithm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "stratum_count"],
+      "properties": {
+        "id": { "const": "CHRONOLOGICAL_TEN_STRATA_EARLIEST" },
+        "version": { "const": "1.0" },
+        "stratum_count": { "const": 10 }
+      }
+    },
+    "selection_count": { "const": 10 },
+    "source_inventory": { "$ref": "#/$defs/bound_artifact" },
+    "exclusion_ledger": { "$ref": "#/$defs/bound_artifact" },
+    "producing_checkpoint": { "$ref": "#/$defs/commit" },
+    "selection_influence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hierarchy_output_used",
+        "oracle_output_used",
+        "project_output_used"
+      ],
+      "properties": {
+        "hierarchy_output_used": { "const": false },
+        "oracle_output_used": { "const": false },
+        "project_output_used": { "const": false }
+      }
+    },
+    "selections": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case_id",
+          "trading_date",
+          "stratum_number",
+          "stratum_start_index",
+          "stratum_end_index",
+          "selected_eligible_index",
+          "window_policy"
+        ],
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "pattern": "^mnq-202609-5m-td[0-9]{4}-[0-9]{2}-[0-9]{2}-w(0[1-9]|10)$"
+          },
+          "trading_date": { "type": "string", "format": "date" },
+          "stratum_number": { "type": "integer", "minimum": 1, "maximum": 10 },
+          "stratum_start_index": { "type": "integer", "minimum": 0 },
+          "stratum_end_index": { "type": "integer", "minimum": 0 },
+          "selected_eligible_index": { "type": "integer", "minimum": 0 },
+          "window_policy": { "const": "FIRST_250_NATIVE_5M_SESSION_BARS" }
+        }
+      }
+    },
+    "aggregate_payload_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "contract_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_label",
+        "full_name",
+        "expiry_month",
+        "expiry_year",
+        "candidate_date_start",
+        "candidate_date_end"
+      ],
+      "properties": {
+        "contract_label": { "const": "MNQ SEP26" },
+        "full_name": { "const": "MNQ 09-26" },
+        "expiry_month": { "const": 9 },
+        "expiry_year": { "const": 2026 },
+        "candidate_date_start": { "const": "2026-06-22" },
+        "candidate_date_end": { "const": "2026-07-24" }
+      }
+    },
+    "bound_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "bundle_path", "schema_version", "sha256", "producing_checkpoint"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "bundle_path": { "type": "string", "minLength": 1 },
+        "schema_version": { "const": "1.0" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "producing_checkpoint": { "$ref": "#/$defs/commit" }
+      }
+    },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}
