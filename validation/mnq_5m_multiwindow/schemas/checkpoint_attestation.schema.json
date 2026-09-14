@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sikaodeluwei/trader_v1/validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json",
+  "title": "MNQ 5-minute immutable checkpoint verification attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "repository",
+    "trusted_toolset_checkpoint",
+    "trusted_selection_checkpoint",
+    "pinned_production_hierarchy_commit",
+    "artifacts",
+    "ancestry",
+    "remote_publication",
+    "verifier",
+    "attestation_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "status": { "const": "VERIFIED" },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "git_object_format"],
+      "properties": {
+        "identity": { "type": "string", "minLength": 1 },
+        "git_object_format": { "enum": ["sha1", "sha256"] }
+      }
+    },
+    "trusted_toolset_checkpoint": { "$ref": "#/$defs/commit" },
+    "trusted_selection_checkpoint": { "$ref": "#/$defs/commit" },
+    "trusted_acquisition_checkpoint": { "$ref": "#/$defs/commit" },
+    "pinned_production_hierarchy_commit": {
+      "const": "04a73e1401d44688660b211d9db6918113482856"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "ancestry": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ancestor", "descendant", "verified"],
+        "properties": {
+          "ancestor": { "$ref": "#/$defs/commit" },
+          "descendant": { "$ref": "#/$defs/commit" },
+          "verified": { "const": true }
+        }
+      }
+    },
+    "remote_publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["NOT_CHECKED", "UNAVAILABLE", "VERIFIED"] },
+        "remote": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "expected_checkpoint": { "$ref": "#/$defs/commit" },
+        "observed_checkpoint": { "$ref": "#/$defs/commit" },
+        "reason": { "const": "REMOTE_QUERY_FAILED" }
+      }
+    },
+    "verifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "repository_path",
+        "producing_commit",
+        "frozen_sha256",
+        "executing_sha256"
+      ],
+      "properties": {
+        "version": { "const": "1.0" },
+        "repository_path": { "const": "tools/validation/mnq_5m_checkpoint_verify.py" },
+        "producing_commit": { "$ref": "#/$defs/commit" },
+        "frozen_sha256": { "$ref": "#/$defs/sha256" },
+        "executing_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "attestation_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "commit": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "stage",
+        "repository_path",
+        "checkpoint",
+        "git_object_id",
+        "sha256",
+        "bundle_sha256"
+      ],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "stage": { "enum": ["toolset", "selection"] },
+        "repository_path": { "type": "string", "minLength": 1 },
+        "checkpoint": { "$ref": "#/$defs/commit" },
+        "producing_commit": { "$ref": "#/$defs/commit" },
+        "producing_checkpoint": { "$ref": "#/$defs/commit" },
+        "git_object_id": {
+          "type": "string",
+          "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "bundle_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

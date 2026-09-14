@@ -17,6 +17,23 @@ from pathlib import Path
 from typing import Any, Mapping
 from xml.etree import ElementTree
 
+try:
+    from tools.validation.mnq_5m_checkpoint_verify import (
+        DEFAULT_REPOSITORY_IDENTITY,
+        REQUIRED_TOOLSET_COMPONENT_PATHS,
+        CheckpointVerificationError,
+        verify_checkpoints,
+    )
+except ModuleNotFoundError as error:
+    if error.name != "tools":
+        raise
+    from mnq_5m_checkpoint_verify import (  # type: ignore[no-redef]
+        DEFAULT_REPOSITORY_IDENTITY,
+        REQUIRED_TOOLSET_COMPONENT_PATHS,
+        CheckpointVerificationError,
+        verify_checkpoints,
+    )
+
 
 ACQUISITION_SCHEMA_VERSION = "1.1"
 SCHEMA_VERSION = "1.1"
@@ -103,31 +120,7 @@ SELECTION_REFERENCE_PATHS = {
     "source_inventory": "validation/mnq_5m_multiwindow/source_inventory.json",
     "exclusion_ledger": "validation/mnq_5m_multiwindow/exclusions.json",
 }
-TOOLSET_COMPONENT_PATHS = {
-    "protocol_spec": (
-        "docs/superpowers/specs/"
-        "2026-09-13-mnq-5m-multiwindow-validation-design.md"
-    ),
-    "acquisition_exporter": (
-        "tools/validation/ninjatrader/ExportMnq5mCohortSource.cs"
-    ),
-    "acquisition_finalizer": "tools/validation/mnq_5m_acquisition.py",
-    "provenance_schema": (
-        "validation/mnq_5m_multiwindow/schemas/provenance.schema.json"
-    ),
-    "selection_registry_schema": (
-        "validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json"
-    ),
-    "toolset_manifest_schema": (
-        "validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json"
-    ),
-    "source_inventory_schema": (
-        "validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json"
-    ),
-    "exclusion_ledger_schema": (
-        "validation/mnq_5m_multiwindow/schemas/exclusions.schema.json"
-    ),
-}
+TOOLSET_COMPONENT_PATHS = dict(REQUIRED_TOOLSET_COMPONENT_PATHS)
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -438,7 +431,7 @@ def _validate_trading_hours(
 
 def _validate_evidence_files(
     evidence_path: Path, evidence: Mapping[str, Any]
-) -> tuple[dict[str, str], dict[str, str]]:
+) -> tuple[dict[str, str], dict[str, str], dict[str, Path]]:
     entries = evidence.get("evidence_files")
     if not isinstance(entries, list):
         _fail("incomplete evidence bundle")
@@ -448,6 +441,7 @@ def _validate_evidence_files(
 
     hashes: dict[str, str] = {}
     contents: dict[str, str] = {}
+    paths: dict[str, Path] = {}
     for entry_object in entries:
         entry = _mapping(entry_object, "evidence file")
         role = _text(entry.get("role"), "evidence role")
@@ -457,12 +451,49 @@ def _validate_evidence_files(
         path = _contained_artifact_path(
             evidence_path.parent, relative.as_posix(), f"evidence {role}"
         )
-        hashes[role] = _verify_hash(path, entry.get("sha256"), role)
+        paths[role] = path
         try:
-            contents[role] = path.read_text(encoding="utf-8")
+            artifact_bytes = path.read_bytes()
+            contents[role] = artifact_bytes.decode("utf-8")
         except (OSError, UnicodeError) as error:
             raise AcquisitionValidationError(f"cannot read evidence file {role}") from error
-    return hashes, contents
+        actual_hash = hashlib.sha256(artifact_bytes).hexdigest()
+        if entry.get("sha256") != actual_hash:
+            _fail(f"{role} hash mismatch")
+        hashes[role] = actual_hash
+    return hashes, contents, paths
+
+
+def _verified_bundle_hashes(attestation: Mapping[str, Any]) -> dict[str, str]:
+    required = {
+        "toolset_manifest": "toolset",
+        "selection_registry": "selection",
+        "source_inventory": "selection",
+        "exclusion_ledger": "selection",
+    }
+    artifacts = attestation.get("artifacts")
+    if not isinstance(artifacts, list):
+        _fail("checkpoint verification did not return artifact identities")
+    result: dict[str, str] = {}
+    for role, stage in required.items():
+        matches = [
+            item
+            for item in artifacts
+            if isinstance(item, dict)
+            and item.get("role") == role
+            and item.get("stage") == stage
+        ]
+        if len(matches) != 1:
+            _fail(f"verified checkpoint artifact is missing or duplicated: {role}")
+        artifact_hash = matches[0].get("sha256")
+        if (
+            not isinstance(artifact_hash, str)
+            or SHA256_RE.fullmatch(artifact_hash) is None
+            or matches[0].get("bundle_sha256") != artifact_hash
+        ):
+            _fail(f"verified checkpoint artifact hash is invalid: {role}")
+        result[role] = artifact_hash
+    return result
 
 
 def _canonical_payload_sha256(
@@ -535,6 +566,7 @@ def _load_bound_reference(
     bundle_root: Path,
     reference_value: object,
     reference_name: str,
+    verified_sha256: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     label = reference_name.replace("_", " ")
     reference = _mapping(reference_value, f"selection registry {label} reference")
@@ -557,9 +589,18 @@ def _load_bound_reference(
     declared_hash = _text(
         reference.get("sha256"), f"selection registry {label} SHA-256"
     )
-    if SHA256_RE.fullmatch(declared_hash) is None or _sha256(path) != declared_hash:
+    try:
+        document_bytes = path.read_bytes()
+        document_text = document_bytes.decode("utf-8")
+    except (OSError, UnicodeError) as error:
+        raise AcquisitionValidationError(f"cannot read {label}") from error
+    if (
+        SHA256_RE.fullmatch(declared_hash) is None
+        or hashlib.sha256(document_bytes).hexdigest() != declared_hash
+        or declared_hash != verified_sha256
+    ):
         _fail(f"{label} hash mismatch")
-    document = _load_object(path, label)
+    document = _parse_json_text(document_text, label)
     return document, {
         "path": reference["path"],
         "schema_version": reference["schema_version"],
@@ -569,7 +610,7 @@ def _load_bound_reference(
 
 
 def _validate_inventory(
-    value: Mapping[str, Any], *, expected_checkpoint: str
+    value: Mapping[str, Any], *, expected_predecessor_checkpoint: str
 ) -> tuple[list[str], dict[str, tuple[str, ...]]]:
     label = "source inventory"
     _require_exact_keys(
@@ -592,7 +633,7 @@ def _validate_inventory(
     ):
         _fail(f"invalid {label}")
     _validate_contract_policy(value.get("contract_policy"), label)
-    if value.get("producing_checkpoint") != expected_checkpoint:
+    if value.get("producing_checkpoint") != expected_predecessor_checkpoint:
         _fail(f"{label} producing checkpoint mismatch")
     _validate_payload_hash(value, label)
 
@@ -657,7 +698,7 @@ def _validate_inventory(
 def _validate_exclusion_ledger(
     value: Mapping[str, Any],
     *,
-    expected_checkpoint: str,
+    expected_predecessor_checkpoint: str,
     inventory_exclusions: Mapping[str, tuple[str, ...]],
 ) -> None:
     label = "exclusion ledger"
@@ -677,7 +718,7 @@ def _validate_exclusion_ledger(
         value.get("schema_version") != BOUND_ARTIFACT_SCHEMA_VERSION
         or value.get("status") != APPROVED_INVENTORY_STATUS
         or value.get("cohort_id") != COHORT_ID
-        or value.get("producing_checkpoint") != expected_checkpoint
+        or value.get("producing_checkpoint") != expected_predecessor_checkpoint
     ):
         _fail(f"invalid {label}")
     _validate_payload_hash(value, label)
@@ -724,6 +765,8 @@ def _validate_selection_registry(
     case_id: str,
     trading_date: date,
     trusted_checkpoint: str,
+    trusted_toolset_checkpoint: str,
+    verified_bundle_hashes: Mapping[str, str],
 ) -> dict[str, Any]:
     label = "selection registry"
     registry = _parse_json_text(registry_text, label)
@@ -757,10 +800,7 @@ def _validate_selection_registry(
     checkpoint = _validate_commit(
         registry.get("producing_checkpoint"), f"{label} producing checkpoint"
     )
-    if (
-        checkpoint != trusted_checkpoint
-        or evidence.get("expected_selection_checkpoint") != trusted_checkpoint
-    ):
+    if evidence.get("expected_selection_checkpoint") != trusted_checkpoint:
         _fail(f"{label} producing checkpoint mismatch")
     influence = _mapping(registry.get("selection_influence"), f"{label} influence")
     if influence != {
@@ -775,23 +815,27 @@ def _validate_selection_registry(
         bundle_root=evidence_path.parent,
         reference_value=registry.get("source_inventory"),
         reference_name="source_inventory",
+        verified_sha256=verified_bundle_hashes["source_inventory"],
     )
     exclusions, exclusions_binding = _load_bound_reference(
         bundle_root=evidence_path.parent,
         reference_value=registry.get("exclusion_ledger"),
         reference_name="exclusion_ledger",
+        verified_sha256=verified_bundle_hashes["exclusion_ledger"],
     )
     eligible_dates, inventory_exclusions = _validate_inventory(
         inventory,
-        expected_checkpoint=inventory_binding["producing_checkpoint"],
+        expected_predecessor_checkpoint=trusted_toolset_checkpoint,
     )
     _validate_exclusion_ledger(
         exclusions,
-        expected_checkpoint=exclusions_binding["producing_checkpoint"],
+        expected_predecessor_checkpoint=trusted_toolset_checkpoint,
         inventory_exclusions=inventory_exclusions,
     )
     if inventory_binding["producing_checkpoint"] != exclusions_binding["producing_checkpoint"]:
         _fail(f"{label} inventory/exclusion checkpoints disagree")
+    if checkpoint != inventory_binding["producing_checkpoint"]:
+        _fail(f"{label} producing checkpoint mismatch")
 
     selections = registry.get("selections")
     if not isinstance(selections, list) or len(selections) != 10:
@@ -832,6 +876,7 @@ def _validate_selection_registry(
     return {
         "status": APPROVED_FROZEN_STATUS,
         "producing_checkpoint": checkpoint,
+        "trusted_checkpoint": trusted_checkpoint,
         "aggregate_payload_sha256": aggregate_hash,
         "selection": matches[0],
         "inventory": inventory_binding,
@@ -879,10 +924,7 @@ def _validate_toolset_manifest(
     checkpoint = _validate_commit(
         manifest.get("producing_checkpoint"), f"{label} producing checkpoint"
     )
-    if (
-        checkpoint != trusted_checkpoint
-        or evidence.get("expected_toolset_checkpoint") != trusted_checkpoint
-    ):
+    if evidence.get("expected_toolset_checkpoint") != trusted_checkpoint:
         _fail(f"{label} producing checkpoint mismatch")
     runtime = _mapping(manifest.get("runtime"), f"{label} runtime")
     _require_exact_keys(
@@ -937,12 +979,10 @@ def _validate_toolset_manifest(
         role = _text(component.get("role"), f"{label} component role")
         if component.get("path") != TOOLSET_COMPONENT_PATHS[role]:
             _fail(f"{label} component path mismatch for {role}")
-        component_commit = _validate_commit(
+        _validate_commit(
             component.get("producing_commit"),
             f"{label} component producing commit for {role}",
         )
-        if component_commit != checkpoint:
-            _fail(f"{label} component producing commit mismatch for {role}")
         path = _contained_artifact_path(
             evidence_path.parent,
             component.get("bundle_path"),
@@ -961,6 +1001,7 @@ def _validate_toolset_manifest(
         "status": APPROVED_FROZEN_STATUS,
         "stage": APPROVED_TOOLSET_STAGE,
         "producing_checkpoint": checkpoint,
+        "trusted_checkpoint": trusted_checkpoint,
         "pinned_production_hierarchy_commit": PINNED_PRODUCTION_HIERARCHY_COMMIT,
         "aggregate_payload_sha256": aggregate_hash,
     }
@@ -1229,9 +1270,18 @@ def finalize_provenance(
     exporter_path: str | Path,
     trusted_selection_checkpoint: str,
     trusted_toolset_checkpoint: str,
+    trusted_acquisition_checkpoint: str | None = None,
+    repository_path: str | Path | None = None,
+    expected_repository_identity: str = DEFAULT_REPOSITORY_IDENTITY,
+    remote_name: str | None = None,
+    remote_branch: str | None = None,
+    checkpoint_attestation: Mapping[str, Any] | None = None,
     output_path: str | Path | None = None,
 ) -> dict[str, object]:
     """Validate an acquisition bundle and return its frozen provenance."""
+
+    if checkpoint_attestation is not None:
+        _fail("user-supplied checkpoint attestation is not accepted")
 
     source = Path(source_path)
     runtime_path = Path(runtime_capture_path)
@@ -1260,8 +1310,35 @@ def finalize_provenance(
     exporter_hash = _verify_hash(
         exporter, evidence.get("exporter_sha256"), "exporter"
     )
-    evidence_hashes, evidence_contents = _validate_evidence_files(evidence_path, evidence)
+    evidence_hashes, evidence_contents, evidence_paths = _validate_evidence_files(
+        evidence_path, evidence
+    )
     evidence_hash = _sha256(evidence_path)
+
+    if repository_path is None:
+        _fail("independent Git checkpoint verification is required")
+    try:
+        checkpoint_verification = verify_checkpoints(
+            repository_path=repository_path,
+            bundle_root=evidence_path.parent,
+            toolset_manifest_path=evidence_paths["toolset_manifest"],
+            selection_registry_path=evidence_paths["selection_registry"],
+            trusted_toolset_checkpoint=trusted_toolset_checkpoint,
+            trusted_selection_checkpoint=trusted_selection_checkpoint,
+            trusted_acquisition_checkpoint=trusted_acquisition_checkpoint,
+            expected_repository_identity=expected_repository_identity,
+            remote_name=remote_name,
+            remote_branch=remote_branch,
+        )
+    except CheckpointVerificationError as error:
+        raise AcquisitionValidationError(
+            f"independent Git checkpoint verification failed: {error}"
+        ) from error
+
+    verified_bundle_hashes = _verified_bundle_hashes(checkpoint_verification)
+    for role in ("toolset_manifest", "selection_registry"):
+        if evidence_hashes[role] != verified_bundle_hashes[role]:
+            _fail(f"verified checkpoint artifact differs from bundle snapshot: {role}")
 
     transformations = _mapping(evidence.get("transformations"), "transformation declarations")
     if set(transformations) != PROHIBITED_TRANSFORMATIONS:
@@ -1299,6 +1376,8 @@ def finalize_provenance(
         case_id=case_id,
         trading_date=trading_date,
         trusted_checkpoint=trusted_selection_checkpoint,
+        trusted_toolset_checkpoint=trusted_toolset_checkpoint,
+        verified_bundle_hashes=verified_bundle_hashes,
     )
     toolset_binding = _validate_toolset_manifest(
         evidence_path=evidence_path,
@@ -1357,6 +1436,37 @@ def finalize_provenance(
         "first 250 native 5-minute bars of the declared Trading Hours session"
     ):
         _fail("selected row/range derivation is not the approved policy")
+    try:
+        final_checkpoint_verification = verify_checkpoints(
+            repository_path=repository_path,
+            bundle_root=evidence_path.parent,
+            toolset_manifest_path=evidence_paths["toolset_manifest"],
+            selection_registry_path=evidence_paths["selection_registry"],
+            trusted_toolset_checkpoint=trusted_toolset_checkpoint,
+            trusted_selection_checkpoint=trusted_selection_checkpoint,
+            trusted_acquisition_checkpoint=trusted_acquisition_checkpoint,
+            expected_repository_identity=expected_repository_identity,
+            remote_name=remote_name,
+            remote_branch=remote_branch,
+        )
+    except CheckpointVerificationError as error:
+        raise AcquisitionValidationError(
+            f"independent Git checkpoint re-verification failed: {error}"
+        ) from error
+    for field in (
+        "trusted_toolset_checkpoint",
+        "trusted_selection_checkpoint",
+        "trusted_acquisition_checkpoint",
+        "pinned_production_hierarchy_commit",
+        "artifacts",
+        "ancestry",
+        "verifier",
+    ):
+        if checkpoint_verification.get(field) != final_checkpoint_verification.get(
+            field
+        ):
+            _fail("checkpoint artifacts changed during provenance finalization")
+    checkpoint_verification = final_checkpoint_verification
     result: dict[str, object] = {
         "schema_version": SCHEMA_VERSION,
         "cohort_id": cohort_id,
@@ -1390,6 +1500,7 @@ def finalize_provenance(
         "artifact_hashes": artifact_hashes,
         "selection_binding": selection_binding,
         "toolset_binding": toolset_binding,
+        "checkpoint_verification": checkpoint_verification,
         "source_quality_findings": quality_findings,
         "transformations": transformations,
         "approved_policy": {
@@ -1424,6 +1535,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--exporter", required=True, type=Path)
     parser.add_argument("--trusted-selection-checkpoint", required=True)
     parser.add_argument("--trusted-toolset-checkpoint", required=True)
+    parser.add_argument("--trusted-acquisition-checkpoint")
+    parser.add_argument("--repository", required=True, type=Path)
+    parser.add_argument("--repository-identity", default=DEFAULT_REPOSITORY_IDENTITY)
+    parser.add_argument("--remote-name")
+    parser.add_argument("--remote-branch")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
@@ -1434,6 +1550,11 @@ def main(argv: list[str] | None = None) -> int:
             exporter_path=args.exporter,
             trusted_selection_checkpoint=args.trusted_selection_checkpoint,
             trusted_toolset_checkpoint=args.trusted_toolset_checkpoint,
+            trusted_acquisition_checkpoint=args.trusted_acquisition_checkpoint,
+            repository_path=args.repository,
+            expected_repository_identity=args.repository_identity,
+            remote_name=args.remote_name,
+            remote_branch=args.remote_branch,
             output_path=args.output,
         )
     except AcquisitionValidationError as error:

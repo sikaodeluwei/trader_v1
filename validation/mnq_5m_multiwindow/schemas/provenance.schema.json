@@ -19,6 +19,7 @@
     "artifact_hashes",
     "selection_binding",
     "toolset_binding",
+    "checkpoint_verification",
     "source_quality_findings",
     "transformations",
     "approved_policy"
@@ -311,6 +312,7 @@
       "required": [
         "status",
         "producing_checkpoint",
+        "trusted_checkpoint",
         "aggregate_payload_sha256",
         "selection",
         "inventory",
@@ -319,6 +321,7 @@
       "properties": {
         "status": { "const": "FROZEN_FOR_SOURCE_ACQUISITION" },
         "producing_checkpoint": { "$ref": "#/$defs/commit" },
+        "trusted_checkpoint": { "$ref": "#/$defs/commit" },
         "aggregate_payload_sha256": { "$ref": "#/$defs/sha256" },
         "selection": {
           "type": "object",
@@ -353,6 +356,7 @@
         "status",
         "stage",
         "producing_checkpoint",
+        "trusted_checkpoint",
         "pinned_production_hierarchy_commit",
         "aggregate_payload_sha256"
       ],
@@ -360,11 +364,15 @@
         "status": { "const": "FROZEN_FOR_SOURCE_ACQUISITION" },
         "stage": { "const": "SOURCE_ACQUISITION" },
         "producing_checkpoint": { "$ref": "#/$defs/commit" },
+        "trusted_checkpoint": { "$ref": "#/$defs/commit" },
         "pinned_production_hierarchy_commit": {
           "const": "04a73e1401d44688660b211d9db6918113482856"
         },
         "aggregate_payload_sha256": { "$ref": "#/$defs/sha256" }
       }
+    },
+    "checkpoint_verification": {
+      "$ref": "checkpoint_attestation.schema.json"
     },
     "source_quality_findings": {
       "type": "array",

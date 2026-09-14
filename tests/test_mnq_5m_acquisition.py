@@ -7,6 +7,7 @@ import sys
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -29,7 +30,11 @@ COMPONENT_PATHS = {
         "tools/validation/ninjatrader/ExportMnq5mCohortSource.cs"
     ),
     "acquisition_finalizer": "tools/validation/mnq_5m_acquisition.py",
+    "checkpoint_verifier": "tools/validation/mnq_5m_checkpoint_verify.py",
     "provenance_schema": "validation/mnq_5m_multiwindow/schemas/provenance.schema.json",
+    "checkpoint_attestation_schema": (
+        "validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json"
+    ),
     "selection_registry_schema": (
         "validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json"
     ),
@@ -39,12 +44,121 @@ COMPONENT_PATHS = {
 }
 
 
-def finalize_provenance(**kwargs):
-    return _finalize_provenance(
-        **kwargs,
-        trusted_selection_checkpoint=SELECTION_CHECKPOINT,
-        trusted_toolset_checkpoint=TOOLSET_CHECKPOINT,
+def _verified_checkpoint_attestation(evidence_path: Path) -> dict[str, object]:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence_entries = {
+        entry["role"]: evidence_path.parent / entry["path"]
+        for entry in evidence["evidence_files"]
+    }
+    registry_path = evidence_entries.get("selection_registry")
+    registry = (
+        json.loads(registry_path.read_text(encoding="utf-8"))
+        if registry_path is not None
+        else {}
     )
+
+    def evidence_hash(role: str) -> str:
+        path = evidence_entries.get(role)
+        return _sha256(path) if path is not None else "0" * 64
+
+    def registry_reference(name: str) -> dict[str, str]:
+        value = registry.get(name)
+        return value if isinstance(value, dict) else {
+            "path": f"validation/mnq_5m_multiwindow/{name}.json",
+            "sha256": "0" * 64,
+        }
+
+    def artifact(
+        role: str, stage: str, repository_path: str, checkpoint: str, sha256: str
+    ) -> dict[str, object]:
+        return {
+            "role": role,
+            "stage": stage,
+            "repository_path": repository_path,
+            "checkpoint": checkpoint,
+            "git_object_id": "5" * 40,
+            "sha256": sha256,
+            "bundle_sha256": sha256,
+        }
+
+    artifacts = [
+        artifact(
+            "toolset_manifest",
+            "toolset",
+            "validation/mnq_5m_multiwindow/toolset_manifest.json",
+            TOOLSET_CHECKPOINT,
+            evidence_hash("toolset_manifest"),
+        ),
+        artifact(
+            "selection_registry",
+            "selection",
+            "validation/mnq_5m_multiwindow/selection_registry.json",
+            SELECTION_CHECKPOINT,
+            evidence_hash("selection_registry"),
+        ),
+        artifact(
+            "source_inventory",
+            "selection",
+            registry_reference("source_inventory")["path"],
+            SELECTION_CHECKPOINT,
+            registry_reference("source_inventory")["sha256"],
+        ),
+        artifact(
+            "exclusion_ledger",
+            "selection",
+            registry_reference("exclusion_ledger")["path"],
+            SELECTION_CHECKPOINT,
+            registry_reference("exclusion_ledger")["sha256"],
+        ),
+    ]
+    attestation = {
+        "schema_version": "1.0",
+        "status": "VERIFIED",
+        "repository": {
+            "identity": "https://github.com/sikaodeluwei/trader_v1.git",
+            "git_object_format": "sha1",
+        },
+        "trusted_toolset_checkpoint": TOOLSET_CHECKPOINT,
+        "trusted_selection_checkpoint": SELECTION_CHECKPOINT,
+        "pinned_production_hierarchy_commit": PINNED_PRODUCTION_COMMIT,
+        "artifacts": artifacts,
+        "ancestry": [
+            {
+                "ancestor": PINNED_PRODUCTION_COMMIT,
+                "descendant": TOOLSET_CHECKPOINT,
+                "verified": True,
+            },
+            {
+                "ancestor": TOOLSET_CHECKPOINT,
+                "descendant": SELECTION_CHECKPOINT,
+                "verified": True,
+            },
+        ],
+        "remote_publication": {"status": "NOT_CHECKED"},
+        "verifier": {
+            "version": "1.0",
+            "repository_path": "tools/validation/mnq_5m_checkpoint_verify.py",
+            "producing_commit": TOOLSET_CHECKPOINT,
+            "frozen_sha256": "7" * 64,
+            "executing_sha256": "7" * 64,
+        },
+        "attestation_sha256": "8" * 64,
+    }
+    return attestation
+
+
+def finalize_provenance(**kwargs):
+    attestation = _verified_checkpoint_attestation(Path(kwargs["acquisition_evidence_path"]))
+    with patch(
+        "tools.validation.mnq_5m_acquisition.verify_checkpoints",
+        return_value=attestation,
+    ):
+        return _finalize_provenance(
+            **kwargs,
+            trusted_selection_checkpoint=SELECTION_CHECKPOINT,
+            trusted_toolset_checkpoint=TOOLSET_CHECKPOINT,
+            repository_path=Path(kwargs["source_path"]).parent,
+        )
 
 
 def _sha256(path: Path) -> str:
@@ -123,7 +237,7 @@ def _build_selection_evidence(tmp_path: Path) -> dict[str, Path]:
             "candidate_date_start": "2026-06-22",
             "candidate_date_end": "2026-07-24",
         },
-        "producing_checkpoint": INVENTORY_CHECKPOINT,
+        "producing_checkpoint": TOOLSET_CHECKPOINT,
         "entries": entries,
     }
     _write_payload(inventory_path, inventory, "aggregate_payload_sha256")
@@ -132,7 +246,7 @@ def _build_selection_evidence(tmp_path: Path) -> dict[str, Path]:
         "schema_version": "1.0",
         "status": "FROZEN_PRE_EXECUTION",
         "cohort_id": COHORT_ID,
-        "producing_checkpoint": INVENTORY_CHECKPOINT,
+        "producing_checkpoint": TOOLSET_CHECKPOINT,
         "entries": [
             {
                 "trading_date": "2026-06-23",
@@ -187,7 +301,7 @@ def _build_selection_evidence(tmp_path: Path) -> dict[str, Path]:
             "sha256": _sha256(exclusions_path),
             "producing_checkpoint": INVENTORY_CHECKPOINT,
         },
-        "producing_checkpoint": SELECTION_CHECKPOINT,
+        "producing_checkpoint": INVENTORY_CHECKPOINT,
         "selection_influence": {
             "hierarchy_output_used": False,
             "oracle_output_used": False,
@@ -481,6 +595,163 @@ def _build_bundle(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     return source, runtime_path, evidence_path, exporter
 
 
+def _git(repo: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", "-C", str(repo), *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return completed.stdout.strip()
+
+
+def _commit(repo: Path, message: str) -> str:
+    _git(repo, "add", "--all")
+    _git(
+        repo,
+        "-c",
+        "user.name=Acquisition Test",
+        "-c",
+        "user.email=acquisition@example.invalid",
+        "commit",
+        "-m",
+        message,
+    )
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _git_bytes(repo: Path, commit: str, path: str) -> bytes:
+    return subprocess.run(
+        ["git", "-C", str(repo), "show", f"{commit}:{path}"],
+        check=True,
+        capture_output=True,
+    ).stdout
+
+
+def _freeze_bundle_in_real_git_history(
+    tmp_path: Path, evidence_path: Path
+) -> tuple[Path, str, str]:
+    project_root = Path(__file__).resolve().parents[1]
+    repository = tmp_path / "checkpoint-repository"
+    subprocess.run(
+        [
+            "git",
+            "clone",
+            "--quiet",
+            "--no-hardlinks",
+            str(project_root),
+            str(repository),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    _git(
+        repository,
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/sikaodeluwei/trader_v1.git",
+    )
+    _git(repository, "config", "core.autocrlf", "false")
+
+    manifest_path = _evidence_role_path(evidence_path, "toolset_manifest")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for component in manifest["components"]:
+        source = evidence_path.parent / component["bundle_path"]
+        destination = repository / component["path"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+    component_commit = _commit(repository, "Freeze acquisition components")
+
+    manifest["producing_checkpoint"] = component_commit
+    for component in manifest["components"]:
+        committed_bytes = _git_bytes(
+            repository, component_commit, component["path"]
+        )
+        (evidence_path.parent / component["bundle_path"]).write_bytes(
+            committed_bytes
+        )
+        component["producing_commit"] = component_commit
+        component["sha256"] = hashlib.sha256(committed_bytes).hexdigest()
+    _write_payload(manifest_path, manifest, "aggregate_payload_sha256")
+    _refresh_evidence_role_hash(evidence_path, "toolset_manifest")
+    repository_manifest = (
+        repository / "validation/mnq_5m_multiwindow/toolset_manifest.json"
+    )
+    repository_manifest.parent.mkdir(parents=True, exist_ok=True)
+    repository_manifest.write_bytes(manifest_path.read_bytes())
+    toolset_checkpoint = _commit(repository, "Freeze acquisition toolset")
+    manifest_path.write_bytes(
+        _git_bytes(
+            repository,
+            toolset_checkpoint,
+            "validation/mnq_5m_multiwindow/toolset_manifest.json",
+        )
+    )
+    _refresh_evidence_role_hash(evidence_path, "toolset_manifest")
+
+    inventory_path = evidence_path.parent / "source_inventory.json"
+    exclusions_path = evidence_path.parent / "exclusions.json"
+    for path in (inventory_path, exclusions_path):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["producing_checkpoint"] = toolset_checkpoint
+        _write_payload(path, payload, "aggregate_payload_sha256")
+        repository_path = repository / (
+            "validation/mnq_5m_multiwindow/" + path.name
+        )
+        repository_path.write_bytes(path.read_bytes())
+    inventory_checkpoint = _commit(repository, "Freeze source inventory")
+    for path in (inventory_path, exclusions_path):
+        path.write_bytes(
+            _git_bytes(
+                repository,
+                inventory_checkpoint,
+                "validation/mnq_5m_multiwindow/" + path.name,
+            )
+        )
+
+    registry_path = _evidence_role_path(evidence_path, "selection_registry")
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry["producing_checkpoint"] = inventory_checkpoint
+    for key, path in (
+        ("source_inventory", inventory_path),
+        ("exclusion_ledger", exclusions_path),
+    ):
+        registry[key]["producing_checkpoint"] = inventory_checkpoint
+        registry[key]["sha256"] = _sha256(path)
+    _write_payload(registry_path, registry, "aggregate_payload_sha256")
+    _refresh_evidence_role_hash(evidence_path, "selection_registry")
+    repository_registry = (
+        repository / "validation/mnq_5m_multiwindow/selection_registry.json"
+    )
+    repository_registry.write_bytes(registry_path.read_bytes())
+    selection_checkpoint = _commit(repository, "Freeze cohort selection")
+    registry_path.write_bytes(
+        _git_bytes(
+            repository,
+            selection_checkpoint,
+            "validation/mnq_5m_multiwindow/selection_registry.json",
+        )
+    )
+    _refresh_evidence_role_hash(evidence_path, "selection_registry")
+
+    _rewrite_json(
+        evidence_path,
+        lambda value: value.update(
+            {
+                "expected_toolset_checkpoint": toolset_checkpoint,
+                "expected_selection_checkpoint": selection_checkpoint,
+            }
+        ),
+    )
+    return repository, toolset_checkpoint, selection_checkpoint
+
+
 def _finalize(tmp_path: Path) -> dict[str, object]:
     source, runtime, evidence, exporter = _build_bundle(tmp_path)
     return finalize_provenance(
@@ -584,6 +855,7 @@ def test_valid_bundle_captures_provenance_and_accepts_zero_volume(
     assert result["trading_hours"]["name"] == "CME US Index Futures ETH"
     assert result["provider_acquisition"]["status"] == "PROVEN"
     assert result["selection_binding"]["status"] == "FROZEN_FOR_SOURCE_ACQUISITION"
+    assert result["selection_binding"]["trusted_checkpoint"] == SELECTION_CHECKPOINT
     assert result["selection_binding"]["selection"]["case_id"] == (
         "mnq-202609-5m-td2026-06-22-w01"
     )
@@ -594,6 +866,7 @@ def test_valid_bundle_captures_provenance_and_accepts_zero_volume(
         "status": "FROZEN_FOR_SOURCE_ACQUISITION",
         "stage": "SOURCE_ACQUISITION",
         "producing_checkpoint": TOOLSET_CHECKPOINT,
+        "trusted_checkpoint": TOOLSET_CHECKPOINT,
         "pinned_production_hierarchy_commit": PINNED_PRODUCTION_COMMIT,
         "aggregate_payload_sha256": json.loads(
             _evidence_role_path(evidence, "toolset_manifest").read_text(encoding="utf-8")
@@ -620,6 +893,204 @@ def test_valid_bundle_captures_provenance_and_accepts_zero_volume(
         "toolset_manifest",
     }
     assert source.read_bytes() == original_source
+
+
+def test_semantic_validation_uses_the_same_manifest_bytes_that_were_hashed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    manifest_path = _evidence_role_path(evidence, "toolset_manifest")
+    substituted = json.loads(manifest_path.read_text(encoding="utf-8"))
+    substituted["producing_checkpoint"] = "5" * 40
+    substituted["aggregate_payload_sha256"] = _payload_sha256(
+        substituted, "aggregate_payload_sha256"
+    )
+    substituted_bytes = json.dumps(substituted, indent=2).encode("utf-8")
+    attestation = _verified_checkpoint_attestation(evidence)
+    original_read_bytes = Path.read_bytes
+    reads = 0
+
+    def swapped_read_bytes(path: Path) -> bytes:
+        nonlocal reads
+        if path.resolve() == manifest_path.resolve():
+            reads += 1
+            if reads > 1:
+                return substituted_bytes
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", swapped_read_bytes)
+
+    with patch(
+        "tools.validation.mnq_5m_acquisition.verify_checkpoints",
+        return_value=attestation,
+    ):
+        result = _finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+            trusted_selection_checkpoint=SELECTION_CHECKPOINT,
+            trusted_toolset_checkpoint=TOOLSET_CHECKPOINT,
+            repository_path=tmp_path,
+        )
+
+    assert result["toolset_binding"]["producing_checkpoint"] == TOOLSET_CHECKPOINT
+    assert reads == 1
+
+
+def test_bound_documents_are_not_reread_after_hashing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    inventory_path = evidence.parent / "source_inventory.json"
+    expected_hash = _sha256(inventory_path)
+    original_read_bytes = Path.read_bytes
+    reads = 0
+
+    def reject_inventory_reread(path: Path) -> bytes:
+        nonlocal reads
+        if path.resolve() == inventory_path.resolve():
+            reads += 1
+            if reads > 1:
+                raise AssertionError("inventory was reread after hashing")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", reject_inventory_reread)
+
+    result = finalize_provenance(
+        source_path=source,
+        runtime_capture_path=runtime,
+        acquisition_evidence_path=evidence,
+        exporter_path=exporter,
+    )
+
+    assert result["selection_binding"]["inventory"]["sha256"] == expected_hash
+    assert reads == 1
+
+
+def test_finalizer_rejects_attestation_for_different_bundle_snapshot(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    attestation = _verified_checkpoint_attestation(evidence)
+    manifest_artifact = next(
+        item
+        for item in attestation["artifacts"]
+        if item["role"] == "toolset_manifest"
+    )
+    manifest_artifact["sha256"] = "0" * 64
+    manifest_artifact["bundle_sha256"] = "0" * 64
+
+    with patch(
+        "tools.validation.mnq_5m_acquisition.verify_checkpoints",
+        return_value=attestation,
+    ):
+        with pytest.raises(
+            AcquisitionValidationError,
+            match="verified checkpoint artifact.*toolset_manifest",
+        ):
+            _finalize_provenance(
+                source_path=source,
+                runtime_capture_path=runtime,
+                acquisition_evidence_path=evidence,
+                exporter_path=exporter,
+                trusted_selection_checkpoint=SELECTION_CHECKPOINT,
+                trusted_toolset_checkpoint=TOOLSET_CHECKPOINT,
+                repository_path=tmp_path,
+            )
+
+
+def test_official_finalization_requires_independent_git_checkpoint_verification(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+
+    with pytest.raises(
+        AcquisitionValidationError,
+        match="independent Git checkpoint verification is required",
+    ):
+        _finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+            trusted_selection_checkpoint=SELECTION_CHECKPOINT,
+            trusted_toolset_checkpoint=TOOLSET_CHECKPOINT,
+        )
+
+
+def test_official_finalizer_embeds_attestation_from_real_git_objects(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    repository, toolset_checkpoint, selection_checkpoint = (
+        _freeze_bundle_in_real_git_history(tmp_path, evidence)
+    )
+
+    result = _finalize_provenance(
+        source_path=source,
+        runtime_capture_path=runtime,
+        acquisition_evidence_path=evidence,
+        exporter_path=exporter,
+        trusted_selection_checkpoint=selection_checkpoint,
+        trusted_toolset_checkpoint=toolset_checkpoint,
+        repository_path=repository,
+    )
+
+    assert result["checkpoint_verification"]["status"] == "VERIFIED"
+    assert (
+        result["checkpoint_verification"]["trusted_selection_checkpoint"]
+        == selection_checkpoint
+    )
+
+
+def test_public_finalizer_has_no_unverified_synthetic_bypass(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+
+    with pytest.raises(TypeError, match="allow_unverified_synthetic"):
+        _finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+            trusted_selection_checkpoint=SELECTION_CHECKPOINT,
+            trusted_toolset_checkpoint=TOOLSET_CHECKPOINT,
+            allow_unverified_synthetic=True,
+        )
+
+
+def test_acquisition_cli_can_run_directly_from_repository_root() -> None:
+    completed = subprocess.run(
+        [sys.executable, "tools/validation/mnq_5m_acquisition.py", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "--repository" in completed.stdout
+
+
+def test_finalizer_rejects_user_supplied_checkpoint_attestation(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+
+    with pytest.raises(
+        AcquisitionValidationError,
+        match="user-supplied checkpoint attestation is not accepted",
+    ):
+        _finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+            trusted_selection_checkpoint=SELECTION_CHECKPOINT,
+            trusted_toolset_checkpoint=TOOLSET_CHECKPOINT,
+            checkpoint_attestation={"status": "VERIFIED"},
+        )
 
 
 @pytest.mark.parametrize(
@@ -814,7 +1285,9 @@ def test_rejects_coordinated_selection_checkpoint_tampering(tmp_path: Path) -> N
         evidence,
         "selection_registry",
         "aggregate_payload_sha256",
-        lambda value: value.__setitem__("producing_checkpoint", "5" * 40),
+        lambda value: value.__setitem__(
+            "producing_checkpoint", "not-a-checkpoint"
+        ),
     )
 
     with pytest.raises(AcquisitionValidationError, match="selection registry"):
@@ -901,8 +1374,10 @@ def test_rejects_exclusion_ledger_semantic_disagreement(tmp_path: Path) -> None:
     [
         "acquisition_exporter",
         "acquisition_finalizer",
+        "checkpoint_verifier",
         "protocol_spec",
         "provenance_schema",
+        "checkpoint_attestation_schema",
         "selection_registry_schema",
         "toolset_manifest_schema",
         "source_inventory_schema",
@@ -937,15 +1412,14 @@ def test_rejects_toolset_component_hash_disagreement(
         lambda value: value.__setitem__(
             "pinned_production_hierarchy_commit", "0" * 40
         ),
-        lambda value: value.__setitem__("producing_checkpoint", "5" * 40),
+        lambda value: value.__setitem__(
+            "producing_checkpoint", "not-a-checkpoint"
+        ),
         lambda value: value["components"].append(deepcopy(value["components"][0])),
         lambda value: value["components"].pop(),
         lambda value: value.__setitem__("status", "PREPARATION_INCOMPLETE"),
         lambda value: value["components"][0].__setitem__(
             "producing_commit", "not-a-commit"
-        ),
-        lambda value: value["components"][0].__setitem__(
-            "producing_commit", "5" * 40
         ),
         lambda value: value["components"][0].__setitem__(
             "path", "tools/validation/wrong.py"
@@ -959,7 +1433,6 @@ def test_rejects_toolset_component_hash_disagreement(
         "missing-role",
         "incomplete-status",
         "component-producing-commit",
-        "component-wrong-producing-commit",
         "component-path",
         "extra-field",
     ],
@@ -1066,6 +1539,7 @@ def test_rejects_toolset_component_path_traversal(tmp_path: Path) -> None:
     ("filename", "title_fragment"),
     [
         ("provenance.schema.json", "source provenance"),
+        ("checkpoint_attestation.schema.json", "checkpoint verification"),
         ("selection_registry.schema.json", "selection registry"),
         ("toolset_manifest.schema.json", "toolset manifest"),
         ("source_inventory.schema.json", "source inventory"),

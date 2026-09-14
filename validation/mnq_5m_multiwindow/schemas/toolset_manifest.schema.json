@@ -53,8 +53,8 @@
     },
     "components": {
       "type": "array",
-      "minItems": 8,
-      "maxItems": 8,
+      "minItems": 10,
+      "maxItems": 10,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -65,7 +65,9 @@
               "protocol_spec",
               "acquisition_exporter",
               "acquisition_finalizer",
+              "checkpoint_verifier",
               "provenance_schema",
+              "checkpoint_attestation_schema",
               "selection_registry_schema",
               "toolset_manifest_schema",
               "source_inventory_schema",
