@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tools.validation import mnq_5m_acquisition
 from tools.validation.mnq_5m_acquisition import (
     AcquisitionValidationError,
     finalize_provenance as _finalize_provenance,
@@ -44,6 +45,11 @@ COMPONENT_PATHS = {
     "source_inventory_schema": "validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json",
     "exclusion_ledger_schema": "validation/mnq_5m_multiwindow/schemas/exclusions.schema.json",
 }
+
+
+def test_provider_profile_excludes_acquisition_connection_binding() -> None:
+    assert "connection_name" not in mnq_5m_acquisition.PROVIDER_PROFILE
+    assert mnq_5m_acquisition.APPROVED_CONNECTION_NAME == "My NinjaTrader"
 
 
 def _verified_checkpoint_attestation(evidence_path: Path) -> dict[str, object]:
@@ -2335,7 +2341,9 @@ def test_rejects_unknown_provider_profile_and_wrong_connection_name(tmp_path: Pa
         evidence,
         lambda value: value.__setitem__("intended_connection_name", "Other"),
     )
-    with pytest.raises(AcquisitionValidationError, match="approved provider profile"):
+    with pytest.raises(
+        AcquisitionValidationError, match="approved acquisition connection"
+    ):
         finalize_provenance(
             source_path=source,
             runtime_capture_path=runtime,

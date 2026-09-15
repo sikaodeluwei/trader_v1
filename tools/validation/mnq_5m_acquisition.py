@@ -140,10 +140,10 @@ PROVIDER_PROFILE = {
     "runtime_provider_id": "Provider31",
     "trace_adapter": "Tradovate.Adapter",
     "trace_adapter_name": "Tradovate",
-    "connection_name": "My NinjaTrader",
     "historical_service": "NinjaTrader HDS",
     "contract_label": "MNQ SEP26",
 }
+APPROVED_CONNECTION_NAME = "My NinjaTrader"
 HISTORICAL_TRIGGER_KEYS = {
     "method",
     "request_source_role",
@@ -1278,8 +1278,8 @@ def _validate_provider_proof(
     connection_name = _text(
         evidence.get("intended_connection_name"), "intended connection name"
     )
-    if connection_name != PROVIDER_PROFILE["connection_name"]:
-        _fail("intended connection does not match the approved provider profile")
+    if connection_name != APPROVED_CONNECTION_NAME:
+        _fail("intended connection does not match the approved acquisition connection")
     trigger = _mapping(
         evidence.get("historical_request_trigger"), "historical request trigger"
     )
