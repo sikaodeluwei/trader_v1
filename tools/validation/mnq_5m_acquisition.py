@@ -35,8 +35,9 @@ except ModuleNotFoundError as error:
     )
 
 
-ACQUISITION_SCHEMA_VERSION = "1.1"
-SCHEMA_VERSION = "1.1"
+RUNTIME_CAPTURE_SCHEMA_VERSION = "1.1"
+ACQUISITION_EVIDENCE_SCHEMA_VERSION = "1.2"
+PROVENANCE_SCHEMA_VERSION = "1.2"
 BOUND_ARTIFACT_SCHEMA_VERSION = "1.0"
 PINNED_PRODUCTION_HIERARCHY_COMMIT = (
     "04a73e1401d44688660b211d9db6918113482856"
@@ -66,12 +67,26 @@ PROHIBITED_TRANSFORMATIONS = {
     "back_adjusted",
 }
 SOURCE_TIMESTAMP_FORMAT = "%Y%m%d %H%M%S"
-LOG_TIMESTAMP_RE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)")
+LOG_TIMESTAMP_RE = re.compile(
+    r"^(?P<base>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})[.:](?P<fraction>\d+)"
+)
 MARKER_EVENT_TIME_RE = re.compile(r"\bevent_time=(\S+)")
 PROVIDER_LIFECYCLE_RE = re.compile(
     r"\((?P<connection>[^)]+)\)\s+"
     r"(?P<provider>.+?)\.Adapter\.(?P<action>Connect|Disconnect)\b"
 )
+REQUEST_BARS_RE = re.compile(
+    r"Cbi\.Instrument\.RequestBars \(to Provider\): "
+    r"instrument='(?P<instrument>[^']+)' "
+    r"from='(?P<start>[^']+)' to='(?P<end>[^']+)' "
+    r"period='(?P<period>[^']+)'"
+)
+HDS_CONNECT_RE = re.compile(
+    r"Server\.HdsClient\.Connect: type=HDS "
+    r"server='(?P<host>[^']+)' port=(?P<port>\d+) .*\buseSsl=(?P<ssl>True|False)\b"
+)
+HDS_HOST_RE = re.compile(r"^hds-us-nt-\d+\.ninjatrader\.com$")
+MARKER_LOG_SKEW_LIMIT = timedelta(seconds=1)
 CASE_ID_RE = re.compile(
     r"^mnq-202609-5m-td(?P<trading_date>\d{4}-\d{2}-\d{2})-w(?P<stratum>0[1-9]|10)$"
 )
@@ -119,6 +134,27 @@ SELECTION_REFERENCE_PATHS = {
     "exclusion_ledger": "validation/mnq_5m_multiwindow/exclusions.json",
 }
 TOOLSET_COMPONENT_PATHS = dict(REQUIRED_TOOLSET_COMPONENT_PATHS)
+
+PROVIDER_PROFILE = {
+    "id": "NINJATRADER_TRADOVATE_PROVIDER31_HDS_V1",
+    "runtime_provider_id": "Provider31",
+    "trace_adapter": "Tradovate.Adapter",
+    "trace_adapter_name": "Tradovate",
+    "connection_name": "My NinjaTrader",
+    "historical_service": "NinjaTrader HDS",
+    "contract_label": "MNQ SEP26",
+}
+HISTORICAL_TRIGGER_KEYS = {
+    "method",
+    "request_source_role",
+    "adapter_connection_initiated_at",
+    "connection_ready_at",
+    "hds_connected_at",
+    "pre_request_realtime_at",
+    "request_observed_at",
+    "post_request_initialized_at",
+    "post_request_realtime_at",
+}
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -1029,38 +1065,44 @@ def _event_time(line: str) -> datetime | None:
     if match is None:
         return None
     try:
-        return datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S.%f")
+        return datetime.strptime(
+            f"{match.group('base')}.{match.group('fraction')}",
+            "%Y-%m-%d %H:%M:%S.%f",
+        )
     except ValueError:
         return None
 
 
-def _find_event(
+def _event_times(
     lines: list[str],
     *,
     needle: str,
     start: datetime,
     end: datetime,
     log_timezone: timezone,
-) -> datetime | None:
+) -> list[datetime]:
+    result: list[datetime] = []
     for line in lines:
         if needle not in line:
             continue
         timestamp = _event_time(line)
-        if timestamp is not None:
-            aware_timestamp = timestamp.replace(tzinfo=log_timezone)
-            if start <= aware_timestamp <= end:
-                return aware_timestamp
-    return None
+        if timestamp is None:
+            continue
+        aware_timestamp = timestamp.replace(tzinfo=log_timezone)
+        if start <= aware_timestamp <= end:
+            result.append(aware_timestamp)
+    return result
 
 
-def _find_marker_event(
+def _marker_event_times(
     lines: list[str],
     *,
     needle: str,
     start: datetime,
     end: datetime,
     log_timezone: timezone,
-) -> datetime | None:
+) -> list[datetime]:
+    result: list[datetime] = []
     for line in lines:
         if needle not in line:
             continue
@@ -1072,9 +1114,121 @@ def _find_marker_event(
             marker_match.group(1), f"{needle} marker timestamp"
         )
         aware_log_timestamp = log_timestamp.replace(tzinfo=log_timezone)
+        if abs(marker_timestamp - aware_log_timestamp) >= MARKER_LOG_SKEW_LIMIT:
+            _fail("NinjaTrader marker timestamp contradicts its log timestamp")
         if start <= aware_log_timestamp <= end and start <= marker_timestamp <= end:
-            return marker_timestamp
-    return None
+            result.append(marker_timestamp)
+    return result
+
+
+def _parse_request_time(value: str, label: str) -> datetime:
+    try:
+        return datetime.strptime(value, "%Y/%m/%d %H:%M:%S")
+    except ValueError as error:
+        raise AcquisitionValidationError(f"invalid {label}") from error
+
+
+def _request_events(
+    lines: list[str], *, log_timezone: timezone
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for line in lines:
+        match = REQUEST_BARS_RE.search(line)
+        if match is None:
+            continue
+        timestamp = _event_time(line)
+        if timestamp is None:
+            _fail("malformed NinjaTrader RequestBars timestamp")
+        result.append(
+            {
+                "timestamp": timestamp.replace(tzinfo=log_timezone),
+                "instrument": match.group("instrument"),
+                "requested_start": _parse_request_time(
+                    match.group("start"), "RequestBars start"
+                ),
+                "requested_end": _parse_request_time(
+                    match.group("end"), "RequestBars end"
+                ),
+                "period": match.group("period"),
+            }
+        )
+    return result
+
+
+def _hds_events(
+    lines: list[str], *, log_timezone: timezone
+) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for line in lines:
+        match = HDS_CONNECT_RE.search(line)
+        if match is None:
+            continue
+        timestamp = _event_time(line)
+        if timestamp is None:
+            _fail("malformed NinjaTrader HDS timestamp")
+        host = match.group("host")
+        if HDS_HOST_RE.fullmatch(host) is None or match.group("ssl") != "True":
+            _fail("historical-data service identity is not approved")
+        result.append(
+            {
+                "timestamp": timestamp.replace(tzinfo=log_timezone),
+                "host": host,
+                "port": int(match.group("port")),
+                "use_ssl": True,
+            }
+        )
+    return result
+
+
+def _session_bounds(
+    runtime: Mapping[str, Any], trading_date: date
+) -> tuple[datetime, datetime]:
+    hours = _mapping(runtime.get("trading_hours"), "Trading Hours")
+    calendar = hours.get("session_calendar")
+    if not isinstance(calendar, list):
+        _fail("missing Trading Hours session calendar")
+    matching = [
+        entry
+        for entry in calendar
+        if isinstance(entry, dict)
+        and entry.get("trading_date") == trading_date.isoformat()
+    ]
+    if len(matching) != 1:
+        _fail("Trading Hours calendar does not uniquely cover the trading date")
+    segments = matching[0].get("segments")
+    if not isinstance(segments, list) or not segments:
+        _fail("missing Trading Hours session segments")
+    starts: list[datetime] = []
+    ends: list[datetime] = []
+    for segment in segments:
+        item = _mapping(segment, "Trading Hours session segment")
+        starts.append(
+            _parse_source_timestamp(
+                _text(item.get("begin_application"), "Trading Hours segment begin"),
+                0,
+            )
+        )
+        ends.append(
+            _parse_source_timestamp(
+                _text(item.get("end_application"), "Trading Hours segment end"),
+                0,
+            )
+        )
+    return min(starts), max(ends)
+
+
+def _saved_connection_matches(
+    config_root: ElementTree.Element, *, connection_name: str, provider_id: str
+) -> int:
+    matches = 0
+    for element in config_root.iter():
+        children = {child.tag: child.text for child in element}
+        if (
+            children.get("Name") == connection_name
+            and children.get("Provider") == provider_id
+        ):
+            matches += 1
+    return matches
 
 
 def _reject_competing_provider_activity(
@@ -1088,9 +1242,11 @@ def _reject_competing_provider_activity(
 ) -> None:
     for line in lines:
         match = PROVIDER_LIFECYCLE_RE.search(line)
-        timestamp = _event_time(line)
-        if match is None or timestamp is None:
+        if match is None:
             continue
+        timestamp = _event_time(line)
+        if timestamp is None:
+            _fail("malformed NinjaTrader provider lifecycle timestamp")
         aware_timestamp = timestamp.replace(tzinfo=log_timezone)
         if not start <= aware_timestamp <= end:
             continue
@@ -1107,21 +1263,39 @@ def _validate_provider_proof(
     evidence: Mapping[str, Any],
     contents: Mapping[str, str],
     pc_timezone: Mapping[str, Any],
+    trading_date: date,
 ) -> dict[str, Any]:
+    if "reload_all_historical_data_initiated_at" in evidence:
+        _fail("legacy reload evidence is not valid for acquisition evidence v1.2")
     acquisition_id = _text(evidence.get("acquisition_id"), "acquisition id")
     if runtime.get("acquisition_id") != acquisition_id:
-        _fail("provider/reload evidence does not match the runtime acquisition session")
-    provider = _text(evidence.get("intended_provider"), "intended provider")
+        _fail(
+            "provider/historical-request evidence does not match the runtime acquisition session"
+        )
+    profile_id = _text(evidence.get("provider_profile_id"), "provider profile id")
+    if profile_id != PROVIDER_PROFILE["id"]:
+        _fail("provider profile is not approved")
     connection_name = _text(
         evidence.get("intended_connection_name"), "intended connection name"
     )
+    if connection_name != PROVIDER_PROFILE["connection_name"]:
+        _fail("intended connection does not match the approved provider profile")
+    trigger = _mapping(
+        evidence.get("historical_request_trigger"), "historical request trigger"
+    )
+    _require_exact_keys(trigger, HISTORICAL_TRIGGER_KEYS, "historical request trigger")
+    if (
+        trigger.get("method") != "NINJATRADER_REQUEST_BARS_TRACE"
+        or trigger.get("request_source_role") != "ninjatrader_trace"
+    ):
+        _fail("historical request trigger method is not approved")
     if runtime.get("connection_snapshot_phase") != (
         "immediately after operator arm and before export"
     ):
         _fail("provider connection snapshot is not bound to the acquisition arm event")
     connections = runtime.get("active_connections")
     if not isinstance(connections, list):
-        _fail("missing provider/reload evidence")
+        _fail("missing provider/historical-request evidence")
     connected = [
         item
         for item in connections
@@ -1133,10 +1307,11 @@ def _validate_provider_proof(
     matching = [
         item
         for item in connected
-        if item.get("provider") == provider and item.get("name") == connection_name
+        if item.get("provider") == PROVIDER_PROFILE["runtime_provider_id"]
+        and item.get("name") == connection_name
     ]
     if len(matching) != 1:
-        _fail("provider/reload evidence does not prove the intended provider")
+        _fail("provider/historical-request evidence does not prove the intended provider")
     if len(connected) != 1:
         _fail("competing historical-data provider connection is active")
 
@@ -1145,22 +1320,47 @@ def _validate_provider_proof(
     except ElementTree.ParseError as error:
         raise AcquisitionValidationError("invalid NinjaTrader configuration evidence") from error
     preferred_future = config_root.findtext(".//PreferredFutureConnection")
-    preferred_realtime_future = config_root.findtext(".//PreferredRealtimeFutureConnection")
+    preferred_realtime_future = config_root.findtext(
+        ".//PreferredRealtimeFutureConnection"
+    )
+    saved_connection_matches = _saved_connection_matches(
+        config_root,
+        connection_name=connection_name,
+        provider_id=PROVIDER_PROFILE["runtime_provider_id"],
+    )
     if (
-        preferred_future != connection_name
-        or preferred_realtime_future != connection_name
+        preferred_future == connection_name
+        and preferred_realtime_future == connection_name
     ):
+        configuration_mode = "EXPLICIT_PREFERENCE"
+    elif preferred_future == "Unknown" and preferred_realtime_future == "Unknown":
+        if saved_connection_matches != 1:
+            _fail("ambiguous unique automatic futures routing")
+        configuration_mode = "UNIQUE_AUTO_ROUTE"
+    else:
         _fail("preferred historical connection does not match the intended MNQ connection")
 
-    started = _parse_iso_timestamp(evidence.get("acquisition_started_at"), "acquisition start")
-    reload_declared = _parse_iso_timestamp(
-        evidence.get("reload_all_historical_data_initiated_at"),
-        "Reload All Historical Data timestamp",
-    )
+    declared = {
+        name: _parse_iso_timestamp(trigger.get(name), name.replace("_", " "))
+        for name in HISTORICAL_TRIGGER_KEYS
+        if name not in {"method", "request_source_role"}
+    }
     armed_declared = _parse_iso_timestamp(evidence.get("export_armed_at"), "export arm")
     exported = _parse_iso_timestamp(evidence.get("export_completed_at"), "export completion")
-    if not started <= reload_declared <= armed_declared <= exported:
-        _fail("provider/reload evidence chronology is invalid")
+    if not (
+        declared["adapter_connection_initiated_at"]
+        <= declared["connection_ready_at"]
+        and declared["hds_connected_at"]
+        <= declared["pre_request_realtime_at"]
+        and declared["connection_ready_at"]
+        <= declared["pre_request_realtime_at"]
+        < declared["request_observed_at"]
+        < declared["post_request_initialized_at"]
+        <= declared["post_request_realtime_at"]
+        < armed_declared
+        <= exported
+    ):
+        _fail("provider/historical-request evidence chronology is invalid")
     log_timezone_id = _text(evidence.get("log_timezone_id"), "log timezone id")
     if log_timezone_id != pc_timezone.get("id"):
         _fail("log timezone does not match the captured PC timezone")
@@ -1174,81 +1374,130 @@ def _validate_provider_proof(
         _fail("PC/log timezone offset does not match acquisition event offsets")
     if any(
         timestamp.utcoffset() != log_offset
-        for timestamp in (started, reload_declared, armed_declared, exported)
+        for timestamp in (*declared.values(), armed_declared, exported)
     ):
         _fail("PC/log timezone offset does not match acquisition evidence")
     log_tz = timezone(log_offset)
-    lines = (contents["ninjatrader_trace"] + "\n" + contents["ninjatrader_log"]).splitlines()
+    trace_lines = contents["ninjatrader_trace"].splitlines()
+    lines = (
+        contents["ninjatrader_trace"] + "\n" + contents["ninjatrader_log"]
+    ).splitlines()
     marker = f"acquisition={acquisition_id}"
-    initialized_time = _find_marker_event(
+    search_start = declared["adapter_connection_initiated_at"]
+    initialized_times = _marker_event_times(
         lines,
         needle=marker + " exporter initialized",
-        start=started,
+        start=search_start,
         end=exported,
         log_timezone=log_tz,
     )
-    armed_time = _find_marker_event(
+    realtime_times = _marker_event_times(
         lines,
-        needle=marker + " export armed after reload",
-        start=started,
+        needle=marker + " realtime lifecycle observed",
+        start=search_start,
         end=exported,
         log_timezone=log_tz,
     )
-    completed_time = _find_marker_event(
+    armed_times = _marker_event_times(
+        lines,
+        needle=marker + " export armed event_time=",
+        start=search_start,
+        end=exported,
+        log_timezone=log_tz,
+    )
+    completed_times = _marker_event_times(
         lines,
         needle=marker + " export complete",
-        start=started,
+        start=search_start,
         end=exported,
         log_timezone=log_tz,
     )
-    connection_time = _find_event(
-        lines,
-        needle=f"({connection_name}) {provider}.Adapter.Connect",
-        start=started,
+    adapter_times = _event_times(
+        trace_lines,
+        needle=f"({connection_name}) {PROVIDER_PROFILE['trace_adapter']}.Connect",
+        start=search_start,
         end=exported,
         log_timezone=log_tz,
     )
-    reload_time = _find_event(
-        lines,
-        needle="Reload All Historical Data initiated",
-        start=reload_declared,
+    connection_ready_times = _event_times(
+        trace_lines,
+        needle=(
+            f"({connection_name}) Cbi.Connection.ConnectionStatusCallback: "
+            "status=Connected priceStatus=Connected"
+        ),
+        start=search_start,
         end=exported,
         log_timezone=log_tz,
     )
-    request_time = _find_event(
-        lines,
-        needle="Cbi.Instrument.RequestBars (to Provider): instrument='MNQ SEP26'",
-        start=reload_declared,
-        end=exported,
-        log_timezone=log_tz,
-    )
+    hds_events = _hds_events(trace_lines, log_timezone=log_tz)
+    request_events = _request_events(trace_lines, log_timezone=log_tz)
+    session_start, session_end = _session_bounds(runtime, trading_date)
+
+    qualifying_requests = [
+        request
+        for request in request_events
+        if request["instrument"] == PROVIDER_PROFILE["contract_label"]
+        and request["period"] == "1 Minute"
+        and declared["pre_request_realtime_at"]
+        < request["timestamp"]
+        < declared["post_request_initialized_at"]
+        and request["timestamp"] < armed_declared
+        and request["requested_start"] <= session_start
+        and request["requested_end"] >= session_end
+    ]
+    if len(qualifying_requests) != 1:
+        _fail("historical RequestBars evidence is not uniquely qualifying")
+    request = qualifying_requests[0]
+    request_time = request["timestamp"]
+
+    pre_realtime_candidates = [time for time in realtime_times if time < request_time]
+    post_initialized_candidates = [
+        time for time in initialized_times if request_time < time < armed_declared
+    ]
+    if not pre_realtime_candidates or not post_initialized_candidates:
+        _fail("provider/historical-request evidence chain is incomplete")
+    pre_realtime_time = max(pre_realtime_candidates)
+    post_initialized_time = min(post_initialized_candidates)
+    post_realtime_candidates = [
+        time
+        for time in realtime_times
+        if post_initialized_time <= time < armed_declared
+    ]
+    if not post_realtime_candidates:
+        _fail("provider/historical-request evidence chain is incomplete")
+    post_realtime_time = min(post_realtime_candidates)
+
+    matching_hds = [
+        event
+        for event in hds_events
+        if declared["adapter_connection_initiated_at"]
+        <= event["timestamp"]
+        <= pre_realtime_time
+    ]
+    if not matching_hds:
+        _fail("provider/historical-request evidence chain is incomplete")
+    hds = max(matching_hds, key=lambda event: event["timestamp"])
+
     _reject_competing_provider_activity(
-        lines,
-        provider=provider,
+        trace_lines,
+        provider=PROVIDER_PROFILE["trace_adapter_name"],
         connection_name=connection_name,
-        start=started,
+        start=declared["adapter_connection_initiated_at"],
         end=exported,
         log_timezone=log_tz,
     )
     if (
-        initialized_time is None
-        or armed_time is None
-        or completed_time is None
-        or connection_time is None
-        or reload_time is None
-        or request_time is None
+        declared["adapter_connection_initiated_at"] not in adapter_times
+        or declared["connection_ready_at"] not in connection_ready_times
+        or declared["hds_connected_at"] != hds["timestamp"]
+        or declared["pre_request_realtime_at"] != pre_realtime_time
+        or declared["request_observed_at"] != request_time
+        or declared["post_request_initialized_at"] != post_initialized_time
+        or declared["post_request_realtime_at"] != post_realtime_time
+        or armed_declared not in armed_times
+        or exported not in completed_times
     ):
-        _fail("provider/reload evidence chain is incomplete")
-    if not (
-        started <= connection_time <= request_time
-        and started <= initialized_time <= reload_time <= request_time
-        and request_time <= armed_time <= completed_time
-    ):
-        _fail("provider/reload evidence chronology is invalid")
-    if reload_time != reload_declared.astimezone(log_tz):
-        _fail("Reload All Historical Data evidence does not match its declared time")
-    if armed_time != armed_declared or completed_time != exported:
-        _fail("export completion evidence does not match its declared time")
+        _fail("provider/historical-request evidence chain is incomplete")
     runtime_events = {
         entry["event"]: _parse_iso_timestamp(
             entry["timestamp"], f"PC/log timezone {entry['event']} timestamp"
@@ -1256,24 +1505,54 @@ def _validate_provider_proof(
         for entry in runtime_event_offsets
     }
     if (
-        runtime_events["initialized"] != initialized_time
-        or runtime_events["armed"] != armed_time
-        or runtime_events["exported"] != completed_time
+        runtime_events["initialized"] != post_initialized_time
+        or runtime_events["armed"] != armed_declared
+        or runtime_events["exported"] != exported
     ):
         _fail("PC/log timezone event timestamps do not match acquisition markers")
     return {
         "status": "PROVEN",
-        "intended_provider": provider,
+        "provider_profile_id": profile_id,
+        "runtime_provider_id": PROVIDER_PROFILE["runtime_provider_id"],
+        "trace_adapter": PROVIDER_PROFILE["trace_adapter"],
         "intended_connection_name": connection_name,
         "active_connection": matching[0],
+        "historical_service": {
+            "name": PROVIDER_PROFILE["historical_service"],
+            "host": hds["host"],
+            "port": hds["port"],
+            "use_ssl": hds["use_ssl"],
+            "connected_at": hds["timestamp"].isoformat(),
+        },
+        "configuration_binding": {
+            "mode": configuration_mode,
+            "preferred_future_connection": preferred_future,
+            "preferred_realtime_future_connection": preferred_realtime_future,
+            "saved_connection_matches": saved_connection_matches,
+        },
         "acquisition_id": acquisition_id,
-        "acquisition_started_at": started.isoformat(),
-        "reload_all_historical_data_initiated_at": reload_declared.isoformat(),
-        "export_armed_at": armed_declared.isoformat(),
-        "matching_historical_request_observed": True,
-        "export_completed_at": exported.isoformat(),
+        "lifecycle": {
+            "adapter_connection_initiated_at": declared[
+                "adapter_connection_initiated_at"
+            ].isoformat(),
+            "connection_ready_at": declared["connection_ready_at"].isoformat(),
+            "pre_request_realtime_at": pre_realtime_time.isoformat(),
+            "post_request_initialized_at": post_initialized_time.isoformat(),
+            "post_request_realtime_at": post_realtime_time.isoformat(),
+            "export_armed_at": armed_declared.isoformat(),
+            "export_completed_at": exported.isoformat(),
+        },
+        "historical_request": {
+            "source_role": trigger["request_source_role"],
+            "observed_at": request_time.isoformat(),
+            "instrument": request["instrument"],
+            "requested_start": request["requested_start"].isoformat(),
+            "requested_end": request["requested_end"].isoformat(),
+            "provider_request_period": request["period"],
+            "covers_declared_session": True,
+        },
         "competing_historical_provider_connections": 0,
-        "preferred_future_connection": connection_name,
+        "intended_provider_disconnects": 0,
         "log_timezone_id": log_timezone_id,
         "log_utc_offset": _text(evidence.get("log_utc_offset"), "log UTC offset"),
     }
@@ -1313,8 +1592,8 @@ def finalize_provenance(
     runtime = _load_object(runtime_path, "runtime capture")
     evidence = _load_object(evidence_path, "acquisition evidence")
     if (
-        runtime.get("schema_version") != ACQUISITION_SCHEMA_VERSION
-        or evidence.get("schema_version") != ACQUISITION_SCHEMA_VERSION
+        runtime.get("schema_version") != RUNTIME_CAPTURE_SCHEMA_VERSION
+        or evidence.get("schema_version") != ACQUISITION_EVIDENCE_SCHEMA_VERSION
     ):
         _fail("unsupported acquisition schema version")
 
@@ -1414,7 +1693,7 @@ def finalize_provenance(
         runtime, evidence_hashes, trading_date, timestamps
     )
     provider = _validate_provider_proof(
-        runtime, evidence, evidence_contents, pc_timezone
+        runtime, evidence, evidence_contents, pc_timezone, trading_date
     )
     ninja_version = _text(runtime.get("ninjatrader_version"), "NinjaTrader version")
     export_method = _text(runtime.get("export_method"), "source export method")
@@ -1423,7 +1702,7 @@ def finalize_provenance(
     )
     exported_at = _parse_iso_timestamp(runtime.get("exported_at"), "runtime export timestamp")
     if exported_at != _parse_iso_timestamp(
-        provider["export_completed_at"], "provider export completion"
+        provider["lifecycle"]["export_completed_at"], "provider export completion"
     ):
         _fail("runtime export timestamp does not match acquisition evidence")
 
@@ -1485,7 +1764,7 @@ def finalize_provenance(
             _fail("checkpoint artifacts changed during provenance finalization")
     checkpoint_verification = final_checkpoint_verification
     result: dict[str, object] = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": PROVENANCE_SCHEMA_VERSION,
         "cohort_id": cohort_id,
         "case_id": case_id,
         "contract": contract,

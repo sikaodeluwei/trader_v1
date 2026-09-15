@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from copy import deepcopy
@@ -19,6 +20,7 @@ from tools.validation.mnq_5m_acquisition import (
 
 PINNED_PRODUCTION_COMMIT = "04a73e1401d44688660b211d9db6918113482856"
 COHORT_ID = "mnq-202609-5m-v1"
+PROVIDER_PROFILE_ID = "NINJATRADER_TRADOVATE_PROVIDER31_HDS_V1"
 SELECTION_CHECKPOINT = "2" * 40
 INVENTORY_CHECKPOINT = "3" * 40
 TOOLSET_CHECKPOINT = "4" * 40
@@ -383,14 +385,25 @@ def _build_bundle(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     exporter.write_text("// frozen exporter fixture\n", encoding="utf-8")
     trace = tmp_path / "trace.txt"
     trace.write_text(
+        "2026-06-21 23:45:00.000 (My NinjaTrader) "
+        "Tradovate.Adapter.Connect status=Connecting\n"
+        "2026-06-21 23:45:01.000 (My NinjaTrader) "
+        "Cbi.Connection.ConnectionStatusCallback: status=Connected "
+        "priceStatus=Connected previousStatus=Connecting\n"
+        "2026-06-21 23:45:02.000 Server.HdsClient.Connect: type=HDS "
+        "server='hds-us-nt-007.ninjatrader.com' port=31655 system='' useSsl=True\n"
         "2026-06-21 23:46:00.000 acquisition=acq-001 exporter initialized "
         "event_time=2026-06-21T23:46:00+08:00\n"
-        "2026-06-21 23:50:00.000 (Live) "
-        "Tradovate.Adapter.Connect status=Connected\n"
-        "2026-06-21 23:55:00.000 Reload All Historical Data initiated\n"
+        "2026-06-21 23:46:01.000 acquisition=acq-001 realtime lifecycle observed "
+        "event_time=2026-06-21T23:46:01+08:00\n"
         "2026-06-21 23:56:00.000 "
-        "Cbi.Instrument.RequestBars (to Provider): instrument='MNQ SEP26'\n"
-        "2026-06-22 21:30:59.000 acquisition=acq-001 export armed after reload "
+        "Cbi.Instrument.RequestBars (to Provider): instrument='MNQ SEP26' "
+        "from='2026/6/21 23:00:00' to='2026/6/23 0:00:00' period='1 Minute'\n"
+        "2026-06-21 23:56:30.000 acquisition=acq-001 exporter initialized "
+        "event_time=2026-06-21T23:56:30+08:00\n"
+        "2026-06-21 23:56:31.000 acquisition=acq-001 realtime lifecycle observed "
+        "event_time=2026-06-21T23:56:31+08:00\n"
+        "2026-06-22 21:30:59.000 acquisition=acq-001 export armed "
         "event_time=2026-06-22T21:30:59+08:00\n"
         "2026-06-22 21:31:00.000 acquisition=acq-001 export complete "
         "event_time=2026-06-22T21:31:00+08:00\n",
@@ -399,13 +412,15 @@ def _build_bundle(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     log = tmp_path / "log.txt"
     log.write_text(
         "2026-06-21 23:50:00.000 acquisition=acq-001 "
-        "provider=Tradovate connection=Live status=Connected\n",
+        "provider=Provider31 connection=My NinjaTrader status=Connected\n",
         encoding="utf-8",
     )
     config = tmp_path / "Config.xml"
     config.write_text(
-        "<NinjaTrader><PreferredFutureConnection>Live</PreferredFutureConnection>"
-        "<PreferredRealtimeFutureConnection>Live</PreferredRealtimeFutureConnection>"
+        "<NinjaTrader><PreferredFutureConnection>My NinjaTrader</PreferredFutureConnection>"
+        "<PreferredRealtimeFutureConnection>My NinjaTrader</PreferredRealtimeFutureConnection>"
+        "<TradovateOptions><Name>My NinjaTrader</Name><Provider>Provider31</Provider>"
+        "</TradovateOptions>"
         "</NinjaTrader>\n",
         encoding="utf-8",
     )
@@ -465,7 +480,7 @@ def _build_bundle(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
             "acquisition_event_offsets": [
                 {
                     "event": "initialized",
-                    "timestamp": "2026-06-21T23:46:00+08:00",
+                    "timestamp": "2026-06-21T23:56:30+08:00",
                     "utc_offset": "+08:00",
                 },
                 {
@@ -509,8 +524,8 @@ def _build_bundle(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         },
         "active_connections": [
             {
-                "name": "Live",
-                "provider": "Tradovate",
+                "name": "My NinjaTrader",
+                "provider": "Provider31",
                 "status": "Connected",
                 "price_status": "Connected",
                 "instrument_types": ["Future"],
@@ -556,17 +571,26 @@ def _build_bundle(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         },
     ]
     evidence = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "acquisition_id": "acq-001",
         "cohort_id": "mnq-202609-5m-v1",
         "case_id": "mnq-202609-5m-td2026-06-22-w01",
         "trading_date": "2026-06-22",
-        "intended_provider": "Tradovate",
-        "intended_connection_name": "Live",
+        "provider_profile_id": PROVIDER_PROFILE_ID,
+        "intended_connection_name": "My NinjaTrader",
         "log_timezone_id": "Singapore Standard Time",
         "log_utc_offset": "+08:00",
-        "acquisition_started_at": "2026-06-21T23:45:00+08:00",
-        "reload_all_historical_data_initiated_at": "2026-06-21T23:55:00+08:00",
+        "historical_request_trigger": {
+            "method": "NINJATRADER_REQUEST_BARS_TRACE",
+            "request_source_role": "ninjatrader_trace",
+            "adapter_connection_initiated_at": "2026-06-21T23:45:00+08:00",
+            "connection_ready_at": "2026-06-21T23:45:01+08:00",
+            "hds_connected_at": "2026-06-21T23:45:02+08:00",
+            "pre_request_realtime_at": "2026-06-21T23:46:01+08:00",
+            "request_observed_at": "2026-06-21T23:56:00+08:00",
+            "post_request_initialized_at": "2026-06-21T23:56:30+08:00",
+            "post_request_realtime_at": "2026-06-21T23:56:31+08:00",
+        },
         "export_armed_at": "2026-06-22T21:30:59+08:00",
         "export_completed_at": "2026-06-22T21:31:00+08:00",
         "runtime_capture_sha256": _sha256(runtime_path),
@@ -793,6 +817,13 @@ def _refresh_evidence_role_hash(evidence: Path, role: str) -> None:
     _rewrite_json(evidence, update)
 
 
+def _rewrite_evidence_role_text(evidence: Path, role: str, transform) -> Path:
+    path = _evidence_role_path(evidence, role)
+    path.write_text(transform(path.read_text(encoding="utf-8")), encoding="utf-8")
+    _refresh_evidence_role_hash(evidence, role)
+    return path
+
+
 def _rewrite_bound_payload(
     evidence: Path,
     role: str,
@@ -833,7 +864,7 @@ def test_valid_bundle_captures_provenance_and_accepts_zero_volume(
         exporter_path=exporter,
     )
 
-    assert result["schema_version"] == "1.1"
+    assert result["schema_version"] == "1.2"
     assert result["cohort_id"] == "mnq-202609-5m-v1"
     assert result["case_id"] == "mnq-202609-5m-td2026-06-22-w01"
     assert result["contract"]["contract_label"] == "MNQ SEP26"
@@ -854,6 +885,56 @@ def test_valid_bundle_captures_provenance_and_accepts_zero_volume(
     assert result["application_timezone"]["id"] == "Singapore Standard Time"
     assert result["trading_hours"]["name"] == "CME US Index Futures ETH"
     assert result["provider_acquisition"]["status"] == "PROVEN"
+    assert result["provider_acquisition"] == {
+        "status": "PROVEN",
+        "provider_profile_id": PROVIDER_PROFILE_ID,
+        "runtime_provider_id": "Provider31",
+        "trace_adapter": "Tradovate.Adapter",
+        "intended_connection_name": "My NinjaTrader",
+        "active_connection": {
+            "name": "My NinjaTrader",
+            "provider": "Provider31",
+            "status": "Connected",
+            "price_status": "Connected",
+            "instrument_types": ["Future"],
+        },
+        "historical_service": {
+            "name": "NinjaTrader HDS",
+            "host": "hds-us-nt-007.ninjatrader.com",
+            "port": 31655,
+            "use_ssl": True,
+            "connected_at": "2026-06-21T23:45:02+08:00",
+        },
+        "configuration_binding": {
+            "mode": "EXPLICIT_PREFERENCE",
+            "preferred_future_connection": "My NinjaTrader",
+            "preferred_realtime_future_connection": "My NinjaTrader",
+            "saved_connection_matches": 1,
+        },
+        "acquisition_id": "acq-001",
+        "lifecycle": {
+            "adapter_connection_initiated_at": "2026-06-21T23:45:00+08:00",
+            "connection_ready_at": "2026-06-21T23:45:01+08:00",
+            "pre_request_realtime_at": "2026-06-21T23:46:01+08:00",
+            "post_request_initialized_at": "2026-06-21T23:56:30+08:00",
+            "post_request_realtime_at": "2026-06-21T23:56:31+08:00",
+            "export_armed_at": "2026-06-22T21:30:59+08:00",
+            "export_completed_at": "2026-06-22T21:31:00+08:00",
+        },
+        "historical_request": {
+            "source_role": "ninjatrader_trace",
+            "observed_at": "2026-06-21T23:56:00+08:00",
+            "instrument": "MNQ SEP26",
+            "requested_start": "2026-06-21T23:00:00",
+            "requested_end": "2026-06-23T00:00:00",
+            "provider_request_period": "1 Minute",
+            "covers_declared_session": True,
+        },
+        "competing_historical_provider_connections": 0,
+        "intended_provider_disconnects": 0,
+        "log_timezone_id": "Singapore Standard Time",
+        "log_utc_offset": "+08:00",
+    }
     assert result["selection_binding"]["status"] == "FROZEN_FOR_SOURCE_ACQUISITION"
     assert result["selection_binding"]["trusted_checkpoint"] == SELECTION_CHECKPOINT
     assert result["selection_binding"]["selection"]["case_id"] == (
@@ -1615,9 +1696,50 @@ def test_provenance_schema_requires_semantic_bindings() -> None:
     )
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
 
-    assert schema["properties"]["schema_version"] == {"const": "1.1"}
+    assert schema["properties"]["schema_version"] == {"const": "1.2"}
     assert "selection_binding" in schema["required"]
     assert "toolset_binding" in schema["required"]
+    provider = schema["properties"]["provider_acquisition"]
+    assert provider["additionalProperties"] is False
+    assert set(provider["required"]) == {
+        "status",
+        "provider_profile_id",
+        "runtime_provider_id",
+        "trace_adapter",
+        "intended_connection_name",
+        "active_connection",
+        "historical_service",
+        "configuration_binding",
+        "acquisition_id",
+        "lifecycle",
+        "historical_request",
+        "competing_historical_provider_connections",
+        "intended_provider_disconnects",
+        "log_timezone_id",
+        "log_utc_offset",
+    }
+    assert "reload_all_historical_data_initiated_at" not in provider["properties"]
+    assert "matching_historical_request_observed" not in provider["properties"]
+    assert provider["properties"]["provider_profile_id"] == {
+        "const": PROVIDER_PROFILE_ID
+    }
+    assert provider["properties"]["historical_service"]["additionalProperties"] is False
+    assert provider["properties"]["configuration_binding"]["properties"]["mode"] == {
+        "enum": ["EXPLICIT_PREFERENCE", "UNIQUE_AUTO_ROUTE"]
+    }
+    assert provider["properties"]["lifecycle"]["additionalProperties"] is False
+    historical_request = provider["properties"]["historical_request"]
+    assert historical_request["additionalProperties"] is False
+    local_request_timestamp = {
+        "type": "string",
+        "pattern": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$",
+    }
+    assert historical_request["properties"]["requested_start"] == (
+        local_request_timestamp
+    )
+    assert historical_request["properties"]["requested_end"] == (
+        local_request_timestamp
+    )
     instrument = schema["properties"]["contract"]["properties"]
     assert instrument["full_name"] == {
         "type": "string",
@@ -1629,6 +1751,61 @@ def test_provenance_schema_requires_semantic_bindings() -> None:
         "minLength": 1,
         "pattern": r"^\S(?:.*\S)?$",
     }
+
+
+def _matches_routing_schema(value: dict[str, object], schema: dict[str, object]) -> bool:
+    variants = schema["oneOf"]
+    return (
+        sum(
+            all(
+                value.get(name) == constraint["const"]
+                for name, constraint in variant["properties"].items()
+            )
+            for variant in variants
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize(
+    "configuration_binding",
+    [
+        {
+            "mode": "EXPLICIT_PREFERENCE",
+            "preferred_future_connection": "Other",
+            "preferred_realtime_future_connection": "My NinjaTrader",
+            "saved_connection_matches": 1,
+        },
+        {
+            "mode": "UNIQUE_AUTO_ROUTE",
+            "preferred_future_connection": "My NinjaTrader",
+            "preferred_realtime_future_connection": "My NinjaTrader",
+            "saved_connection_matches": 1,
+        },
+        {
+            "mode": "UNIQUE_AUTO_ROUTE",
+            "preferred_future_connection": "Unknown",
+            "preferred_realtime_future_connection": "Unknown",
+            "saved_connection_matches": 0,
+        },
+    ],
+)
+def test_provenance_schema_rejects_invalid_routing_mode_bindings(
+    configuration_binding: dict[str, object],
+) -> None:
+    schema_path = (
+        Path(__file__).resolve().parents[1]
+        / "validation"
+        / "mnq_5m_multiwindow"
+        / "schemas"
+        / "provenance.schema.json"
+    )
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    routing_schema = schema["properties"]["provider_acquisition"]["properties"][
+        "configuration_binding"
+    ]
+
+    assert not _matches_routing_schema(configuration_binding, routing_schema)
 
 
 @pytest.mark.parametrize(
@@ -1803,14 +1980,16 @@ def test_rejects_missing_runtime_metadata(
     "missing_text",
     [
         "Tradovate.Adapter.Connect",
-        "Reload All Historical Data initiated",
+        "Cbi.Connection.ConnectionStatusCallback: status=Connected",
+        "Server.HdsClient.Connect",
+        "realtime lifecycle observed",
         "Cbi.Instrument.RequestBars (to Provider): instrument='MNQ SEP26'",
-        "export armed after reload",
+        "export armed event_time=",
         "exporter initialized",
         "export complete",
     ],
 )
-def test_rejects_missing_provider_reload_chain(
+def test_rejects_missing_provider_historical_request_chain(
     tmp_path: Path, missing_text: str
 ) -> None:
     source, runtime, evidence, exporter = _build_bundle(tmp_path)
@@ -1830,7 +2009,10 @@ def test_rejects_missing_provider_reload_chain(
         ],
     )
 
-    with pytest.raises(AcquisitionValidationError, match="provider/reload evidence"):
+    with pytest.raises(
+        AcquisitionValidationError,
+        match="provider/historical-request|historical RequestBars",
+    ):
         finalize_provenance(
             source_path=source,
             runtime_capture_path=runtime,
@@ -1888,11 +2070,17 @@ def test_rejects_competing_provider_activity_during_acquisition(tmp_path: Path) 
     trace = tmp_path / "trace.txt"
     trace.write_text(
         trace.read_text(encoding="utf-8").replace(
-            "2026-06-21 23:55:00.000 Reload All Historical Data initiated\n",
+            "2026-06-21 23:56:00.000 "
+            "Cbi.Instrument.RequestBars (to Provider): instrument='MNQ SEP26' "
+            "from='2026/6/21 23:00:00' to='2026/6/23 0:00:00' "
+            "period='1 Minute'\n",
             "2026-06-21 23:54:00.000 (Other) Kinetick.Adapter.Connect "
             "status=Connected\n"
             "2026-06-21 23:54:30.000 (Other) Kinetick.Adapter.Disconnect\n"
-            "2026-06-21 23:55:00.000 Reload All Historical Data initiated\n",
+            "2026-06-21 23:56:00.000 "
+            "Cbi.Instrument.RequestBars (to Provider): instrument='MNQ SEP26' "
+            "from='2026/6/21 23:00:00' to='2026/6/23 0:00:00' "
+            "period='1 Minute'\n",
         ),
         encoding="utf-8",
     )
@@ -1935,6 +2123,444 @@ def test_rejects_provider_when_preferred_future_connection_does_not_match(
     )
 
     with pytest.raises(AcquisitionValidationError, match="preferred historical connection"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_accepts_colon_millisecond_timestamps_and_unique_auto_route(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: re.sub(
+            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\.(\d+)",
+            r"\1:\2",
+            text,
+            flags=re.MULTILINE,
+        ),
+    )
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_config",
+        lambda text: text.replace(
+            "<PreferredFutureConnection>My NinjaTrader</PreferredFutureConnection>",
+            "<PreferredFutureConnection>Unknown</PreferredFutureConnection>",
+        ).replace(
+            "<PreferredRealtimeFutureConnection>My NinjaTrader"
+            "</PreferredRealtimeFutureConnection>",
+            "<PreferredRealtimeFutureConnection>Unknown"
+            "</PreferredRealtimeFutureConnection>",
+        ),
+    )
+
+    result = finalize_provenance(
+        source_path=source,
+        runtime_capture_path=runtime,
+        acquisition_evidence_path=evidence,
+        exporter_path=exporter,
+    )
+
+    assert result["provider_acquisition"]["configuration_binding"]["mode"] == (
+        "UNIQUE_AUTO_ROUTE"
+    )
+    assert result["provider_acquisition"]["historical_request"][
+        "provider_request_period"
+    ] == "1 Minute"
+    assert result["bar_series"]["value"] == 5
+
+
+def test_accepts_varying_approved_hds_node_and_unrelated_requests(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+
+    def add_unrelated(text: str) -> str:
+        return text.replace(
+            "hds-us-nt-007.ninjatrader.com",
+            "hds-us-nt-123.ninjatrader.com",
+        ).replace(
+            "2026-06-21 23:56:00.000 ",
+            "2026-06-21 23:55:58.000 "
+            "Cbi.Instrument.RequestBars (to Provider): instrument='MNQ DEC26' "
+            "from='2026/6/21 23:00:00' to='2026/6/23 0:00:00' "
+            "period='1 Minute'\n"
+            "2026-06-21 23:55:59.000 "
+            "Cbi.Instrument.RequestBars (to Provider): instrument='MNQ SEP26' "
+            "from='2026/6/22 0:00:00' to='2026/6/22 0:00:00' "
+            "period='1 Minute'\n"
+            "2026-06-21 23:56:00.000 ",
+            1,
+        )
+
+    _rewrite_evidence_role_text(evidence, "ninjatrader_trace", add_unrelated)
+
+    result = finalize_provenance(
+        source_path=source,
+        runtime_capture_path=runtime,
+        acquisition_evidence_path=evidence,
+        exporter_path=exporter,
+    )
+
+    assert result["provider_acquisition"]["historical_service"]["host"] == (
+        "hds-us-nt-123.ninjatrader.com"
+    )
+    assert result["provider_acquisition"]["historical_request"]["instrument"] == (
+        "MNQ SEP26"
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (
+            "2026-06-21 23:56:00.000",
+            "2026-06-21 23:45:30.000",
+        ),
+        (
+            "2026-06-21 23:56:00.000",
+            "2026-06-22 21:30:59.500",
+        ),
+        ("instrument='MNQ SEP26'", "instrument='MNQ DEC26'"),
+        (
+            "from='2026/6/21 23:00:00' to='2026/6/23 0:00:00'",
+            "from='2026/6/22 1:00:00' to='2026/6/22 22:00:00'",
+        ),
+        ("period='1 Minute'", "period='Daily'"),
+    ],
+)
+def test_rejects_nonqualifying_historical_requests(
+    tmp_path: Path, old: str, new: str
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: text.replace(old, new, 1),
+    )
+
+    with pytest.raises(AcquisitionValidationError, match="RequestBars"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_multiple_qualifying_historical_requests(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: text.replace(
+            "2026-06-21 23:56:00.000 ",
+            "2026-06-21 23:55:59.000 "
+            "Cbi.Instrument.RequestBars (to Provider): instrument='MNQ SEP26' "
+            "from='2026/6/21 23:00:00' to='2026/6/23 0:00:00' "
+            "period='1 Minute'\n"
+            "2026-06-21 23:56:00.000 ",
+            1,
+        ),
+    )
+
+    with pytest.raises(AcquisitionValidationError, match="uniquely qualifying"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+@pytest.mark.parametrize(
+    ("target", "replacement", "error"),
+    [
+        ("Provider31", "Provider99", "intended provider"),
+        ("Tradovate.Adapter", "Kinetick.Adapter", "competing historical"),
+        (
+            "hds-us-nt-007.ninjatrader.com",
+            "history.example.invalid",
+            "service identity",
+        ),
+    ],
+)
+def test_rejects_wrong_provider_profile_evidence(
+    tmp_path: Path, target: str, replacement: str, error: str
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    if target == "Provider31":
+        _rewrite_json(
+            runtime,
+            lambda value: value["active_connections"][0].__setitem__(
+                "provider", replacement
+            ),
+        )
+        _refresh_runtime_hash(runtime, evidence)
+    else:
+        _rewrite_evidence_role_text(
+            evidence,
+            "ninjatrader_trace",
+            lambda text: text.replace(target, replacement),
+        )
+
+    with pytest.raises(AcquisitionValidationError, match=error):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_unknown_provider_profile_and_wrong_connection_name(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_json(
+        evidence,
+        lambda value: value.__setitem__("provider_profile_id", "GENERIC_PROVIDER"),
+    )
+    with pytest.raises(AcquisitionValidationError, match="profile is not approved"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_json(
+        evidence,
+        lambda value: value.__setitem__("intended_connection_name", "Other"),
+    )
+    with pytest.raises(AcquisitionValidationError, match="approved provider profile"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_intended_provider_disconnect_during_request_cycle(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: text.replace(
+            "2026-06-21 23:56:00.000 ",
+            "2026-06-21 23:55:00.000 (My NinjaTrader) "
+            "Tradovate.Adapter.Disconnect\n"
+            "2026-06-21 23:56:00.000 ",
+            1,
+        ),
+    )
+
+    with pytest.raises(AcquisitionValidationError, match="competing historical"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_ambiguous_unique_auto_route(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+
+    def make_ambiguous(text: str) -> str:
+        return text.replace(
+            "<PreferredFutureConnection>My NinjaTrader</PreferredFutureConnection>",
+            "<PreferredFutureConnection>Unknown</PreferredFutureConnection>",
+        ).replace(
+            "<PreferredRealtimeFutureConnection>My NinjaTrader"
+            "</PreferredRealtimeFutureConnection>",
+            "<PreferredRealtimeFutureConnection>Unknown"
+            "</PreferredRealtimeFutureConnection>",
+        ).replace(
+            "</NinjaTrader>",
+            "<TradovateOptions><Name>My NinjaTrader</Name>"
+            "<Provider>Provider31</Provider></TradovateOptions></NinjaTrader>",
+        )
+
+    _rewrite_evidence_role_text(evidence, "ninjatrader_config", make_ambiguous)
+
+    with pytest.raises(AcquisitionValidationError, match="ambiguous unique"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_multiple_active_futures_feeds_for_unknown_auto_route(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_config",
+        lambda text: text.replace(
+            "<PreferredFutureConnection>My NinjaTrader</PreferredFutureConnection>",
+            "<PreferredFutureConnection>Unknown</PreferredFutureConnection>",
+        ).replace(
+            "<PreferredRealtimeFutureConnection>My NinjaTrader"
+            "</PreferredRealtimeFutureConnection>",
+            "<PreferredRealtimeFutureConnection>Unknown"
+            "</PreferredRealtimeFutureConnection>",
+        ),
+    )
+    _rewrite_json(
+        runtime,
+        lambda value: value["active_connections"].append(
+            {
+                "name": "Other",
+                "provider": "Provider99",
+                "status": "Connected",
+                "price_status": "Connected",
+                "instrument_types": ["Future"],
+            }
+        ),
+    )
+    _refresh_runtime_hash(runtime, evidence)
+
+    with pytest.raises(AcquisitionValidationError, match="competing historical"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_malformed_ninjatrader_timestamp(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: text.replace(
+            "2026-06-21 23:56:00.000 Cbi.Instrument.RequestBars",
+            "2026-06-21 23:56:00.BAD Cbi.Instrument.RequestBars",
+        ),
+    )
+
+    with pytest.raises(AcquisitionValidationError, match="RequestBars timestamp"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+@pytest.mark.parametrize(
+    "provider_event",
+    [
+        "(Other) Kinetick.Adapter.Connect status=Connected",
+        "(My NinjaTrader) Tradovate.Adapter.Disconnect",
+    ],
+)
+def test_rejects_malformed_provider_lifecycle_timestamp(
+    tmp_path: Path, provider_event: str
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: text.replace(
+            "2026-06-21 23:56:00.000 ",
+            f"2026-06-21 23:55:00.BAD {provider_event}\n"
+            "2026-06-21 23:56:00.000 ",
+            1,
+        ),
+    )
+
+    with pytest.raises(AcquisitionValidationError, match="provider lifecycle timestamp"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_marker_when_log_and_embedded_chronology_disagree(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: text.replace(
+            "2026-06-21 23:56:30.000 acquisition=acq-001 exporter initialized",
+            "2026-06-21 23:47:00.000 acquisition=acq-001 exporter initialized",
+        ),
+    )
+
+    with pytest.raises(AcquisitionValidationError, match="marker timestamp"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_legacy_arm_marker_alone_for_official_v12(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: text.replace(
+            "export armed event_time=",
+            "export armed after reload event_time=",
+        ),
+    )
+
+    with pytest.raises(AcquisitionValidationError, match="historical-request evidence"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_legacy_reload_evidence_and_markers_for_official_v12(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_json(
+        evidence,
+        lambda value: value.__setitem__(
+            "reload_all_historical_data_initiated_at",
+            "2026-06-21T23:55:00+08:00",
+        ),
+    )
+    with pytest.raises(AcquisitionValidationError, match="legacy reload evidence"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: text.replace(
+            "realtime lifecycle observed event_time=",
+            "awaiting operator arm after Reload All Historical Data event_time=",
+        ).replace(
+            "export armed event_time=",
+            "export armed after reload event_time=",
+        ),
+    )
+    with pytest.raises(AcquisitionValidationError, match="historical-request evidence"):
         finalize_provenance(
             source_path=source,
             runtime_capture_path=runtime,

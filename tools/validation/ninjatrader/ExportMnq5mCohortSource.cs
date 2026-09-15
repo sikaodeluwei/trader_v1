@@ -77,15 +77,16 @@ namespace NinjaTrader.NinjaScript.Indicators
             else if (State == State.Realtime)
                 Log(
                     "acquisition=" + AcquisitionId
-                    + " awaiting operator arm after Reload All Historical Data",
+                    + " realtime lifecycle observed event_time="
+                    + DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture),
                     LogLevel.Information);
         }
 
         protected override void OnBarUpdate()
         {
-            // Historical calculation is deliberately inert. The operator must invoke
-            // Reload All Historical Data, wait for the chart to return to Realtime,
-            // and only then create/update the acquisition-specific arm file.
+            // Historical calculation is deliberately inert. The operator waits for
+            // the controlled historical-request cycle to return to Realtime and only
+            // then creates or updates the acquisition-specific arm file.
             if (exported || State != State.Realtime || CurrentBar < Count - 2)
                 return;
             if (!TryArmAcquisition())
@@ -141,7 +142,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             armed = true;
             Log(
                 "acquisition=" + AcquisitionId
-                + " export armed after reload event_time="
+                + " export armed event_time="
                 + armedAtPc.ToString("o", CultureInfo.InvariantCulture),
                 LogLevel.Information);
             return true;

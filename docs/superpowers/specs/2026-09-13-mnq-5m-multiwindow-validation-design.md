@@ -263,6 +263,91 @@ reproduction. Unknown contract identity, provider, source timezone, or Trading
 Hours template makes the source ineligible. No inferred or assumed value may
 fill these fields.
 
+## Acquisition Evidence V1.2
+
+Acquisition evidence `1.1` assumed that NinjaTrader would emit an exact
+`Reload All Historical Data initiated` log event. The real MNQ September 2026
+rehearsal did not emit that event. It instead exposed a provider-specific
+historical `RequestBars` event between exporter lifecycle observations. The
+`1.1` evidence remains immutable historical rehearsal evidence, but it is not
+valid official cohort evidence under `1.2`; its meaning is not retroactively
+changed.
+
+Official acquisition evidence and generated provenance use schema version
+`1.2`. `runtime_capture.json` remains version `1.1` because its runtime data
+model did not change. The official `1.2` proof chain is:
+
+```text
+acquisition-specific pre-request Realtime marker
+    -> exactly one qualifying fresh MNQ SEP26 RequestBars event
+    -> complete declared-session coverage
+    -> intended provider, connection, and HDS path
+    -> post-request exporter initialization and Realtime marker
+    -> operator arm
+    -> export completion
+```
+
+The unobservable Reload All Historical Data UI action is not proof. A chart
+showing historical bars, a stale or unrelated `RequestBars` event, an operator
+declaration, or a manually inserted reload timestamp is also not proof.
+Official evidence must not contain the legacy reload field or use legacy
+exporter wording as a compatibility path.
+
+The only supported provider profile for this cohort is
+`NINJATRADER_TRADOVATE_PROVIDER31_HDS_V1`. It binds four separate facts rather
+than conflating them:
+
+- runtime provider identifier `Provider31`;
+- trace adapter `Tradovate.Adapter`;
+- historical service `NinjaTrader HDS`, with the exact observed endpoint and a
+  narrowly validated `hds-us-nt-<node>.ninjatrader.com` hostname; and
+- approved contract `MNQ SEP26`.
+
+The acquisition separately binds the connection display name
+`My NinjaTrader`. Both the runtime provider and trace adapter must be proven
+from their own evidence roles. No generic provider fallback is permitted.
+
+Configuration binding accepts exactly two modes. `EXPLICIT_PREFERENCE`
+requires both preferred futures connection fields to equal
+`My NinjaTrader`. `UNIQUE_AUTO_ROUTE` requires both fields to be `Unknown`,
+exactly one matching saved `My NinjaTrader`/`Provider31` connection, exactly
+one connected runtime futures feed matching that binding, and no competing
+provider lifecycle activity. Missing, different, or ambiguous routing fails.
+
+A qualifying `RequestBars` event must be parsed from the immutable NinjaTrader
+trace evidence and must:
+
+- name exactly `MNQ SEP26`;
+- occur strictly after the selected acquisition-specific pre-request Realtime
+  marker and before the selected post-request initialization/Realtime and arm;
+- request a range that covers the complete declared Trading Hours session for
+  the selected trading date;
+- use the intended connected provider/HDS path with no intended-provider
+  disconnect or competing futures provider during the controlled interval;
+- belong to the same immutable acquisition evidence bundle; and
+- be the only event satisfying every qualification rule.
+
+Zero or multiple qualifying requests fail. Other non-qualifying requests may
+exist, so neither first-request nor nearest-request selection is valid. The
+provider trace may report a `1 Minute` request while runtime/chart evidence
+proves native NinjaTrader `Minute / 5`; these are separate recorded facts and
+must not be relabelled.
+
+NinjaTrader log timestamps may use either a dot or a colon before fractional
+seconds. Parsing may normalize that separator in memory but must not alter the
+immutable evidence bytes. An embedded exporter `event_time` must differ from
+its log-prefix timestamp by less than one second, allowing log precision loss
+while rejecting contradictory chronology. Lifecycle events are selected
+deterministically around the unique qualifying request because NinjaTrader may
+recreate the exporter during the historical-data lifecycle.
+
+Official `1.2` exporters emit only neutral, acquisition-specific,
+machine-parseable markers for initialization, Realtime lifecycle observation,
+arm, and completion. Wording that claims an arm occurred "after reload" is
+prohibited. The existing real `1.1` rehearsal is disposable regression
+evidence only; official cohort acquisition requires a fresh run with the
+neutral `1.2` exporter.
+
 ## Source Integrity and Chronology
 
 Source validation occurs before selection and again before every downstream

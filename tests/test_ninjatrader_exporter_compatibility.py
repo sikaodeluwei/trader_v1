@@ -94,6 +94,15 @@ def test_exporter_validates_contract_semantics_not_display_name() -> None:
     assert "instrument_id = Instrument.FullName" in source
 
 
+def test_exporter_emits_only_neutral_v12_lifecycle_markers() -> None:
+    source = EXPORTER.read_text(encoding="utf-8")
+
+    assert "realtime lifecycle observed event_time=" in source
+    assert '" export armed event_time="' in source
+    assert "awaiting operator arm after Reload All Historical Data" not in source
+    assert '" export armed after reload event_time="' not in source
+
+
 @pytest.mark.skipif(
     not (CSC.is_file() and SYSTEM_WEB_EXTENSIONS.is_file()),
     reason="the installed .NET Framework NinjaScript compiler is unavailable",
