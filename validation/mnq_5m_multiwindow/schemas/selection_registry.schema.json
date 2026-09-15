@@ -97,7 +97,7 @@
       ],
       "properties": {
         "contract_label": { "const": "MNQ SEP26" },
-        "full_name": { "const": "MNQ 09-26" },
+        "full_name": { "const": "MNQ SEP26" },
         "expiry_month": { "const": 9 },
         "expiry_year": { "const": 2026 },
         "candidate_date_start": { "const": "2026-06-22" },

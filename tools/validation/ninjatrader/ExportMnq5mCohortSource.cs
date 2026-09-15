@@ -19,7 +19,6 @@ namespace NinjaTrader.NinjaScript.Indicators
 {
     public class ExportMnq5mCohortSource : Indicator
     {
-        private const string ApprovedFullName = "MNQ 09-26";
         private const int ApprovedExpiryMonth = 9;
         private const int ApprovedExpiryYear = 2026;
         private const int RequiredBars = 250;
@@ -160,12 +159,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 
             DateTime expiry = ReadDateTimeProperty(Instrument, "Expiry");
             string masterName = Instrument.MasterInstrument.Name;
-            if (Instrument.FullName != ApprovedFullName
-                || masterName != "MNQ"
+            if (masterName != "MNQ"
                 || expiry.Month != ApprovedExpiryMonth
                 || expiry.Year != ApprovedExpiryYear)
                 throw new InvalidOperationException(
-                    "Runtime instrument is not the approved MNQ SEP26 / MNQ 09-26 contract.");
+                    "Runtime instrument is not MNQ with a September 2026 expiry.");
 
             if (BarsPeriod.BarsPeriodType != BarsPeriodType.Minute
                 || BarsPeriod.Value != 5)

@@ -231,7 +231,7 @@ def _build_selection_evidence(tmp_path: Path) -> dict[str, Path]:
         "cohort_id": COHORT_ID,
         "contract_policy": {
             "contract_label": "MNQ SEP26",
-            "full_name": "MNQ 09-26",
+            "full_name": "MNQ SEP26",
             "expiry_month": 9,
             "expiry_year": 2026,
             "candidate_date_start": "2026-06-22",
@@ -424,12 +424,12 @@ def _build_bundle(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
         "trading_date": "2026-06-22",
         "instrument": {
             "contract_label": "MNQ SEP26",
-            "full_name": "MNQ 09-26",
+            "full_name": "MNQ SEP26",
             "master_name": "MNQ",
-            "instrument_id": "MNQ 09-26",
+            "instrument_id": "MNQ SEP26",
             "expiry_month": 9,
             "expiry_year": 2026,
-            "exchange": "CME",
+            "exchange": "Globex",
         },
         "ninjatrader_version": "8.1.5.2",
         "export_method": "ExportMnq5mCohortSource NinjaTrader indicator",
@@ -837,7 +837,7 @@ def test_valid_bundle_captures_provenance_and_accepts_zero_volume(
     assert result["cohort_id"] == "mnq-202609-5m-v1"
     assert result["case_id"] == "mnq-202609-5m-td2026-06-22-w01"
     assert result["contract"]["contract_label"] == "MNQ SEP26"
-    assert result["contract"]["full_name"] == "MNQ 09-26"
+    assert result["contract"]["full_name"] == "MNQ SEP26"
     assert result["bar_series"] == {
         "type": "Minute",
         "value": 5,
@@ -893,6 +893,47 @@ def test_valid_bundle_captures_provenance_and_accepts_zero_volume(
         "toolset_manifest",
     }
     assert source.read_bytes() == original_source
+
+
+def test_accepts_confirmed_runtime_name_without_normalizing_it(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_json(
+        runtime,
+        lambda value: (
+            value["instrument"].__setitem__("full_name", "MNQ SEP26"),
+            value["instrument"].__setitem__("instrument_id", "MNQ SEP26"),
+        ),
+    )
+    _refresh_runtime_hash(runtime, evidence)
+
+    result = finalize_provenance(
+        source_path=source,
+        runtime_capture_path=runtime,
+        acquisition_evidence_path=evidence,
+        exporter_path=exporter,
+    )
+
+    assert result["contract"]["full_name"] == "MNQ SEP26"
+    assert result["contract"]["instrument_id"] == "MNQ SEP26"
+
+
+def test_rejects_disagreeing_raw_runtime_identity_fields(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_json(
+        runtime,
+        lambda value: value["instrument"].__setitem__(
+            "instrument_id", "MNQ 09-26"
+        ),
+    )
+    _refresh_runtime_hash(runtime, evidence)
+
+    with pytest.raises(AcquisitionValidationError, match="identity fields disagree"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
 
 
 def test_semantic_validation_uses_the_same_manifest_bytes_that_were_hashed(
@@ -1577,6 +1618,17 @@ def test_provenance_schema_requires_semantic_bindings() -> None:
     assert schema["properties"]["schema_version"] == {"const": "1.1"}
     assert "selection_binding" in schema["required"]
     assert "toolset_binding" in schema["required"]
+    instrument = schema["properties"]["contract"]["properties"]
+    assert instrument["full_name"] == {
+        "type": "string",
+        "minLength": 1,
+        "pattern": r"^\S(?:.*\S)?$",
+    }
+    assert instrument["instrument_id"] == {
+        "type": "string",
+        "minLength": 1,
+        "pattern": r"^\S(?:.*\S)?$",
+    }
 
 
 @pytest.mark.parametrize(
@@ -1592,6 +1644,27 @@ def test_provenance_schema_requires_semantic_bindings() -> None:
 def test_rejects_wrong_runtime_contract(tmp_path: Path, mutation) -> None:
     source, runtime, evidence, exporter = _build_bundle(tmp_path)
     _rewrite_json(runtime, mutation)
+    _refresh_runtime_hash(runtime, evidence)
+
+    with pytest.raises(AcquisitionValidationError, match="approved MNQ SEP26"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
+def test_rejects_nearby_december_contract(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_json(
+        runtime,
+        lambda value: (
+            value["instrument"].__setitem__("full_name", "MNQ DEC26"),
+            value["instrument"].__setitem__("instrument_id", "MNQ DEC26"),
+            value["instrument"].__setitem__("expiry_month", 12),
+        ),
+    )
     _refresh_runtime_hash(runtime, evidence)
 
     with pytest.raises(AcquisitionValidationError, match="approved MNQ SEP26"):

@@ -82,6 +82,18 @@ def test_exporter_has_no_undeclared_json_dependency() -> None:
     assert "new JavaScriptSerializer().Serialize(runtimeCapture)" in source
 
 
+def test_exporter_validates_contract_semantics_not_display_name() -> None:
+    source = EXPORTER.read_text(encoding="utf-8")
+
+    assert "ApprovedFullName" not in source
+    assert 'masterName != "MNQ"' in source
+    assert "expiry.Month != ApprovedExpiryMonth" in source
+    assert "expiry.Year != ApprovedExpiryYear" in source
+    assert "Instrument.FullName !=" not in source
+    assert "full_name = Instrument.FullName" in source
+    assert "instrument_id = Instrument.FullName" in source
+
+
 @pytest.mark.skipif(
     not (CSC.is_file() and SYSTEM_WEB_EXTENSIONS.is_file()),
     reason="the installed .NET Framework NinjaScript compiler is unavailable",
@@ -112,12 +124,12 @@ public static class SerializeRuntimeCapture
             instrument = new
             {
                 contract_label = "MNQ SEP26",
-                full_name = "MNQ 09-26",
+                full_name = "MNQ SEP26",
                 master_name = "MNQ",
-                instrument_id = "MNQ 09-26",
+                instrument_id = "MNQ SEP26",
                 expiry_month = 9,
                 expiry_year = 2026,
-                exchange = "CME"
+                exchange = "Globex"
             },
             ninjatrader_version = "8.1.8.2",
             export_method = "ExportMnq5mCohortSource NinjaTrader indicator",
@@ -279,12 +291,12 @@ public static class SerializeRuntimeCapture
     )
     assert runtime_capture["instrument"] == {
         "contract_label": "MNQ SEP26",
-        "full_name": "MNQ 09-26",
+        "full_name": "MNQ SEP26",
         "master_name": "MNQ",
-        "instrument_id": "MNQ 09-26",
+        "instrument_id": "MNQ SEP26",
         "expiry_month": 9,
         "expiry_year": 2026,
-        "exchange": "CME",
+        "exchange": "Globex",
     }
     assert runtime_capture["bar_series"] == {
         "type": "Minute",

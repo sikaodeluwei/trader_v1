@@ -42,9 +42,9 @@
       ],
       "properties": {
         "contract_label": { "const": "MNQ SEP26" },
-        "full_name": { "const": "MNQ 09-26" },
+        "full_name": { "type": "string", "minLength": 1, "pattern": "^\\S(?:.*\\S)?$" },
         "master_name": { "const": "MNQ" },
-        "instrument_id": { "enum": ["MNQ SEP26", "MNQ 09-26"] },
+        "instrument_id": { "type": "string", "minLength": 1, "pattern": "^\\S(?:.*\\S)?$" },
         "expiry_month": { "const": 9 },
         "expiry_year": { "const": 2026 },
         "exchange": { "type": "string", "minLength": 1 }

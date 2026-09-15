@@ -43,12 +43,10 @@ PINNED_PRODUCTION_HIERARCHY_COMMIT = (
 )
 APPROVED_CONTRACT = {
     "contract_label": "MNQ SEP26",
-    "full_name": "MNQ 09-26",
     "master_name": "MNQ",
     "expiry_month": 9,
     "expiry_year": 2026,
 }
-APPROVED_INSTRUMENT_IDS = {"MNQ 09-26"}
 APPROVED_RANGE_START = date(2026, 6, 22)
 APPROVED_RANGE_END = date(2026, 7, 24)
 REQUIRED_EVIDENCE_ROLES = {
@@ -80,7 +78,7 @@ CASE_ID_RE = re.compile(
 COHORT_ID = "mnq-202609-5m-v1"
 APPROVED_CONTRACT_POLICY = {
     "contract_label": "MNQ SEP26",
-    "full_name": "MNQ 09-26",
+    "full_name": "MNQ SEP26",
     "expiry_month": 9,
     "expiry_year": 2026,
     "candidate_date_start": APPROVED_RANGE_START.isoformat(),
@@ -190,14 +188,33 @@ def _verify_hash(path: Path, expected: object, label: str) -> str:
 
 def _validate_contract(runtime: Mapping[str, Any]) -> dict[str, Any]:
     instrument = _mapping(runtime.get("instrument"), "runtime instrument")
+    if any(instrument.get(key) != value for key, value in APPROVED_CONTRACT.items()):
+        _fail("runtime instrument is not the approved MNQ SEP26 contract")
+    full_name = instrument.get("full_name")
     instrument_id = instrument.get("instrument_id")
     if (
-        any(instrument.get(key) != value for key, value in APPROVED_CONTRACT.items())
-        or instrument_id not in APPROVED_INSTRUMENT_IDS
+        not isinstance(full_name, str)
+        or not full_name
+        or full_name != full_name.strip()
+        or not isinstance(instrument_id, str)
+        or not instrument_id
+        or instrument_id != instrument_id.strip()
     ):
-        _fail("runtime instrument is not the approved MNQ SEP26 contract")
+        _fail("missing or invalid exact runtime instrument identity")
+    if full_name != instrument_id:
+        _fail(
+            "runtime instrument identity fields disagree for approved MNQ SEP26 contract"
+        )
     exchange = _text(instrument.get("exchange"), "runtime instrument exchange")
-    return {**APPROVED_CONTRACT, "instrument_id": instrument_id, "exchange": exchange}
+    return {
+        "contract_label": APPROVED_CONTRACT["contract_label"],
+        "full_name": full_name,
+        "master_name": APPROVED_CONTRACT["master_name"],
+        "instrument_id": instrument_id,
+        "expiry_month": APPROVED_CONTRACT["expiry_month"],
+        "expiry_year": APPROVED_CONTRACT["expiry_year"],
+        "exchange": exchange,
+    }
 
 
 def _validate_bar_series(runtime: Mapping[str, Any]) -> dict[str, Any]:
