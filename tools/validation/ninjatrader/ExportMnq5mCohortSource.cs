@@ -7,7 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using Newtonsoft.Json;
+using System.Web.Script.Serialization;
 using NinjaTrader.Cbi;
 using NinjaTrader.Data;
 using NinjaTrader.NinjaScript;
@@ -306,7 +306,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
             File.WriteAllText(
                 runtimeTemporary,
-                JsonConvert.SerializeObject(runtimeCapture, Formatting.Indented) + Environment.NewLine,
+                new JavaScriptSerializer().Serialize(runtimeCapture) + Environment.NewLine,
                 Utf8NoBom);
             File.Move(runtimeTemporary, runtimePath);
 
