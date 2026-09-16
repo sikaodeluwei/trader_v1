@@ -2517,6 +2517,31 @@ def test_rejects_marker_when_log_and_embedded_chronology_disagree(
         )
 
 
+def test_accepts_completion_log_write_after_embedded_event_with_subsecond_skew(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _rewrite_evidence_role_text(
+        evidence,
+        "ninjatrader_trace",
+        lambda text: text.replace(
+            "2026-06-22 21:31:00.000 acquisition=acq-001 export complete",
+            "2026-06-22 21:31:00.089 acquisition=acq-001 export complete",
+        ),
+    )
+
+    result = finalize_provenance(
+        source_path=source,
+        runtime_capture_path=runtime,
+        acquisition_evidence_path=evidence,
+        exporter_path=exporter,
+    )
+
+    assert result["provider_acquisition"]["lifecycle"]["export_completed_at"] == (
+        "2026-06-22T21:31:00+08:00"
+    )
+
+
 def test_rejects_legacy_arm_marker_alone_for_official_v12(tmp_path: Path) -> None:
     source, runtime, evidence, exporter = _build_bundle(tmp_path)
     _rewrite_evidence_role_text(

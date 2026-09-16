@@ -1116,7 +1116,7 @@ def _marker_event_times(
         aware_log_timestamp = log_timestamp.replace(tzinfo=log_timezone)
         if abs(marker_timestamp - aware_log_timestamp) >= MARKER_LOG_SKEW_LIMIT:
             _fail("NinjaTrader marker timestamp contradicts its log timestamp")
-        if start <= aware_log_timestamp <= end and start <= marker_timestamp <= end:
+        if start <= marker_timestamp <= end:
             result.append(marker_timestamp)
     return result
 

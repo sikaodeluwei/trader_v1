@@ -337,9 +337,12 @@ NinjaTrader log timestamps may use either a dot or a colon before fractional
 seconds. Parsing may normalize that separator in memory but must not alter the
 immutable evidence bytes. An embedded exporter `event_time` must differ from
 its log-prefix timestamp by less than one second, allowing log precision loss
-while rejecting contradictory chronology. Lifecycle events are selected
-deterministically around the unique qualifying request because NinjaTrader may
-recreate the exporter during the historical-data lifecycle.
+while rejecting contradictory chronology. The embedded `event_time` is the
+semantic lifecycle timestamp used for window membership; the log-prefix
+timestamp is corroborating observation/write time and need not independently
+fall inside that exact window. Lifecycle events are selected deterministically
+around the unique qualifying request because NinjaTrader may recreate the
+exporter during the historical-data lifecycle.
 
 Official `1.2` exporters emit only neutral, acquisition-specific,
 machine-parseable markers for initialization, Realtime lifecycle observation,
