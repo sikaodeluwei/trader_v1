@@ -62,6 +62,9 @@
 - Preserve the selected-case v1.2 provider/evidence path and
   `tools/validation/mnq_5m_acquisition.py`. The current exporter SHA-256 is
   `8037c13bbc292984f6f34731b48552c7fd910f80c8aee8a46e6a1ae17beea4d5`.
+- Preserve the selected-case ten-role `REQUIRED_TOOLSET_COMPONENT_PATHS` and
+  freeze inventory-v2 through a separate exact 23-role mapping that includes
+  `toolset_manifest_schema`.
 - No official inventory acquisition, official inventory artifact, official
   selection artifact, hierarchy execution, oracle, blind result, comparator,
   or Chapter 3 work occurs during Tasks 1-11.
@@ -103,7 +106,7 @@
 | `validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json` | Breaking `1.0` -> `2.0` evidence-bound session/hash/outcome contract |
 | `validation/mnq_5m_multiwindow/schemas/exclusions.schema.json` | Breaking `1.0` -> `2.0` inventory binding and reserved-reason semantics |
 | `validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json` | Breaking `1.0` -> `2.0` first-class inventory checkpoint binding |
-| `validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json` | Breaking `1.0` -> `2.0` exact 22-component toolset |
+| `validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json` | Breaking `1.0` -> `2.0` exact 23-component inventory-v2 toolset; frozen as role `toolset_manifest_schema` |
 | `validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json` | Breaking `1.0` -> `2.0` toolset/inventory/selection stages |
 | `tools/validation/mnq_5m_checkpoint_verify.py` | `2.0` checkpoint verifier with direct-parent inventory stage |
 
@@ -111,7 +114,7 @@
 
 | Path | Responsibility |
 |---|---|
-| `validation/mnq_5m_multiwindow/toolset_manifest.json` | Task 12 exact 22-component manifest created only after Tasks 1-11 pass review |
+| `validation/mnq_5m_multiwindow/toolset_manifest.json` | Task 12 exact 23-component manifest created only after Tasks 1-11 pass review |
 
 `validation/mnq_5m_multiwindow/schemas/provenance.schema.json` remains selected-
 case schema `1.2`. `tools/validation/mnq_5m_acquisition.py` and
@@ -128,7 +131,7 @@ case schema `1.2`. `tools/validation/mnq_5m_acquisition.py` and
 | `tests/test_mnq_5m_inventory.py` | Eligibility, exclusions, reconciliation, insufficiency |
 | `tests/test_mnq_5m_selection.py` | Ten-stratum generation and freeze preconditions |
 | `tests/test_mnq_5m_selected_source_check.py` | Selected-source hash enforcement |
-| `tests/test_mnq_5m_checkpoint_verify.py` | Extended first-class inventory checkpoint verification |
+| `tests/test_mnq_5m_checkpoint_verify.py` | First-class inventory checkpoint verification plus legacy ten-role mapping protection |
 
 ## Version and Component Decisions
 
@@ -138,9 +141,13 @@ case schema `1.2`. `tools/validation/mnq_5m_acquisition.py` and
   under old semantics.
 - Selected-case runtime capture `1.1`, acquisition evidence `1.2`, provenance
   `1.2`, and exporter behavior do not change.
+- `REQUIRED_TOOLSET_COMPONENT_PATHS` remains the exact legacy selected-case
+  ten-role mapping because `mnq_5m_acquisition.TOOLSET_COMPONENT_PATHS` copies
+  it at import time. Inventory-v2 code introduces the separate constant
+  `REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS` for the 23-role mapping.
 - `jsonschema==4.25.1` is pinned because it supplies
   `Draft202012Validator` without changing runtime production dependencies.
-- Toolset manifest `2.0` has exactly these 22 roles:
+- Toolset manifest `2.0` has exactly these 23 roles:
 
 ```text
 protocol_spec
@@ -163,12 +170,15 @@ inventory_acquisition_evidence_schema
 inventory_provenance_schema
 checkpoint_attestation_schema
 selection_registry_schema
+toolset_manifest_schema
 source_inventory_schema
 exclusion_ledger_schema
 ```
 
-The exact role-to-path mapping is the one shown in the file map; both schema
-and verifier reject missing, duplicate, or additional roles.
+The exact role-to-path mapping is enumerated in Task 9 and covers every tool,
+schema, and spec in the file map. Both schema and verifier reject missing,
+duplicate, or additional roles. Implementation-plan documents are not
+components.
 
 ### Task 1: Freeze Protocol and Schema Contract Changes
 
@@ -185,7 +195,7 @@ and verifier reject missing, duplicate, or additional roles.
 **Interfaces:**
 - Consumes: current `1.0` schemas, the two approved specs, fixed cohort ID
   `mnq-202609-5m-v1`, and frozen hierarchy SHA.
-- Produces: Draft 2020-12 version-`2.0` contracts, exact 22-role component
+- Produces: Draft 2020-12 version-`2.0` contracts, exact 23-role component
   contract, and dependency pin used by Tasks 4-12.
 
 - [ ] **Step 1: Write the failing schema-contract tests**
@@ -208,8 +218,36 @@ and verifier reject missing, duplicate, or additional roles.
   assert checkpoint["properties"]["artifacts"]["items"]["$ref"] == (
       "#/$defs/artifact"
   )
-  assert toolset["properties"]["components"]["minItems"] == 22
-  assert toolset["properties"]["components"]["maxItems"] == 22
+  assert toolset["properties"]["components"]["minItems"] == 23
+  assert toolset["properties"]["components"]["maxItems"] == 23
+  expected_roles = [
+      "protocol_spec",
+      "inventory_design_spec",
+      "validation_dependencies",
+      "acquisition_exporter",
+      "acquisition_finalizer",
+      "inventory_scanner",
+      "inventory_common",
+      "inventory_evidence_finalizer",
+      "inventory_calendar_verifier",
+      "inventory_builder",
+      "selection_generator",
+      "selected_source_checker",
+      "checkpoint_verifier",
+      "provenance_schema",
+      "inventory_scan_schema",
+      "inventory_runtime_capture_schema",
+      "inventory_acquisition_evidence_schema",
+      "inventory_provenance_schema",
+      "checkpoint_attestation_schema",
+      "selection_registry_schema",
+      "toolset_manifest_schema",
+      "source_inventory_schema",
+      "exclusion_ledger_schema",
+  ]
+  assert toolset["$defs"]["component"]["properties"]["role"]["enum"] == (
+      expected_roles
+  )
   ```
 
   Validate representative `READY_FOR_SELECTION` and `COHORT_INCOMPLETE`
@@ -227,7 +265,7 @@ and verifier reject missing, duplicate, or additional roles.
 
   Expected: failures showing version `1.0`, missing `cohort_outcome`, missing
   inventory-stage bindings, missing `inventory` artifact stage, and the old
-  ten-role toolset limit.
+  ten-role toolset limit and missing inventory-v2 role enum.
 
 - [ ] **Step 3: Implement the minimum schema contracts**
 
@@ -256,7 +294,9 @@ and verifier reject missing, duplicate, or additional roles.
   `producing_checkpoint`, chronological excluded entries, and aggregate hash.
   Define `selection_registry 2.0` with `trusted_inventory_checkpoint` and bound
   version-`2.0` inventory/exclusion references. Define checkpoint artifacts for
-  stages `toolset`, `inventory`, and `selection`.
+  stages `toolset`, `inventory`, and `selection`. The implementation-plan
+  document is not an executable component. The manifest schema itself is
+  frozen under `toolset_manifest_schema`.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
@@ -587,9 +627,10 @@ and verifier reject missing, duplicate, or additional roles.
 - Test: `tests/test_mnq_5m_inventory_evidence.py`
 
 **Interfaces:**
-- Consumes: scanner/runtime/evidence artifacts validated against Task 4 schemas,
-  immutable template/config/log/trace files, scanner path, trusted toolset
-  checkpoint, and repository identity.
+- Consumes: loaded scanner/runtime/acquisition-evidence artifacts validated
+  against Task 4 schemas, immutable template/config/log/trace files, scanner
+  path, trusted toolset checkpoint, repository identity, and independently
+  verified request-coverage bounds supplied by Task 6 through Task 7.
 - Produces:
 
   ```python
@@ -597,20 +638,36 @@ and verifier reject missing, duplicate, or additional roles.
       """Reject invalid inventory evidence without creating official output."""
 
   @dataclass(frozen=True)
-  class ValidatedInventoryEvidence:
+  class LoadedInventoryEvidence:
+      runtime_capture_path: Path
       runtime_capture: Mapping[str, object]
+      inventory_scan_path: Path
       inventory_scan: Mapping[str, object]
+      acquisition_evidence_path: Path
+      acquisition_evidence: Mapping[str, object]
+      exact_artifact_bytes: Mapping[str, bytes]
+
+  @dataclass(frozen=True)
+  class ValidatedInventoryEvidence:
+      loaded: LoadedInventoryEvidence
       provider_acquisition: Mapping[str, object]
+      qualifying_request: Mapping[str, object]
       artifact_hashes: Mapping[str, str]
       external_evidence: tuple[Mapping[str, object], ...]
       earliest_session_begin: datetime
       latest_session_end: datetime
 
-  def finalize_inventory_evidence(
+  def load_inventory_evidence(
       *,
       runtime_capture_path: str | Path,
       inventory_scan_path: str | Path,
       acquisition_evidence_path: str | Path,
+  ) -> LoadedInventoryEvidence:
+      """Load exact bytes and validate all three documents against Task 4."""
+
+  def finalize_inventory_evidence(
+      *,
+      loaded: LoadedInventoryEvidence,
       scanner_path: str | Path,
       trading_hours_template_path: str | Path,
       config_path: str | Path,
@@ -621,10 +678,12 @@ and verifier reject missing, duplicate, or additional roles.
       expected_repository_identity: str,
       earliest_session_begin: datetime,
       latest_session_end: datetime,
-      output_path: str | Path | None = None,
   ) -> ValidatedInventoryEvidence:
       """Validate immutable evidence and the unique request over supplied bounds."""
   ```
+
+  Task 5 returns validated in-memory evidence only. It never writes
+  `inventory_provenance.json` or any other final inventory result.
 
 - [ ] **Step 1: Write focused failing provider/evidence tests**
 
@@ -693,11 +752,9 @@ and verifier reject missing, duplicate, or additional roles.
   Task 6's independently verified sessions. Require exactly one request that
   covers both supplied bounds.
 
-  Write `inventory_provenance.json` atomically only when `output_path` is
-  supplied and every global check passes. A metadata, scan, evidence,
-  external-binding, or aggregate-hash mismatch raises
-  `InventoryValidationError` and produces no official output; it never becomes
-  a date-level exclusion.
+  A metadata, scan, evidence, external-binding, or aggregate-hash mismatch
+  raises `InventoryValidationError`. Task 5 performs no write, and no such
+  global failure may become a date-level exclusion.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
@@ -719,7 +776,8 @@ and verifier reject missing, duplicate, or additional roles.
 
   Confirm inventory modules do not import `trading`, oracle, blind, or
   comparator modules. Confirm no global proof failure is represented as an
-  exclusions list. Run `git diff --check`.
+  exclusions list. Confirm Task 5 contains no provenance writer and no output
+  path parameter. Run `git diff --check`.
 
 - [ ] **Step 7: Commit**
 
@@ -757,11 +815,19 @@ and verifier reject missing, duplicate, or additional roles.
       segments: tuple[SessionSegment, ...]
       observation: Mapping[str, object]
 
+  @dataclass(frozen=True)
+  class VerifiedInventoryCalendar:
+      sessions: tuple[VerifiedSession, ...]
+      earliest_session_begin: datetime
+      latest_session_end: datetime
+      template_sha256: str
+      calendar_binding_sha256: str
+
   def verify_inventory_calendar(
       scan: Mapping[str, object],
       trading_hours_template: bytes,
-  ) -> tuple[VerifiedSession, ...]:
-      """Verify each civil-date observation against the frozen template."""
+  ) -> VerifiedInventoryCalendar:
+      """Return independently verified sessions, bounds, and calendar hashes."""
   ```
 
 - [ ] **Step 1: Write failing calendar tests**
@@ -781,7 +847,10 @@ and verifier reject missing, duplicate, or additional roles.
     mismatch fails;
   - application/PC timestamps and UTC offsets are internally consistent;
   - unknown XML layout, missing timezone, and non-chronological segments fail;
-  - no deduplication, weekday inference, or session repair occurs.
+  - no deduplication, weekday inference, or session repair occurs;
+  - earliest/latest bounds come only from verified session segments; and
+  - `template_sha256` and canonical `calendar_binding_sha256` change on any
+    bound calendar fact mutation.
 
 - [ ] **Step 2: Run the focused test and verify RED**
 
@@ -803,8 +872,12 @@ and verifier reject missing, duplicate, or additional roles.
   PC/log representations only as values to verify against captured offsets;
   never use them to invent an absent session.
 
-  Return strictly chronological unique actual sessions. Raise
-  `InventoryValidationError` on an unknown template form or any mismatch.
+  Return one `VerifiedInventoryCalendar` containing strictly chronological
+  unique actual sessions, the earliest verified segment begin, the latest
+  verified segment end, the exact template-byte SHA-256, and the canonical
+  SHA-256 of the verified calendar representation. Raise
+  `InventoryValidationError` when no actual session exists, on an unknown
+  template form, or on any mismatch.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
@@ -825,7 +898,9 @@ and verifier reject missing, duplicate, or additional roles.
 
   Search the new module for `weekday(` and sorting calls; neither may be used
   to form or repair the universe. Confirm `NO_SESSION` observations are checked
-  but not returned as candidate sessions. Run `git diff --check`.
+  but not returned as candidate sessions. Confirm the bounds exposed to Task 7
+  are fields of `VerifiedInventoryCalendar`, never scanner-declared summary
+  fields. Run `git diff --check`.
 
 - [ ] **Step 7: Commit**
 
@@ -842,8 +917,9 @@ and verifier reject missing, duplicate, or additional roles.
 - Test: `tests/test_mnq_5m_inventory.py`
 
 **Interfaces:**
-- Consumes: scanner/runtime/evidence paths, verified sessions from Task 6,
-  inventory provenance, and producing toolset checkpoint.
+- Consumes: all immutable scanner/runtime/provider/template/config/log/trace
+  paths, repository identity, trusted toolset checkpoint, and producing
+  checkpoint. Task 7 owns the only final inventory publication path.
 - Produces:
 
   ```python
@@ -863,15 +939,41 @@ and verifier reject missing, duplicate, or additional roles.
       source_inventory: Mapping[str, object]
       exclusions: Mapping[str, object]
 
+  @dataclass(frozen=True)
+  class InventoryFinalizationResult:
+      inventory_provenance: Mapping[str, object]
+      source_inventory: Mapping[str, object]
+      exclusions: Mapping[str, object]
+
   def build_inventory(
       *,
       evidence: ValidatedInventoryEvidence,
-      sessions: Sequence[VerifiedSession],
+      calendar: VerifiedInventoryCalendar,
       inventory_provenance_sha256: str,
       inventory_scan_sha256: str,
       producing_checkpoint: str,
   ) -> InventoryBuildResult:
       """Map verified facts to reconciled inventory and exclusion artifacts."""
+
+  def finalize_inventory_bundle(
+      *,
+      runtime_capture_path: str | Path,
+      inventory_scan_path: str | Path,
+      acquisition_evidence_path: str | Path,
+      scanner_path: str | Path,
+      trading_hours_template_path: str | Path,
+      config_path: str | Path,
+      log_path: str | Path,
+      trace_path: str | Path,
+      repository_path: str | Path,
+      expected_repository_identity: str,
+      trusted_toolset_checkpoint: str,
+      producing_checkpoint: str,
+      inventory_provenance_output: str | Path,
+      source_inventory_output: str | Path,
+      exclusions_output: str | Path,
+  ) -> InventoryFinalizationResult:
+      """Verify both evidence domains and atomically publish all three results."""
   ```
 
 - [ ] **Step 1: Write failing eligibility/reconciliation tests**
@@ -891,6 +993,11 @@ and verifier reject missing, duplicate, or additional roles.
   - `SOURCE_HASH_MISMATCH` and `OUTSIDE_POLICY` are never emitted;
   - global proof failure stops before `build_inventory`;
   - an unknown fact key/state raises instead of becoming an exclusion;
+  - final provenance binds the validated provider evidence, verified calendar
+    hashes/bounds, scan/runtime/artifact hashes, and toolset/checkpoint;
+  - scanner-declared bounds cannot qualify a request when verified-calendar
+    bounds differ;
+  - failure while validating any of the three staged outputs publishes none;
   - `source_inventory.entries` and `exclusions.entries` reconcile exactly;
   - fewer than ten eligible dates yields `cohort_outcome = COHORT_INCOMPLETE`;
   - ten or more yields `READY_FOR_SELECTION`; and
@@ -906,12 +1013,27 @@ and verifier reject missing, duplicate, or additional roles.
 
   Expected: import failure for `mnq_5m_inventory`.
 
-- [ ] **Step 3: Implement deterministic mapping and atomic paired output**
+- [ ] **Step 3: Implement deterministic orchestration and one atomic result set**
 
-  First derive `earliest_session_begin` and `latest_session_end` from the
-  strictly ordered Task 6 sessions, then call `finalize_inventory_evidence`
-  with those exact bounds and its output path. Stop globally if finalization
-  fails. Pass the returned `ValidatedInventoryEvidence` into `build_inventory`.
+  `finalize_inventory_bundle` performs this exact order:
+
+  1. call `load_inventory_evidence` to load exact bytes and schema-validate the
+     runtime, scan, and acquisition-evidence documents;
+  2. call `verify_inventory_calendar` with the loaded scan and exact frozen
+     template bytes;
+  3. take request-coverage bounds only from
+     `VerifiedInventoryCalendar.earliest_session_begin` and
+     `.latest_session_end`;
+  4. call `finalize_inventory_evidence` with the loaded evidence, immutable
+     external files, repository/checkpoint identities, and those exact bounds;
+  5. construct and schema-validate `inventory_provenance.json`, binding the
+     validated provider acquisition, verified calendar SHA/bounds, scan,
+     runtime, artifact hashes, and toolset/producing checkpoints;
+  6. call `build_inventory` with that provenance hash and the complete
+     `VerifiedInventoryCalendar`; and
+  7. schema-validate and cross-reconcile provenance, inventory, and exclusions
+     before publication.
+
   Build entries only from verified actual sessions. Treat all scanner quality
   fields as observations, not policy declarations. Require null first-250 hash
   exactly when canonical first-250 bytes are unavailable; never recompute the
@@ -926,17 +1048,29 @@ and verifier reject missing, duplicate, or additional roles.
       --runtime-capture PATH
       --inventory-scan PATH
       --acquisition-evidence PATH
-      --inventory-provenance PATH
+      --scanner PATH
       --trading-hours-template PATH
+      --config PATH
+      --log PATH
+      --trace PATH
+      --repository-path PATH
+      --expected-repository-identity OWNER/REPO
       --trusted-toolset-checkpoint SHA
       --producing-checkpoint SHA
+      --inventory-provenance-output PATH
       --source-inventory-output PATH
       --exclusions-output PATH
   ```
 
-  Write both outputs to temporary files, validate both against schema `2.0`,
-  verify reconciliation and aggregate hashes, then rename both. If either
-  write/validation fails, neither final output may exist.
+  Require the three output paths to have exact basenames
+  `inventory_provenance.json`, `source_inventory.json`, and `exclusions.json`
+  under the same absent final directory. Create a unique sibling staging
+  directory on the same volume, write all three files there, validate
+  provenance schema `1.0`, inventory/exclusions schemas `2.0`, hashes, and
+  cross-bindings, then atomically rename the whole staging directory to the
+  final directory. On any exception, delete only that identified staging
+  directory and leave the final directory absent. Never publish three files
+  through separate final renames.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
@@ -955,7 +1089,9 @@ and verifier reject missing, duplicate, or additional roles.
 
   Confirm the builder has no hierarchy imports, no weekday rule, no raw bars,
   and no selection logic. Confirm `SOURCE_HASH_MISMATCH` appears only in enum-
-  compatibility checks. Run `git diff --check`.
+  compatibility checks. Confirm the CLI has every path in the documented
+  signature, final provenance is produced only here, and all final outputs use
+  one directory-level publication. Run `git diff --check`.
 
 - [ ] **Step 7: Commit**
 
@@ -981,10 +1117,11 @@ and verifier reject missing, duplicate, or additional roles.
       *,
       source_inventory: Mapping[str, object],
       exclusions: Mapping[str, object],
+      inventory_attestation: Mapping[str, object],
       trusted_inventory_checkpoint: str,
       producing_checkpoint: str,
   ) -> dict[str, object]:
-      """Generate the frozen ten-stratum selection without reordering dates."""
+      """Verify INVENTORY attestation, then generate without reordering dates."""
   ```
 
   Output is selection registry `2.0` using
@@ -1007,6 +1144,11 @@ and verifier reject missing, duplicate, or additional roles.
   inventory/exclusion hashes, no forbidden influence, refusal of
   `COHORT_INCOMPLETE`, refusal of fewer than ten eligible dates, invalid/missing
   inventory attestation, and input order that is not strictly chronological.
+  Mutate each required attestation fact independently: schema not `2.0`, status
+  not `VERIFIED`, stage not `INVENTORY`, wrong trusted toolset checkpoint,
+  wrong trusted inventory checkpoint, wrong source-inventory binding/hash, and
+  wrong exclusions binding/hash. Each mutation must fail before selection
+  records are built.
 
 - [ ] **Step 2: Run the focused test and verify RED**
 
@@ -1023,8 +1165,14 @@ and verifier reject missing, duplicate, or additional roles.
   Preserve eligible input order after validating it; do not sort. Emit exactly
   ten records with window policy `FIRST_250_NATIVE_5M_SESSION_BARS`. Bind
   inventory and exclusion paths, schema versions, hashes, and producing
-  inventory checkpoint. Require attestation stage `INVENTORY` and remote
-  publication `VERIFIED` when the official-mode CLI flag is used.
+  inventory checkpoint. `generate_selection` itself validates attestation
+  schema `2.0`, status `VERIFIED`, stage `INVENTORY`, exact
+  `trusted_inventory_checkpoint`, exact toolset checkpoint equal to the
+  inventory/exclusions producing checkpoint, and exact inventory/exclusion
+  artifact paths and hashes. The CLI must load the attestation and call this
+  verified public function; no public or official-mode path may call an
+  unverified pure builder. Require remote publication `VERIFIED` when the
+  official-mode CLI flag is used.
 
   CLI signature:
 
@@ -1050,7 +1198,9 @@ and verifier reject missing, duplicate, or additional roles.
 
   Confirm no imports from `trading`, oracle, project, or comparator code and no
   access to scanner hash bytes other than bound strings. Run generator twice
-  against one fixture and compare output bytes. Run `git diff --check`.
+  against one fixture and compare output bytes. Confirm every public/CLI path
+  supplies `inventory_attestation` to `generate_selection`. Run
+  `git diff --check`.
 
 - [ ] **Step 7: Commit**
 
@@ -1072,6 +1222,32 @@ and verifier reject missing, duplicate, or additional roles.
 - Produces:
 
   ```python
+  REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS: Mapping[str, str] = {
+      "protocol_spec": "docs/superpowers/specs/2026-09-13-mnq-5m-multiwindow-validation-design.md",
+      "inventory_design_spec": "docs/superpowers/specs/2026-09-16-mnq-5m-official-inventory-scanner-design.md",
+      "validation_dependencies": "requirements-validation.txt",
+      "acquisition_exporter": "tools/validation/ninjatrader/ExportMnq5mCohortSource.cs",
+      "acquisition_finalizer": "tools/validation/mnq_5m_acquisition.py",
+      "inventory_scanner": "tools/validation/ninjatrader/ScanMnq5mSourceInventory.cs",
+      "inventory_common": "tools/validation/mnq_5m_inventory_common.py",
+      "inventory_evidence_finalizer": "tools/validation/mnq_5m_inventory_evidence.py",
+      "inventory_calendar_verifier": "tools/validation/mnq_5m_inventory_calendar.py",
+      "inventory_builder": "tools/validation/mnq_5m_inventory.py",
+      "selection_generator": "tools/validation/mnq_5m_selection.py",
+      "selected_source_checker": "tools/validation/mnq_5m_selected_source_check.py",
+      "checkpoint_verifier": "tools/validation/mnq_5m_checkpoint_verify.py",
+      "provenance_schema": "validation/mnq_5m_multiwindow/schemas/provenance.schema.json",
+      "inventory_scan_schema": "validation/mnq_5m_multiwindow/schemas/inventory_scan.schema.json",
+      "inventory_runtime_capture_schema": "validation/mnq_5m_multiwindow/schemas/inventory_runtime_capture.schema.json",
+      "inventory_acquisition_evidence_schema": "validation/mnq_5m_multiwindow/schemas/inventory_acquisition_evidence.schema.json",
+      "inventory_provenance_schema": "validation/mnq_5m_multiwindow/schemas/inventory_provenance.schema.json",
+      "checkpoint_attestation_schema": "validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json",
+      "selection_registry_schema": "validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json",
+      "toolset_manifest_schema": "validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json",
+      "source_inventory_schema": "validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json",
+      "exclusion_ledger_schema": "validation/mnq_5m_multiwindow/schemas/exclusions.schema.json",
+  }
+
   def verify_inventory_checkpoint(
       *,
       repository_path: str | Path,
@@ -1105,6 +1281,9 @@ and verifier reject missing, duplicate, or additional roles.
 
   Keep the existing `verify_checkpoints` public function for selected-case v1.2
   regression compatibility; do not reinterpret its old artifacts as v2.
+  `REQUIRED_TOOLSET_COMPONENT_PATHS` remains byte-for-byte semantically equal
+  to its current ten-role dictionary, and only the new inventory/selection
+  verifier paths use `REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS`.
 
 - [ ] **Step 1: Write failing checkpoint tests**
 
@@ -1120,9 +1299,44 @@ and verifier reject missing, duplicate, or additional roles.
   Inventory checkpoint must commit exact bytes for runtime capture, scan,
   Trading Hours snapshot, acquisition evidence, inventory provenance, source
   inventory, and exclusions. Its provenance binds external Config/log/trace
-  hashes. Test:
+  hashes. Pin the legacy expectation literally in the test:
 
-  - exact 22 toolset components and executing-tool hash checks;
+  ```python
+  EXPECTED_LEGACY_TOOLSET_COMPONENT_PATHS = {
+      "protocol_spec": "docs/superpowers/specs/2026-09-13-mnq-5m-multiwindow-validation-design.md",
+      "acquisition_exporter": "tools/validation/ninjatrader/ExportMnq5mCohortSource.cs",
+      "acquisition_finalizer": "tools/validation/mnq_5m_acquisition.py",
+      "checkpoint_verifier": "tools/validation/mnq_5m_checkpoint_verify.py",
+      "provenance_schema": "validation/mnq_5m_multiwindow/schemas/provenance.schema.json",
+      "checkpoint_attestation_schema": "validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json",
+      "selection_registry_schema": "validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json",
+      "toolset_manifest_schema": "validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json",
+      "source_inventory_schema": "validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json",
+      "exclusion_ledger_schema": "validation/mnq_5m_multiwindow/schemas/exclusions.schema.json",
+  }
+  assert REQUIRED_TOOLSET_COMPONENT_PATHS == (
+      EXPECTED_LEGACY_TOOLSET_COMPONENT_PATHS
+  )
+  assert mnq_5m_acquisition.TOOLSET_COMPONENT_PATHS == (
+      EXPECTED_LEGACY_TOOLSET_COMPONENT_PATHS
+  )
+  ```
+
+  Also test:
+
+  - exact 23 inventory-v2 toolset components and executing-tool hash checks;
+  - `REQUIRED_TOOLSET_COMPONENT_PATHS` equals the literal current ten-role
+    mapping for `protocol_spec`, `acquisition_exporter`,
+    `acquisition_finalizer`, `checkpoint_verifier`, `provenance_schema`,
+    `checkpoint_attestation_schema`, `selection_registry_schema`,
+    `toolset_manifest_schema`, `source_inventory_schema`, and
+    `exclusion_ledger_schema`, including their current repository paths;
+  - `mnq_5m_acquisition.TOOLSET_COMPONENT_PATHS` equals that unchanged legacy
+    mapping;
+  - `REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS` equals the exact 23-role
+    mapping documented in this task; and
+  - adding or mutating an inventory-v2-only role cannot change either legacy
+    mapping object or selected-case validation behavior;
   - direct-parent enforcement for all three edges;
   - inventory artifact producing commits, Git object IDs, committed bytes,
     bundle hashes, aggregate hashes, and schema versions;
@@ -1142,13 +1356,17 @@ and verifier reject missing, duplicate, or additional roles.
   python -m pytest tests/test_mnq_5m_checkpoint_verify.py -v
   ```
 
-  Expected: failures for missing inventory APIs, verifier version `1.0`, old
-  ten-role component contract, and absent inventory-stage attestation.
+  Expected: failures for missing inventory APIs and inventory-v2 mapping,
+  verifier version `1.0`, and absent inventory-stage attestation; all legacy
+  ten-role preservation assertions already pass.
 
 - [ ] **Step 3: Implement verifier `2.0` without weakening v1.2**
 
-  Add exact repository paths for the seven committed inventory artifacts and
-  exact 22 component roles. Reuse immutable-object, raw-parent, bundle
+  Leave `REQUIRED_TOOLSET_COMPONENT_PATHS` untouched. Add
+  `REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS` with the exact 23 repository
+  paths above, including `toolset_manifest_schema`. Make only the new v2
+  inventory and selection paths consume it. Add exact repository paths for the
+  seven committed inventory artifacts. Reuse immutable-object, raw-parent, bundle
   containment, Git-blob, SHA-256, aggregate-hash, no-graft, and remote-query
   helpers. Snapshot each bundle file once before semantic parsing.
 
@@ -1161,12 +1379,13 @@ and verifier reject missing, duplicate, or additional roles.
   CLI uses subcommands:
 
   ```text
-  mnq_5m_checkpoint_verify.py inventory --repository-path PATH --bundle-root PATH --toolset-manifest PATH --runtime-capture PATH --inventory-scan PATH --trading-hours-template PATH --acquisition-evidence PATH --inventory-provenance PATH --source-inventory PATH --exclusions PATH --trusted-toolset-checkpoint SHA --trusted-inventory-checkpoint SHA --expected-repository-identity OWNER/REPO
-  mnq_5m_checkpoint_verify.py selection --repository-path PATH --bundle-root PATH --toolset-manifest PATH --runtime-capture PATH --inventory-scan PATH --trading-hours-template PATH --acquisition-evidence PATH --inventory-provenance PATH --source-inventory PATH --exclusions PATH --selection-registry PATH --trusted-toolset-checkpoint SHA --trusted-inventory-checkpoint SHA --trusted-selection-checkpoint SHA --expected-repository-identity OWNER/REPO
+  mnq_5m_checkpoint_verify.py inventory --repository-path PATH --bundle-root PATH --toolset-manifest PATH --runtime-capture PATH --inventory-scan PATH --trading-hours-template PATH --acquisition-evidence PATH --inventory-provenance-input PATH --source-inventory PATH --exclusions PATH --trusted-toolset-checkpoint SHA --trusted-inventory-checkpoint SHA --expected-repository-identity OWNER/REPO
+  mnq_5m_checkpoint_verify.py selection --repository-path PATH --bundle-root PATH --toolset-manifest PATH --runtime-capture PATH --inventory-scan PATH --trading-hours-template PATH --acquisition-evidence PATH --inventory-provenance-input PATH --source-inventory PATH --exclusions PATH --selection-registry PATH --trusted-toolset-checkpoint SHA --trusted-inventory-checkpoint SHA --trusted-selection-checkpoint SHA --expected-repository-identity OWNER/REPO
   ```
 
   Preserve the existing argument path as `legacy-selected-case` or the current
-  no-subcommand behavior so frozen v1.2 tests still execute unchanged.
+  no-subcommand behavior so frozen v1.2 tests still execute unchanged. Do not
+  modify `mnq_5m_acquisition.py` to accommodate the new mapping.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
@@ -1183,7 +1402,8 @@ and verifier reject missing, duplicate, or additional roles.
 - [ ] **Step 6: Inspect diff and invariant checks**
 
   Confirm exact direct-parent semantics and no mutable-ref trust. Confirm v1.2
-  selected-case tests use their unchanged public verifier path. Run
+  selected-case tests use their unchanged public verifier path and unchanged
+  ten-role mapping, while v2 paths use only the 23-role constant. Run
   `git diff --check`.
 
 - [ ] **Step 7: Commit**
@@ -1374,7 +1594,7 @@ and verifier reject missing, duplicate, or additional roles.
   repository
 
 **Interfaces:**
-- Consumes: reviewed component/tooling checkpoint, all 22 frozen components,
+- Consumes: reviewed component/tooling checkpoint, all 23 frozen components,
   NinjaTrader runtime, and a fresh rehearsal identity.
 - Produces: published toolset checkpoint plus external disposable rehearsal
   evidence proving scan -> inventory -> inventory checkpoint -> selection ->
@@ -1382,9 +1602,10 @@ and verifier reject missing, duplicate, or additional roles.
 
 - [ ] **Step 1: Generate the exact toolset manifest from committed bytes**
 
-  Use the Task 11 `HEAD` as `producing_checkpoint`. Generate the 22 components
+  Use the Task 11 `HEAD` as `producing_checkpoint`. Generate the 23 components
   in the fixed role order, with repository path, bundle path, lowercase SHA-256,
-  and producing commit. Set schema `2.0`, stage `SOURCE_ACQUISITION`, status
+  and producing commit. Include `toolset_manifest_schema` and reject any
+  implementation-plan document as a component. Set schema `2.0`, stage `SOURCE_ACQUISITION`, status
   `FROZEN_FOR_SOURCE_ACQUISITION`, cohort ID, frozen hierarchy SHA, runtime and
   pinned dependency versions, JSON canonicalization, deferred downstream
   components, and aggregate hash.
@@ -1408,13 +1629,18 @@ and verifier reject missing, duplicate, or additional roles.
 
   ```text
   acquisition_id = dryrun-mnq-202609-5m-inventory-20260622-20260724-v1
-  cohort_id      = mnq-202609-5m-dryrun-inventory-v1
+  cohort_id      = mnq-202609-5m-v1
   arm file       = C:\Users\曹朕语\OneDrive\文档\NinjaTrader 8\dryrun\dryrun-mnq-202609-5m-inventory-20260622-20260724-v1.arm
   output         = C:\Users\曹朕语\OneDrive\Desktop\MNQ_5m_Acquisitions\_INVENTORY_REHEARSAL_ONLY\dryrun-mnq-202609-5m-inventory-20260622-20260724-v1
   ```
 
   Confirm arm/output paths do not exist. Install the scanner only after
   repository and installed SHA-256 equality. Do not overwrite prior evidence.
+  The rehearsal deliberately uses the same schema/cohort shape as future
+  official execution; its `dryrun-` acquisition ID, rehearsal-only directory,
+  temporary Git history, and prohibition on publishing disposable inventory or
+  selection commits keep it non-official. Official-shaped evidence is not an
+  official cohort execution.
 
 - [ ] **Step 4: Conduct one controlled broad NinjaTrader rehearsal**
 
@@ -1427,10 +1653,12 @@ and verifier reject missing, duplicate, or additional roles.
 
 - [ ] **Step 5: Run the inventory finalizer and builder in rehearsal mode**
 
-  Run evidence, calendar, and inventory CLIs against copied immutable evidence.
-  Validate both output schemas and reconciliation. A failure ends the rehearsal
-  without changing code or relaxing rules; classify the defect before any new
-  implementation commit.
+  Run Task 7's single orchestration CLI against copied immutable evidence. It
+  invokes evidence loading, independent calendar verification, provider
+  finalization, provenance assembly, and inventory/exclusion construction in
+  the documented order. Validate all three output schemas, hashes, and
+  reconciliation. A failure ends the rehearsal without changing code or
+  relaxing rules; classify the defect before any new implementation commit.
 
 - [ ] **Step 6: Prove inventory and selection checkpoint flows in an external clone**
 
@@ -1511,6 +1739,31 @@ execution.
 | Explicit Prohibited Behaviors | Global constraints; 2; 7; 10; 11; 12 |
 | Future Implementation Notes | Execution Handoff; 12 |
 | Approval Status | Execution Handoff |
+
+## Plan Consistency Invariants
+
+- Inventory-v2 freezes exactly 23 components, including
+  `toolset_manifest_schema`; no implementation-plan document is a component.
+- Legacy `REQUIRED_TOOLSET_COMPONENT_PATHS` remains the exact ten-role mapping
+  copied by `mnq_5m_acquisition.TOOLSET_COMPONENT_PATHS`.
+- Only `REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS` carries the exact 23-role
+  inventory-v2 mapping.
+- Task 5 returns `ValidatedInventoryEvidence` in memory and never writes final
+  provenance.
+- Task 6 returns exactly one `VerifiedInventoryCalendar` containing sessions,
+  independently verified bounds, template hash, and calendar-binding hash.
+- Task 7 owns final provenance assembly and publishes provenance, inventory,
+  and exclusions together only after both evidence domains pass.
+- Task 7's CLI exposes every immutable provider/calendar/repository input and
+  uses an unambiguous `--inventory-provenance-output`.
+- Task 8's public `generate_selection` requires and validates the INVENTORY
+  attestation before constructing a selection.
+- Task 12 uses cohort ID `mnq-202609-5m-v1`; its `dryrun-` acquisition ID,
+  rehearsal-only paths, temporary history, and non-publication keep it
+  disposable.
+- No task weakens blindness, exports candidate raw OHLCV, or changes
+  `mnq_5m_acquisition.py` by default.
+- The official inventory remains outside this plan's execution authorization.
 
 ## Execution and Review Gates
 
