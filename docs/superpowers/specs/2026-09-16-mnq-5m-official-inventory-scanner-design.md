@@ -438,9 +438,19 @@ native records assigned to the session in supplied order, including
 canonically serializable defect-bearing records. This makes the hash an
 identity control rather than a statement that the session is eligible.
 
+The scanner records these values as `first_250_source_sha256` and
+`complete_session_source_sha256`. Inventory-time Python validates their schema,
+presence where required, provenance binding, and consistency across metadata
+artifacts. It does not independently recompute either value from candidate
+OHLCV because raw candidate OHLCV is intentionally not exported to Python.
+At this stage each value is a provenance-bound scanner identity claim, not an
+independently reproduced price-source digest.
+
 Hash presence does not make a date eligible. Python evaluates the accompanying
-chronology, count, calendar, and data-integrity facts. Later selected-case
-`bars.txt` must reproduce the predeclared first-250 hash byte-for-byte.
+chronology, count, calendar, and data-integrity facts. After deterministic
+selection, the selected-case acquisition produces the actual official
+`bars.txt`; that file's canonical SHA-256 is independently recomputed and must
+equal the selected date's frozen `first_250_source_sha256` byte-for-byte.
 
 ## Blindness Model
 
@@ -531,7 +541,10 @@ order:
 5. compare scanner `SESSION` / `NO_SESSION`, segments, and exchange trading
    dates against that independent derivation;
 6. form the strictly chronological actual candidate-date set;
-7. validate all objective facts and canonical hashes for each candidate;
+7. validate all objective facts plus the format, required presence,
+   provenance binding, and cross-artifact consistency of scanner-reported
+   canonical hashes for each candidate, without recomputing hidden candidate
+   OHLCV hashes;
 8. map every applicable date-scoped condition to the frozen exclusion enum and
    ordering;
 9. write `source_inventory.json` and `exclusions.json` together as one atomic
@@ -544,7 +557,7 @@ instead of inventing a catch-all reason.
 
 ## Exclusion Mapping
 
-All applicable date-scoped reasons are recorded in this frozen order:
+The compatibility enum retains this frozen order:
 
 1. `INCOMPLETE_PROVENANCE`
 2. `FEWER_THAN_250_NATIVE_BARS`
@@ -557,6 +570,9 @@ All applicable date-scoped reasons are recorded in this frozen order:
 9. `SOURCE_HASH_MISMATCH`
 10. `OUTSIDE_POLICY`
 
+During official inventory construction, `SOURCE_HASH_MISMATCH` and
+`OUTSIDE_POLICY` are not emitted as ordinary date-level exclusions. The other
+applicable date-scoped reasons are recorded in the relative order shown above.
 The mapping is deterministic:
 
 - `INCOMPLETE_PROVENANCE` means a concrete date-scoped required fact or
@@ -579,10 +595,16 @@ The mapping is deterministic:
 - `SOURCE_CORRUPTION` means a concrete date-scoped read or serialization
   corruption prevents trustworthy use. Corruption of a global artifact fails
   the entire inventory stage.
-- `SOURCE_HASH_MISMATCH` means independently recomputed bytes for a date-scoped
-  inventory artifact disagree during inventory construction. A later mismatch
-  between selected-case source and the frozen inventory hash stops the cohort;
-  it is not used to replace or silently exclude the selected date.
+- `SOURCE_HASH_MISMATCH` is reserved for compatibility and for the later
+  selected-case comparison. Inventory-time Python cannot recompute hidden
+  candidate OHLCV. A SHA mismatch affecting committed scanner metadata, scan
+  JSON, acquisition evidence, provenance, or an external evidence binding is
+  an inventory-stage integrity/provenance failure, not a date-level exclusion.
+  After selection, Python independently hashes the acquired official
+  `bars.txt` and compares it with the frozen inventory
+  `first_250_source_sha256`. A mismatch stops the cohort for discrepancy
+  classification and review; it does not exclude or replace the selected date,
+  rerun selection, or choose a substitute.
 - `OUTSIDE_POLICY` remains in the enum only for schema compatibility. Under
   normal official v1 execution, an out-of-range date is not a source-inventory
   entry and therefore does not receive this reason. It is not a catch-all.
@@ -739,15 +761,20 @@ as a substitute for the one-pass inventory scan.
 - An unexpected missing expected-open bar is a date-level exclusion.
 - Fewer than ten eligible dates yields `COHORT_INCOMPLETE`; the range and
   contract remain unchanged.
-- A malformed or hash-invalid global inventory artifact fails the inventory
-  stage.
+- A malformed inventory artifact, or any SHA mismatch involving committed
+  scanner metadata, scan JSON, acquisition evidence, provenance, or external
+  evidence bindings, fails the inventory stage. It is not converted into a
+  date-level `SOURCE_HASH_MISMATCH` exclusion.
 - A semantic scanner, builder, schema, or verifier correction after inventory
   freeze preserves the old evidence, versions the corrected tool/protocol, and
   restarts official inventory and selection from a fresh acquisition. No
   frozen artifact is silently patched.
-- A later selected-source hash mismatch stops the cohort for classification as
-  project, oracle, source/provenance, specification, or comparator defect. The
-  date is not replaced automatically.
+- After deterministic selection and official selected-case acquisition, the
+  selected `bars.txt` canonical SHA-256 is independently recomputed. A mismatch
+  with the frozen inventory `first_250_source_sha256` stops the cohort for
+  classification as project, oracle, source/provenance, specification, or
+  comparator defect. The date is not excluded or replaced, and selection is
+  not rerun.
 - An interrupted scan is abandoned with its acquisition identity and output
   path intact. A rerun uses a fresh identity and a new non-existing output
   path.
@@ -783,6 +810,10 @@ Tests must cover:
 - partial sessions retained as candidates;
 - every approved exclusion mapping and its frozen ordering;
 - global proof failure never expanded into per-date exclusions;
+- inventory-time metadata/evidence hash mismatches fail the stage rather than
+  becoming `SOURCE_HASH_MISMATCH` exclusions;
+- Python validates scanner hash bindings without receiving or recomputing raw
+  candidate OHLCV;
 - `OUTSIDE_POLICY` retained for compatibility but absent from normal in-range
   v1 output;
 - unknown conditions stop instead of mapping to a catch-all;
@@ -813,6 +844,8 @@ Tests must verify:
 - no price/hierarchy input to the selector;
 - toolset -> inventory -> selection ancestry and hashes;
 - inventory artifacts as first-class checkpoint evidence;
+- later selected-case `bars.txt` canonical SHA-256 comparison against the
+  frozen `first_250_source_sha256`, including mismatch stop behavior;
 - refusal on remote/checkpoint/hash/schema mismatch; and
 - absence of generated/cache/local-only dependencies.
 
@@ -894,11 +927,15 @@ requirements.
 13. Source bars retain supplied order and native timestamps.
 14. No raw candidate OHLCV corpus is exported by the inventory scanner.
 15. First-250 hashes use the selected-case canonical source representation.
-16. `OUTSIDE_POLICY` is not a normal in-range official exclusion.
-17. Inventory and exclusions freeze before deterministic selection.
-18. Selection freezes before selected official source acquisition.
-19. Selected-case source bytes must match their inventory-stage frozen hashes.
-20. The proven selected-case v1.2 path is protected from unnecessary refactor.
+16. Inventory-time Python provenance-binds scanner-computed candidate hashes;
+    it does not recompute them from hidden raw candidate bars.
+17. `SOURCE_HASH_MISMATCH` is reserved for later selected-source comparison,
+    not inventory-time date exclusion.
+18. `OUTSIDE_POLICY` is not a normal in-range official exclusion.
+19. Inventory and exclusions freeze before deterministic selection.
+20. Selection freezes before selected official source acquisition.
+21. Selected-case source bytes must match their inventory-stage frozen hashes.
+22. The proven selected-case v1.2 path is protected from unnecessary refactor.
 
 ## Explicit Prohibited Behaviors
 
@@ -912,7 +949,11 @@ The inventory subsystem must never:
 - silently sort, repair, fill, interpolate, resample, or convert source bars;
 - treat scheduled breaks as unexpected missing bars;
 - use `OUTSIDE_POLICY` or another enum as an unknown-error catch-all;
+- independently recompute hidden candidate OHLCV hashes during inventory;
+- map inventory artifact or evidence-binding hash failures to a normal
+  date-level `SOURCE_HASH_MISMATCH` exclusion;
 - replace a selected date after a source-hash mismatch;
+- rerun selection after a selected-source hash mismatch;
 - change the range or mix contracts after `COHORT_INCOMPLETE`;
 - patch a frozen official scan in place;
 - commit sensitive NinjaTrader environment evidence;
