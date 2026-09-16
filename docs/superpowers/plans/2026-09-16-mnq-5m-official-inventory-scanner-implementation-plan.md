@@ -4,7 +4,7 @@
 
 **Goal:** Implement and rehearse the approved evidence-bound, facts-only MNQ SEP26 inventory acquisition, eligibility, freeze, and deterministic selection tooling without starting the official cohort.
 
-**Architecture:** Use a facts-only NinjaTrader inventory scanner that emits calendar/session/source-quality metadata plus canonical hashes, then validate that evidence in Python, derive eligibility and exclusions deterministically, freeze inventory as a first-class checkpoint, and generate selection with the existing ten-stratum rule. Preserve the proven selected-case v1.2 acquisition path unless a reviewed dependency makes modification unavoidable.
+**Architecture:** Use a facts-only NinjaTrader inventory scanner that emits calendar/session/source-quality metadata plus canonical hashes, then validate that evidence in Python, derive eligibility and exclusions deterministically, freeze inventory as a first-class checkpoint, and generate selection with the existing ten-stratum rule. Extend selected-case finalization additively with explicit legacy-v1 and inventory-v2 binding modes while keeping one unchanged provider/source validation path.
 
 **Tech Stack:** Python 3, pytest, jsonschema Draft 2020-12, NinjaTrader 8 C#, Git/Git object verification, SHA-256.
 
@@ -59,8 +59,9 @@
   substitution, or reselection.
 - Frozen production hierarchy commit
   `04a73e1401d44688660b211d9db6918113482856` never changes.
-- Preserve the selected-case v1.2 provider/evidence path and
-  `tools/validation/mnq_5m_acquisition.py`. The current exporter SHA-256 is
+- Preserve the selected-case v1.2 provider/source semantics while adding only
+  an artifact/checkpoint binding mode to `tools/validation/mnq_5m_acquisition.py`.
+  The current exporter SHA-256 is
   `8037c13bbc292984f6f34731b48552c7fd910f80c8aee8a46e6a1ae17beea4d5`.
 - Preserve the selected-case ten-role `REQUIRED_TOOLSET_COMPONENT_PATHS` and
   freeze inventory-v2 through a separate exact 23-role mapping that includes
@@ -98,17 +99,30 @@
 | `validation/mnq_5m_multiwindow/schemas/inventory_runtime_capture.schema.json` | `1.0` |
 | `validation/mnq_5m_multiwindow/schemas/inventory_acquisition_evidence.schema.json` | `1.0` |
 | `validation/mnq_5m_multiwindow/schemas/inventory_provenance.schema.json` | `1.0` |
+| `validation/mnq_5m_multiwindow/schemas/source_inventory_v2.schema.json` | `2.0` |
+| `validation/mnq_5m_multiwindow/schemas/exclusions_v2.schema.json` | `2.0` |
+| `validation/mnq_5m_multiwindow/schemas/selection_registry_v2.schema.json` | `2.0` |
+| `validation/mnq_5m_multiwindow/schemas/toolset_manifest_v2.schema.json` | `2.0` |
+| `validation/mnq_5m_multiwindow/schemas/checkpoint_attestation_v2.schema.json` | `2.0` |
+| `validation/mnq_5m_multiwindow/schemas/provenance_v1_3.schema.json` | `1.3` |
 
-### Modified contracts/checkpoint tooling
+### Preserved legacy selected-case schemas
+
+| Path | Required treatment |
+|---|---|
+| `validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json` | Keep legacy schema `1.0` unchanged |
+| `validation/mnq_5m_multiwindow/schemas/exclusions.schema.json` | Keep legacy schema `1.0` unchanged |
+| `validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json` | Keep legacy schema `1.0` unchanged |
+| `validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json` | Keep legacy schema `1.0` unchanged |
+| `validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json` | Keep legacy schema `1.0` unchanged |
+| `validation/mnq_5m_multiwindow/schemas/provenance.schema.json` | Keep selected-case provenance schema `1.2` unchanged |
+
+### Modified compatibility/checkpoint tooling
 
 | Path | Change |
 |---|---|
-| `validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json` | Breaking `1.0` -> `2.0` evidence-bound session/hash/outcome contract |
-| `validation/mnq_5m_multiwindow/schemas/exclusions.schema.json` | Breaking `1.0` -> `2.0` inventory binding and reserved-reason semantics |
-| `validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json` | Breaking `1.0` -> `2.0` first-class inventory checkpoint binding |
-| `validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json` | Breaking `1.0` -> `2.0` exact 23-component inventory-v2 toolset; frozen as role `toolset_manifest_schema` |
-| `validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json` | Breaking `1.0` -> `2.0` toolset/inventory/selection stages |
 | `tools/validation/mnq_5m_checkpoint_verify.py` | `2.0` checkpoint verifier with direct-parent inventory stage |
+| `tools/validation/mnq_5m_acquisition.py` | Add explicit inventory-v2 binding mode while preserving shared v1.2 provider/source validation |
 
 ### Frozen tooling checkpoint artifact
 
@@ -116,9 +130,10 @@
 |---|---|
 | `validation/mnq_5m_multiwindow/toolset_manifest.json` | Task 12 exact 23-component manifest created only after Tasks 1-11 pass review |
 
-`validation/mnq_5m_multiwindow/schemas/provenance.schema.json` remains selected-
-case schema `1.2`. `tools/validation/mnq_5m_acquisition.py` and
-`tools/validation/ninjatrader/ExportMnq5mCohortSource.cs` remain unchanged.
+`tools/validation/ninjatrader/ExportMnq5mCohortSource.cs` remains unchanged.
+The selected-case finalizer changes only in Task 10's artifact/checkpoint
+binding layer; its source, contract, timezone, Trading Hours, provider,
+RequestBars, Config, lifecycle, and transformation validation remains shared.
 
 ### Tests
 
@@ -132,15 +147,19 @@ case schema `1.2`. `tools/validation/mnq_5m_acquisition.py` and
 | `tests/test_mnq_5m_selection.py` | Ten-stratum generation and freeze preconditions |
 | `tests/test_mnq_5m_selected_source_check.py` | Selected-source hash enforcement |
 | `tests/test_mnq_5m_checkpoint_verify.py` | First-class inventory checkpoint verification plus legacy ten-role mapping protection |
+| `tests/test_mnq_5m_acquisition.py` | Additive legacy-v1/inventory-v2 selected-case dispatch and provenance regression |
 
 ## Version and Component Decisions
 
 - New independent artifact families start at `1.0`.
-- Existing contracts whose required fields, allowed status values, ancestry, or
-  exact component set change move to `2.0`; this avoids interpreting new bytes
-  under old semantics.
-- Selected-case runtime capture `1.1`, acquisition evidence `1.2`, provenance
-  `1.2`, and exporter behavior do not change.
+- Legacy source inventory, exclusions, selection registry, toolset manifest,
+  checkpoint attestation, and selected-case provenance filenames retain their
+  historical `1.0`/`1.2` meanings and bytes.
+- Inventory-v2 uses new `_v2.schema.json` filenames at schema `2.0`; no legacy
+  filename is reinterpreted.
+- Selected-case runtime capture `1.1`, acquisition evidence `1.2`, provider and
+  source behavior remain unchanged. Legacy finalization outputs provenance
+  `1.2`; inventory-v2 finalization outputs `provenance_v1_3` schema `1.3`.
 - `REQUIRED_TOOLSET_COMPONENT_PATHS` remains the exact legacy selected-case
   ten-role mapping because `mnq_5m_acquisition.TOOLSET_COMPONENT_PATHS` copies
   it at import time. Inventory-v2 code introduces the separate constant
@@ -185,23 +204,26 @@ components.
 **Files:**
 - Create: `requirements-validation.txt`
 - Create: `tests/test_mnq_5m_inventory_contracts.py`
-- Modify: `validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json`
-- Modify: `validation/mnq_5m_multiwindow/schemas/exclusions.schema.json`
-- Modify: `validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json`
-- Modify: `validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json`
-- Modify: `validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json`
+- Create: `validation/mnq_5m_multiwindow/schemas/source_inventory_v2.schema.json`
+- Create: `validation/mnq_5m_multiwindow/schemas/exclusions_v2.schema.json`
+- Create: `validation/mnq_5m_multiwindow/schemas/selection_registry_v2.schema.json`
+- Create: `validation/mnq_5m_multiwindow/schemas/toolset_manifest_v2.schema.json`
+- Create: `validation/mnq_5m_multiwindow/schemas/checkpoint_attestation_v2.schema.json`
+- Create: `validation/mnq_5m_multiwindow/schemas/provenance_v1_3.schema.json`
 - Test: `tests/test_mnq_5m_inventory_contracts.py`
 
 **Interfaces:**
-- Consumes: current `1.0` schemas, the two approved specs, fixed cohort ID
-  `mnq-202609-5m-v1`, and frozen hierarchy SHA.
-- Produces: Draft 2020-12 version-`2.0` contracts, exact 23-role component
-  contract, and dependency pin used by Tasks 4-12.
+- Consumes: immutable legacy schema family, the two approved specs, fixed
+  cohort ID `mnq-202609-5m-v1`, and frozen hierarchy SHA.
+- Produces: five new Draft 2020-12 version-`2.0` contracts, selected-case
+  provenance `1.3`, exact 23-role component contract, and dependency pin used
+  by Tasks 4-12.
 
 - [ ] **Step 1: Write the failing schema-contract tests**
 
-  Use `Draft202012Validator.check_schema(schema)` for all five modified
-  schemas. Assert the exact versions and required contract changes:
+  Snapshot the exact bytes/SHA-256 of all six legacy schemas, then use
+  `Draft202012Validator.check_schema(schema)` for the six new schemas. Assert
+  the exact versions and required contract changes:
 
   ```python
   assert inventory["properties"]["schema_version"] == {"const": "2.0"}
@@ -220,6 +242,9 @@ components.
   )
   assert toolset["properties"]["components"]["minItems"] == 23
   assert toolset["properties"]["components"]["maxItems"] == 23
+  assert selected_provenance["properties"]["schema_version"] == {
+      "const": "1.3"
+  }
   expected_roles = [
       "protocol_spec",
       "inventory_design_spec",
@@ -254,6 +279,10 @@ components.
   documents. Validate that `SOURCE_HASH_MISMATCH` and `OUTSIDE_POLICY` remain
   in `$defs.exclusion_reason.enum`, while a schema-level `normally_emitted`
   enum contains only the eight inventory-stage reasons in the design order.
+  Validate provenance `1.3` with inventory/exclusion/selection/toolset schema
+  `2.0`, trusted inventory checkpoint, v2 attestation, and selected-source hash
+  binding. Assert every legacy schema still validates its existing fixture and
+  rejects v2 documents.
 
 - [ ] **Step 2: Run the focused test and verify RED**
 
@@ -263,13 +292,12 @@ components.
   python -m pytest tests/test_mnq_5m_inventory_contracts.py -v
   ```
 
-  Expected: failures showing version `1.0`, missing `cohort_outcome`, missing
-  inventory-stage bindings, missing `inventory` artifact stage, and the old
-  ten-role toolset limit and missing inventory-v2 role enum.
+  Expected: file-not-found failures for all six new versioned schema files;
+  legacy schema tests remain green.
 
 - [ ] **Step 3: Implement the minimum schema contracts**
 
-  Pin `jsonschema==4.25.1`. Define these exact `source_inventory` entry fields:
+  Pin `jsonschema==4.25.1`. Define these exact `source_inventory_v2` entry fields:
 
   ```json
   {
@@ -290,13 +318,21 @@ components.
   serializable. `candidate_count` equals `len(entries)` and `eligible_count`
   counts `eligible: true`; semantic enforcement belongs to Task 7.
 
-  Define `exclusions 2.0` with `cohort_outcome`, `source_inventory_sha256`,
+  Define `exclusions_v2 2.0` with `cohort_outcome`, `source_inventory_sha256`,
   `producing_checkpoint`, chronological excluded entries, and aggregate hash.
-  Define `selection_registry 2.0` with `trusted_inventory_checkpoint` and bound
+  Define `selection_registry_v2 2.0` with `trusted_inventory_checkpoint` and bound
   version-`2.0` inventory/exclusion references. Define checkpoint artifacts for
   stages `toolset`, `inventory`, and `selection`. The implementation-plan
   document is not an executable component. The manifest schema itself is
-  frozen under `toolset_manifest_schema`.
+  frozen under `toolset_manifest_schema` through
+  `toolset_manifest_v2.schema.json`.
+
+  Define `provenance_v1_3.schema.json` by preserving every provider, source,
+  contract, bar, Trading Hours, timezone, lifecycle, and transformation rule
+  from provenance `1.2`, while requiring v2 inventory/exclusion/selection/
+  toolset bindings, trusted inventory checkpoint, v2 checkpoint attestation,
+  and `selected_source_binding` with expected and observed SHA-256 values.
+  Do not edit any legacy schema file.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
@@ -311,21 +347,22 @@ components.
   python -m pytest tests/test_mnq_5m_acquisition.py -k "semantic_binding_schemas or provenance_schema" -v
   ```
 
-  Expected: selected-case provenance `1.2` assertions remain green; update only
-  old inventory/checkpoint-version assertions whose contracts deliberately
-  moved to `2.0`.
+  Expected: every selected-case legacy schema/provenance `1.2` assertion remains
+  green without modification; v2 assertions reference only versioned filenames.
 
 - [ ] **Step 6: Inspect the diff and invariants**
 
   Run `git diff --check` and confirm no Python/C#/hierarchy implementation was
   added. Confirm the compatibility enum still contains all ten historical
-  values and that only eight are normally emitted by inventory.
+  values and that only eight are normally emitted by inventory. Run
+  `git diff --exit-code $env:IMPLEMENTATION_BASE --` against all six legacy
+  schema paths and require no diff.
 
 - [ ] **Step 7: Commit**
 
   ```powershell
-  git add requirements-validation.txt tests/test_mnq_5m_inventory_contracts.py validation/mnq_5m_multiwindow/schemas
-  git commit -m "Define MNQ inventory schema contracts"
+  git add requirements-validation.txt tests/test_mnq_5m_inventory_contracts.py validation/mnq_5m_multiwindow/schemas/source_inventory_v2.schema.json validation/mnq_5m_multiwindow/schemas/exclusions_v2.schema.json validation/mnq_5m_multiwindow/schemas/selection_registry_v2.schema.json validation/mnq_5m_multiwindow/schemas/toolset_manifest_v2.schema.json validation/mnq_5m_multiwindow/schemas/checkpoint_attestation_v2.schema.json validation/mnq_5m_multiwindow/schemas/provenance_v1_3.schema.json
+  git commit -m "Define versioned MNQ inventory contracts"
   ```
 
 ### Task 2: Inventory Scanner Contract and Static Tests
@@ -597,8 +634,9 @@ components.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
-  Run Task 1's command. Expected: all nine schema contracts validate under
-  Draft 2020-12.
+  Run Task 1's command. Expected: all ten new schema contracts (the six
+  versioned Task 1 contracts plus these four inventory-only contracts) validate
+  under Draft 2020-12, while the six legacy schemas remain unchanged.
 
 - [ ] **Step 5: Run relevant regression tests**
 
@@ -769,8 +807,9 @@ components.
   python -m pytest tests/test_mnq_5m_acquisition.py -k "provider or historical_request or marker or completion or connection or hds" -v
   ```
 
-  Expected: current selected-case v1.2 semantics remain green and
-  `mnq_5m_acquisition.py` has no diff.
+  Expected at the Task 5 commit boundary: current selected-case v1.2 semantics
+  remain green and `mnq_5m_acquisition.py` has no Task 5 diff. Its planned
+  additive dual-mode change occurs later, exclusively in Task 10.
 
 - [ ] **Step 6: Inspect diff and invariants**
 
@@ -919,7 +958,10 @@ components.
 **Interfaces:**
 - Consumes: all immutable scanner/runtime/provider/template/config/log/trace
   paths, repository identity, trusted toolset checkpoint, and producing
-  checkpoint. Task 7 owns the only final inventory publication path.
+  checkpoint. Task 7 loads `source_inventory_v2.schema.json` and
+  `exclusions_v2.schema.json` by trusted code path; it never loads or
+  reinterprets the legacy unversioned schemas. Task 7 owns the only final
+  inventory publication path.
 - Produces:
 
   ```python
@@ -1109,7 +1151,11 @@ components.
 
 **Interfaces:**
 - Consumes: schema-`2.0` frozen source inventory, exclusions, their hashes, and
-  a verified inventory-checkpoint attestation.
+  a verified inventory-checkpoint attestation. Validation uses only
+  `source_inventory_v2.schema.json`, `exclusions_v2.schema.json`,
+  `selection_registry_v2.schema.json`, and
+  `checkpoint_attestation_v2.schema.json` by trusted code path; none of the
+  legacy unversioned contracts is eligible for this flow.
 - Produces:
 
   ```python
@@ -1236,16 +1282,16 @@ components.
       "selection_generator": "tools/validation/mnq_5m_selection.py",
       "selected_source_checker": "tools/validation/mnq_5m_selected_source_check.py",
       "checkpoint_verifier": "tools/validation/mnq_5m_checkpoint_verify.py",
-      "provenance_schema": "validation/mnq_5m_multiwindow/schemas/provenance.schema.json",
+      "provenance_schema": "validation/mnq_5m_multiwindow/schemas/provenance_v1_3.schema.json",
       "inventory_scan_schema": "validation/mnq_5m_multiwindow/schemas/inventory_scan.schema.json",
       "inventory_runtime_capture_schema": "validation/mnq_5m_multiwindow/schemas/inventory_runtime_capture.schema.json",
       "inventory_acquisition_evidence_schema": "validation/mnq_5m_multiwindow/schemas/inventory_acquisition_evidence.schema.json",
       "inventory_provenance_schema": "validation/mnq_5m_multiwindow/schemas/inventory_provenance.schema.json",
-      "checkpoint_attestation_schema": "validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json",
-      "selection_registry_schema": "validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json",
-      "toolset_manifest_schema": "validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json",
-      "source_inventory_schema": "validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json",
-      "exclusion_ledger_schema": "validation/mnq_5m_multiwindow/schemas/exclusions.schema.json",
+      "checkpoint_attestation_schema": "validation/mnq_5m_multiwindow/schemas/checkpoint_attestation_v2.schema.json",
+      "selection_registry_schema": "validation/mnq_5m_multiwindow/schemas/selection_registry_v2.schema.json",
+      "toolset_manifest_schema": "validation/mnq_5m_multiwindow/schemas/toolset_manifest_v2.schema.json",
+      "source_inventory_schema": "validation/mnq_5m_multiwindow/schemas/source_inventory_v2.schema.json",
+      "exclusion_ledger_schema": "validation/mnq_5m_multiwindow/schemas/exclusions_v2.schema.json",
   }
 
   def verify_inventory_checkpoint(
@@ -1334,7 +1380,8 @@ components.
   - `mnq_5m_acquisition.TOOLSET_COMPONENT_PATHS` equals that unchanged legacy
     mapping;
   - `REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS` equals the exact 23-role
-    mapping documented in this task; and
+    mapping documented in this task, with every v2 role pointing to a
+    versioned v2/1.3 schema filename; and
   - adding or mutating an inventory-v2-only role cannot change either legacy
     mapping object or selected-case validation behavior;
   - direct-parent enforcement for all three edges;
@@ -1366,7 +1413,11 @@ components.
   `REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS` with the exact 23 repository
   paths above, including `toolset_manifest_schema`. Make only the new v2
   inventory and selection paths consume it. Add exact repository paths for the
-  seven committed inventory artifacts. Reuse immutable-object, raw-parent, bundle
+  seven committed inventory artifacts. Load v2 contracts only from
+  `source_inventory_v2`, `exclusions_v2`, `selection_registry_v2`,
+  `toolset_manifest_v2`, and `checkpoint_attestation_v2`; never choose a schema
+  by trusting a document's self-declared version. Reuse immutable-object,
+  raw-parent, bundle
   containment, Git-blob, SHA-256, aggregate-hash, no-graft, and remote-query
   helpers. Snapshot each bundle file once before semantic parsing.
 
@@ -1384,8 +1435,10 @@ components.
   ```
 
   Preserve the existing argument path as `legacy-selected-case` or the current
-  no-subcommand behavior so frozen v1.2 tests still execute unchanged. Do not
-  modify `mnq_5m_acquisition.py` to accommodate the new mapping.
+  no-subcommand behavior so frozen v1.2 tests still execute unchanged. Task 9
+  does not modify `mnq_5m_acquisition.py`; Task 10 adds the explicit binding
+  dispatch that consumes this new verifier without changing provider/source
+  validation.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
@@ -1413,20 +1466,40 @@ components.
   git commit -m "Make MNQ inventory a first-class checkpoint"
   ```
 
-### Task 10: Enforce the Frozen Hash for Selected Sources
+### Task 10: Add Dual-Mode Selected-Case Binding and Frozen-Hash Enforcement
 
 **Files:**
 - Create: `tools/validation/mnq_5m_selected_source_check.py`
 - Create: `tests/test_mnq_5m_selected_source_check.py`
+- Modify: `tools/validation/mnq_5m_acquisition.py`
+- Modify: `tests/test_mnq_5m_acquisition.py`
 - Test: `tests/test_mnq_5m_selected_source_check.py`
-- Review-only unless the stop gate is triggered: `tools/validation/mnq_5m_acquisition.py`
+- Test: `tests/test_mnq_5m_acquisition.py`
 
 **Interfaces:**
-- Consumes: acquired selected `bars.txt`, case ID, source inventory `2.0`,
-  selection registry `2.0`, and a freshly verified selection checkpoint.
-- Produces:
+- Consumes: selected `bars.txt`, existing runtime/acquisition evidence,
+  explicit binding mode, immutable Git repository, trusted checkpoints, and—
+  for inventory-v2 only—a frozen metadata-only checkpoint bundle root.
+- Produces: unchanged legacy selected-case provenance `1.2` or official
+  inventory-v2 selected-case provenance `1.3`, never a mixed family.
 
   ```python
+  class SelectedBindingMode(str, Enum):
+      LEGACY_V1_BINDING = "legacy-v1"
+      INVENTORY_V2_BINDING = "inventory-v2"
+
+  INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS: Mapping[str, str] = {
+      "toolset_manifest": "toolset_manifest.json",
+      "inventory_runtime_capture": "inventory_runtime_capture.json",
+      "inventory_scan": "inventory_scan.json",
+      "trading_hours_template": "trading_hours_template.xml",
+      "inventory_acquisition_evidence": "inventory_acquisition_evidence.json",
+      "inventory_provenance": "inventory_provenance.json",
+      "source_inventory": "source_inventory.json",
+      "exclusions": "exclusions.json",
+      "selection_registry": "selection_registry.json",
+  }
+
   @dataclass(frozen=True)
   class SelectedSourceHashBinding:
       case_id: str
@@ -1440,74 +1513,158 @@ components.
       *,
       source_path: str | Path,
       case_id: str,
-      source_inventory_path: str | Path,
-      selection_registry_path: str | Path,
-      checkpoint_attestation: Mapping[str, object],
+      repository_path: str | Path,
+      inventory_checkpoint_bundle_root: str | Path,
+      trusted_toolset_checkpoint: str,
+      trusted_inventory_checkpoint: str,
+      trusted_selection_checkpoint: str,
+      expected_repository_identity: str = DEFAULT_REPOSITORY_IDENTITY,
+      remote_name: str | None = None,
+      remote_branch: str | None = None,
   ) -> SelectedSourceHashBinding:
-      """Stop unless selected source bytes match the frozen inventory hash."""
+      """Re-verify v2 checkpoints and stop unless selected bytes match."""
+
+  def finalize_provenance(
+      *,
+      source_path: str | Path,
+      runtime_capture_path: str | Path,
+      acquisition_evidence_path: str | Path,
+      exporter_path: str | Path,
+      trusted_selection_checkpoint: str,
+      trusted_toolset_checkpoint: str,
+      trusted_acquisition_checkpoint: str | None = None,
+      repository_path: str | Path | None = None,
+      expected_repository_identity: str = DEFAULT_REPOSITORY_IDENTITY,
+      remote_name: str | None = None,
+      remote_branch: str | None = None,
+      checkpoint_attestation: Mapping[str, Any] | None = None,
+      output_path: str | Path | None = None,
+      binding_mode: SelectedBindingMode = SelectedBindingMode.LEGACY_V1_BINDING,
+      trusted_inventory_checkpoint: str | None = None,
+      inventory_checkpoint_bundle_root: str | Path | None = None,
+  ) -> dict[str, object]:
+      """Finalize through an explicit legacy-v1 or inventory-v2 binding."""
   ```
 
-- [ ] **Step 1: Write failing selected-source tests**
+  The CLI adds exactly:
 
-  Test an exact 250-line canonical file whose SHA matches the chosen inventory
-  entry. Reject wrong case/date mapping, unselected case, missing/null frozen
-  hash, malformed selection attestation, wrong inventory/selection checkpoint,
-  mutated source byte, CRLF-for-LF change, missing final newline, substitution,
-  and any request to rerun selection. Assert mismatch raises
-  `InventoryValidationError` with a stop message and writes no exclusion or
-  replacement artifact.
+  ```text
+  --binding-mode {legacy-v1,inventory-v2}        default legacy-v1
+  --trusted-inventory-checkpoint SHA             required only for inventory-v2
+  --inventory-checkpoint-bundle-root PATH        required only for inventory-v2
+  ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+  Legacy mode rejects either v2-only argument. Inventory-v2 mode requires both.
+  `checkpoint_attestation` remains rejected in both modes; callers cannot
+  submit a claimed `VERIFIED` document.
+
+- [ ] **Step 1: Write failing dual-mode and hash-enforcement tests**
+
+  In `tests/test_mnq_5m_acquisition.py`, pin current legacy results before
+  implementation, then add tests proving:
+
+  - omitted/default `legacy-v1` mode uses existing validators and
+    `verify_checkpoints`, accepts only legacy schema/toolset/selection family,
+    and emits provenance `1.2` byte/semantically equivalent to current output;
+  - explicit `inventory-v2` requires both v2-only arguments, derives every
+    artifact path from the contained root and
+    `INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS`, independently calls Task 9's
+    `verify_selection_checkpoint`, and emits schema-valid provenance `1.3`;
+  - v2 selection contains the requested case/date exactly once, its stratum
+    indexes satisfy the deterministic ten-stratum rule, and its inventory/
+    exclusions/toolset bindings match the verified checkpoint artifacts;
+  - each mixed family fails closed: legacy selection with v2 inventory, v2
+    selection with legacy inventory, v2 selection with legacy toolset, v2
+    artifacts with legacy attestation, legacy mode with any v2 artifact, and
+    v2 mode with any legacy schema filename/version;
+  - a user-supplied attestation remains rejected; and
+  - the existing `_read_source`, contract, bar, timezone, Trading Hours,
+    provider RequestBars, Config routing, lifecycle, and transformation
+    validators execute through the same shared post-binding path in both modes.
+
+  In `tests/test_mnq_5m_selected_source_check.py`, prove wrapper match/mismatch,
+  exact-byte sensitivity, wrong case/date, duplicate selected case, and no
+  reselection/substitution. In the finalizer tests, prove direct v2 mismatch
+  fails, wrapper success followed by source-byte mutation fails at finalization,
+  and successful provenance `1.3` records identical expected/observed hashes.
+
+- [ ] **Step 2: Run focused tests and verify RED**
 
   Run:
 
   ```powershell
-  python -m pytest tests/test_mnq_5m_selected_source_check.py -v
+  python -m pytest tests/test_mnq_5m_selected_source_check.py tests/test_mnq_5m_acquisition.py -k "binding_mode or inventory_v2 or selected_source or legacy" -v
   ```
 
-  Expected: import failure for `mnq_5m_selected_source_check`.
+  Expected: import/signature failures for the new checker, binding enum,
+  v2-only parameters, provenance `1.3`, and v2 dispatch. Pre-existing legacy
+  tests remain green.
 
-- [ ] **Step 3: Implement the external pre-finalizer stop gate**
+- [ ] **Step 3: Implement additive binding dispatch and two hash gates**
 
-  Validate bound v2 artifacts and the `SELECTION` attestation, locate the exact
-  selected case/date, hash the supplied bytes without normalization, compare to
-  frozen `first_250_source_sha256`, and return the binding only on equality.
-  CLI exits `2` with `STOP:` on mismatch and emits a JSON binding only on
-  success.
+  Keep `BOUND_ARTIFACT_SCHEMA_VERSION = "1.0"` and all existing legacy
+  validators unchanged. Extract only the artifact/checkpoint orchestration into
+  `_validate_legacy_selected_binding` and `_validate_inventory_v2_selected_binding`,
+  each returning one common internal binding object. Dispatch solely from the
+  explicit `binding_mode`; never infer mode from file content.
 
-  This checker runs immediately after selected official acquisition and before
-  the existing selected-case finalizer. It does not change provider proof,
-  source parsing, or provenance schema `1.2`.
+  Legacy mode calls the existing `_validate_inventory`,
+  `_validate_selection_registry`, `_validate_toolset_manifest`, and
+  `verify_checkpoints`, then emits provenance `1.2`. Inventory-v2 mode resolves
+  the nine fixed relative paths beneath one contained bundle root, loads the
+  versioned v2/1.3 schemas by trusted code path, and calls
+  `verify_selection_checkpoint` with immutable Git/bundle bytes and exact
+  trusted toolset/inventory/selection checkpoints. Cross-check the acquisition
+  evidence's toolset/selection hashes against the independently verified v2
+  bundle. Run the v2 verifier again immediately before provenance publication
+  and compare both verification results to detect mutation.
+
+  After either binding validator returns, run the existing source/provider
+  pipeline once. In v2 mode, compare the actual selected source SHA-256 to the
+  uniquely selected inventory entry's frozen `first_250_source_sha256` inside
+  `finalize_provenance`; populate provenance `1.3` `selected_source_binding`
+  only on equality. The external checker independently performs the same
+  checkpoint re-verification and comparison as an early stop gate. Neither
+  path can invoke selection, choose a substitute, or write an exclusion.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
-  Run Task 10's command. Expected: all exact-byte and stop-behavior tests pass.
+  Run Task 10's focused command without `-k`, then run:
 
-- [ ] **Step 5: Run selected-case safety regression and reviewer gate**
+  ```powershell
+  python -m pytest tests/test_mnq_5m_acquisition.py -v
+  ```
 
-  Run the complete `tests/test_mnq_5m_acquisition.py` suite and verify
-  `git diff -- tools/validation/mnq_5m_acquisition.py` is empty.
+  Expected: all legacy and v2 selected-binding, hash, provenance, provider, and
+  source tests pass.
 
-  If execution discovers that the wrapper cannot be placed before the existing
-  finalizer without changing selected-case provider/proof semantics, stop this
-  task before editing that file. Record the dependency and obtain explicit
-  review approval. An approved change must start with a failing regression,
-  touch only selection-binding integration, preserve the legacy v1.2 path, run
-  the full selected-case suite, and rerun the immutable real v2 finalizer
-  evidence rehearsal. No official inventory work proceeds if that rehearsal
-  differs or fails.
+- [ ] **Step 5: Run checkpoint/schema integration regressions**
 
-- [ ] **Step 6: Inspect diff and invariant checks**
+  Run:
 
-  Confirm the normal path modified only the new checker and test, no source
-  normalization exists, and no hash mismatch can call the selector. Run
+  ```powershell
+  python -m pytest tests/test_mnq_5m_inventory_contracts.py tests/test_mnq_5m_checkpoint_verify.py tests/test_mnq_5m_selection.py tests/test_mnq_5m_selected_source_check.py tests/test_mnq_5m_acquisition.py -v
+  ```
+
+  Confirm legacy output validates only against `provenance.schema.json` `1.2`,
+  v2 output validates only against `provenance_v1_3.schema.json` `1.3`, and all
+  mixed cross-validation attempts fail.
+
+- [ ] **Step 6: Inspect the additive boundary**
+
+  Review the diff against `IMPLEMENTATION_BASE`. Confirm no behavior change in
+  `_read_source`, `_validate_contract`, `_validate_bar_series`,
+  `_validate_timezone`, `_validate_trading_hours`, `_validate_provider_proof`,
+  marker/request/config helpers, or transformation rules. Confirm direct v2
+  finalization cannot bypass `first_250_source_sha256`, no raw candidate corpus
+  enters the checkpoint bundle, and no mismatch path can reselect. Run
   `git diff --check`.
 
 - [ ] **Step 7: Commit**
 
   ```powershell
-  git add tools/validation/mnq_5m_selected_source_check.py tests/test_mnq_5m_selected_source_check.py
-  git commit -m "Enforce selected MNQ inventory source hashes"
+  git add tools/validation/mnq_5m_selected_source_check.py tools/validation/mnq_5m_acquisition.py tests/test_mnq_5m_selected_source_check.py tests/test_mnq_5m_acquisition.py
+  git commit -m "Add dual-mode MNQ selected-case finalization"
   ```
 
 ### Task 11: Run Full Regression, Scope, and Cleanliness Gates
@@ -1520,7 +1677,9 @@ components.
 **Interfaces:**
 - Consumes: all Task 1-10 commits.
 - Produces: a reviewed, clean component/tooling checkpoint ready for toolset
-  manifest generation and disposable rehearsal.
+  manifest generation only after automated regression, legacy schema
+  immutability, and the immutable-real-evidence legacy finalizer regression all
+  pass.
 
 - [ ] **Step 1: Run focused scanner tests**
 
@@ -1540,6 +1699,9 @@ components.
   python -m pytest tests/test_mnq_5m_checkpoint_verify.py tests/test_mnq_5m_acquisition.py tests/test_ninjatrader_exporter_compatibility.py -v
   ```
 
+  Expected: both explicit binding modes pass, legacy defaults remain unchanged,
+  v2 provenance validates as `1.3`, and mixed artifact families fail.
+
 - [ ] **Step 4: Run all related MNQ validation tests**
 
   ```powershell
@@ -1556,7 +1718,77 @@ components.
 
   Expected: zero failures; do not quote an old pass count.
 
-- [ ] **Step 6: Verify frozen boundaries and exact scope**
+- [ ] **Step 6: Prove legacy schema and mapping immutability**
+
+  Run:
+
+  ```powershell
+  git diff --exit-code $env:IMPLEMENTATION_BASE -- validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json validation/mnq_5m_multiwindow/schemas/exclusions.schema.json validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json validation/mnq_5m_multiwindow/schemas/provenance.schema.json
+  python -m pytest tests/test_mnq_5m_checkpoint_verify.py tests/test_mnq_5m_acquisition.py -k "legacy and (toolset or schema or binding_mode or provenance)" -v
+  ```
+
+  Expected: no byte diff for all six legacy schemas;
+  `REQUIRED_TOOLSET_COMPONENT_PATHS` and
+  `mnq_5m_acquisition.TOOLSET_COMPONENT_PATHS` remain the exact legacy
+  ten-role/path mapping; legacy provenance remains schema `1.2`.
+
+- [ ] **Step 7: Run the mandatory immutable-real-evidence legacy regression**
+
+  NinjaTrader remains closed. Use these immutable source files without editing
+  them:
+
+  ```text
+  C:\Users\曹朕语\OneDrive\Desktop\MNQ_5m_Acquisitions\_FINALIZER_REHEARSAL_ONLY\dryrun-mnq-202609-5m-20260701-v2-finalizer\bars.txt
+  C:\Users\曹朕语\OneDrive\Desktop\MNQ_5m_Acquisitions\_FINALIZER_REHEARSAL_ONLY\dryrun-mnq-202609-5m-20260701-v2-finalizer\runtime_capture.json
+  C:\Users\曹朕语\OneDrive\Desktop\MNQ_5m_Acquisitions\_FINALIZER_REHEARSAL_ONLY\dryrun-mnq-202609-5m-20260701-v2-finalizer\trading_hours_template.xml
+  C:\Users\曹朕语\OneDrive\Desktop\MNQ_5m_Acquisitions\_FINALIZER_REHEARSAL_ONLY\dryrun-mnq-202609-5m-20260701-v2-finalizer\NinjaTrader.Config.xml
+  C:\Users\曹朕语\OneDrive\Desktop\MNQ_5m_Acquisitions\_FINALIZER_REHEARSAL_ONLY\dryrun-mnq-202609-5m-20260701-v2-finalizer\log.20260916.00000.txt
+  C:\Users\曹朕语\OneDrive\Desktop\MNQ_5m_Acquisitions\_FINALIZER_REHEARSAL_ONLY\dryrun-mnq-202609-5m-20260701-v2-finalizer\trace.20260916.00000.txt
+  ```
+
+  Before copying, require these hashes in the same order:
+
+  ```text
+  8300fc286e9d8fafcb938998a0feaf7e55fdb6cd7246c777b5897018fd03ebe2
+  60899f1b5f20cac5c371ae60815664eeee078d023f3409116f22368521f3bd8a
+  370b17f23eeea694e686394b5fdb9b55681089c22d5232d5e6a354a314325620
+  8558573d7457606d40214f29c90eb0fa9012913fb614c93c214e3d287e8c590c
+  727a26e9935f744471e4f20e62398693e1ce355a2f99b973d1be9b63cfce154e
+  852356f8cfa9159bbbcd4e952694469e486337860f5c313e5de0526685d824f2
+  ```
+
+  Require the new disposable root below not to exist, then copy—not move—the
+  six files byte-for-byte:
+
+  ```text
+  C:\Users\曹朕语\OneDrive\Desktop\MNQ_5m_Acquisitions\_FINALIZER_REHEARSAL_ONLY\dryrun-mnq-202609-5m-20260701-v2-finalizer-legacy-v3
+  ```
+
+  In that root, create a fresh disposable Git repository/history from the
+  Task 10 feature `HEAD`. Build a legacy ten-role component checkpoint whose
+  `acquisition_finalizer` role hashes the NEW finalizer bytes, then direct-child
+  toolset, inventory, selection, and acquisition checkpoints using only legacy
+  schemas/artifact shapes. Generate a new acquisition-evidence document that
+  binds those fresh checkpoints and copied immutable evidence; do not reuse the
+  historical toolset manifest with the old finalizer hash.
+
+  Run the finalizer explicitly with `--binding-mode legacy-v1`, the fresh
+  trusted toolset/selection/acquisition SHAs, disposable repository, copied six
+  files, and a new output path. Require:
+
+  - provenance validates against unchanged `provenance.schema.json` `1.2`;
+  - checkpoint verification succeeds from the fresh immutable history;
+  - provider, RequestBars, connection, HDS, lifecycle, contract, bar, timezone,
+    Trading Hours, source hash, and transformation values equal the prior run2
+    result at
+    `dryrun-mnq-202609-5m-20260701-v2-finalizer-run2\bundle\provenance.json`;
+  - all six copied evidence hashes remain exactly as listed; and
+  - the original v2, run, and run2 rehearsal directories remain unchanged.
+
+  Any difference blocks Task 12. Do not rerun NinjaTrader and do not weaken the
+  legacy path to obtain a pass.
+
+- [ ] **Step 8: Verify frozen boundaries and exact scope**
 
   ```powershell
   git diff --exit-code 04a73e1401d44688660b211d9db6918113482856 -- trading
@@ -1570,16 +1802,16 @@ components.
   Confirm no official inventory, exclusions, selection, source, oracle, project,
   or comparison artifact exists.
 
-- [ ] **Step 7: Request fresh whole-branch review**
+- [ ] **Step 9: Request fresh whole-branch review**
 
   Review against both specs. Fix every valid Critical/Important finding with a
   failing test first, rerun affected suites plus `pytest -q`, and obtain scoped
   re-review. Record accepted Minor findings without unrelated cleanup.
 
-- [ ] **Step 8: Commit only if review fixes were required**
+- [ ] **Step 10: Commit only if review fixes were required**
 
   ```powershell
-  git add -- requirements-validation.txt tools/validation/ninjatrader/ScanMnq5mSourceInventory.cs tools/validation/mnq_5m_inventory_common.py tools/validation/mnq_5m_inventory_evidence.py tools/validation/mnq_5m_inventory_calendar.py tools/validation/mnq_5m_inventory.py tools/validation/mnq_5m_selection.py tools/validation/mnq_5m_selected_source_check.py tools/validation/mnq_5m_checkpoint_verify.py validation/mnq_5m_multiwindow/schemas tests/test_mnq_5m_inventory_contracts.py tests/test_ninjatrader_inventory_scanner_compatibility.py tests/test_mnq_5m_inventory_evidence.py tests/test_mnq_5m_inventory_calendar.py tests/test_mnq_5m_inventory.py tests/test_mnq_5m_selection.py tests/test_mnq_5m_checkpoint_verify.py tests/test_mnq_5m_selected_source_check.py
+  git add -- requirements-validation.txt tools/validation/ninjatrader/ScanMnq5mSourceInventory.cs tools/validation/mnq_5m_inventory_common.py tools/validation/mnq_5m_inventory_evidence.py tools/validation/mnq_5m_inventory_calendar.py tools/validation/mnq_5m_inventory.py tools/validation/mnq_5m_selection.py tools/validation/mnq_5m_selected_source_check.py tools/validation/mnq_5m_checkpoint_verify.py tools/validation/mnq_5m_acquisition.py validation/mnq_5m_multiwindow/schemas/source_inventory_v2.schema.json validation/mnq_5m_multiwindow/schemas/exclusions_v2.schema.json validation/mnq_5m_multiwindow/schemas/selection_registry_v2.schema.json validation/mnq_5m_multiwindow/schemas/toolset_manifest_v2.schema.json validation/mnq_5m_multiwindow/schemas/checkpoint_attestation_v2.schema.json validation/mnq_5m_multiwindow/schemas/provenance_v1_3.schema.json validation/mnq_5m_multiwindow/schemas/inventory_scan.schema.json validation/mnq_5m_multiwindow/schemas/inventory_runtime_capture.schema.json validation/mnq_5m_multiwindow/schemas/inventory_acquisition_evidence.schema.json validation/mnq_5m_multiwindow/schemas/inventory_provenance.schema.json tests/test_mnq_5m_inventory_contracts.py tests/test_ninjatrader_inventory_scanner_compatibility.py tests/test_mnq_5m_inventory_evidence.py tests/test_mnq_5m_inventory_calendar.py tests/test_mnq_5m_inventory.py tests/test_mnq_5m_selection.py tests/test_mnq_5m_checkpoint_verify.py tests/test_mnq_5m_selected_source_check.py tests/test_mnq_5m_acquisition.py
   git commit -m "Fix MNQ inventory tooling review findings"
   ```
 
@@ -1595,17 +1827,35 @@ components.
 
 **Interfaces:**
 - Consumes: reviewed component/tooling checkpoint, all 23 frozen components,
-  NinjaTrader runtime, and a fresh rehearsal identity.
+  NinjaTrader runtime, and a fresh rehearsal identity. The reviewed checkpoint
+  is eligible only after Task 11's automated gates, six-schema immutability
+  check, exact legacy ten-role mapping check, and mandatory immutable-real-
+  evidence legacy finalizer regression all pass.
 - Produces: published toolset checkpoint plus external disposable rehearsal
   evidence proving scan -> inventory -> inventory checkpoint -> selection ->
   selection checkpoint. It produces no official cohort artifact.
 
 - [ ] **Step 1: Generate the exact toolset manifest from committed bytes**
 
-  Use the Task 11 `HEAD` as `producing_checkpoint`. Generate the 23 components
-  in the fixed role order, with repository path, bundle path, lowercase SHA-256,
-  and producing commit. Include `toolset_manifest_schema` and reject any
-  implementation-plan document as a component. Set schema `2.0`, stage `SOURCE_ACQUISITION`, status
+  Use the Task 11 `HEAD` as `producing_checkpoint` only after every Task 11 gate
+  has passed. Generate the 23 components in the fixed Task 9 role order from
+  `REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS`, with repository path, bundle
+  path, lowercase SHA-256, and producing commit. In particular, freeze these
+  versioned selected-binding schema paths:
+
+  ```text
+  provenance_schema             -> validation/mnq_5m_multiwindow/schemas/provenance_v1_3.schema.json
+  checkpoint_attestation_schema -> validation/mnq_5m_multiwindow/schemas/checkpoint_attestation_v2.schema.json
+  selection_registry_schema     -> validation/mnq_5m_multiwindow/schemas/selection_registry_v2.schema.json
+  toolset_manifest_schema       -> validation/mnq_5m_multiwindow/schemas/toolset_manifest_v2.schema.json
+  source_inventory_schema       -> validation/mnq_5m_multiwindow/schemas/source_inventory_v2.schema.json
+  exclusion_ledger_schema       -> validation/mnq_5m_multiwindow/schemas/exclusions_v2.schema.json
+  ```
+
+  The four inventory-only schema roles retain their Task 9 `1.0` paths. Include
+  `toolset_manifest_schema`, reject any implementation-plan document as a
+  component, and reject any legacy schema filename in an inventory-v2 role.
+  Set schema `2.0`, stage `SOURCE_ACQUISITION`, status
   `FROZEN_FOR_SOURCE_ACQUISITION`, cohort ID, frozen hierarchy SHA, runtime and
   pinned dependency versions, JSON canonicalization, deferred downstream
   components, and aggregate hash.
@@ -1685,7 +1935,7 @@ components.
 
 ## Implementation Commit Sequence
 
-1. `Define MNQ inventory schema contracts`
+1. `Define versioned MNQ inventory contracts`
 2. `Define MNQ inventory scanner contract`
 3. `Add facts-only MNQ inventory scanner`
 4. `Add MNQ inventory evidence schemas`
@@ -1694,7 +1944,7 @@ components.
 7. `Build objective MNQ source inventory`
 8. `Add deterministic MNQ inventory selection`
 9. `Make MNQ inventory a first-class checkpoint`
-10. `Enforce selected MNQ inventory source hashes`
+10. `Add dual-mode MNQ selected-case finalization`
 11. `Fix MNQ inventory tooling review findings` only when review produces an
     in-scope fix
 12. `Freeze MNQ inventory acquisition toolset`
@@ -1748,6 +1998,25 @@ execution.
   copied by `mnq_5m_acquisition.TOOLSET_COMPONENT_PATHS`.
 - Only `REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS` carries the exact 23-role
   inventory-v2 mapping.
+- The six legacy schema files retain their historical bytes and meanings;
+  inventory-v2 uses only the five `_v2.schema.json` contracts plus
+  `provenance_v1_3.schema.json` for selected-case output.
+- `SelectedBindingMode.LEGACY_V1_BINDING` is the default and accepts only the
+  legacy v1/v1.2 family. `SelectedBindingMode.INVENTORY_V2_BINDING` accepts only
+  the versioned v2 family and emits selected-case provenance `1.3`; mixed
+  families fail closed.
+- Inventory-v2 finalization requires both `trusted_inventory_checkpoint` and
+  `inventory_checkpoint_bundle_root`; legacy mode rejects both v2-only inputs.
+- Inventory-v2 resolves the fixed metadata-only bundle paths, independently
+  runs `verify_selection_checkpoint` against immutable Git/bundle bytes before
+  shared source/provider validation, and reruns it immediately before
+  provenance publication.
+- The selected-source wrapper and direct inventory-v2 finalizer both enforce
+  actual `bars.txt` SHA-256 equality with the uniquely selected entry's frozen
+  `first_250_source_sha256`; direct invocation cannot bypass the check.
+- Provider, source, contract, bar, timezone, Trading Hours, RequestBars,
+  Config, lifecycle, and transformation validators remain one shared path for
+  both binding modes.
 - Task 5 returns `ValidatedInventoryEvidence` in memory and never writes final
   provenance.
 - Task 6 returns exactly one `VerifiedInventoryCalendar` containing sessions,
@@ -1761,8 +2030,12 @@ execution.
 - Task 12 uses cohort ID `mnq-202609-5m-v1`; its `dryrun-` acquisition ID,
   rehearsal-only paths, temporary history, and non-publication keep it
   disposable.
-- No task weakens blindness, exports candidate raw OHLCV, or changes
-  `mnq_5m_acquisition.py` by default.
+- Task 10 changes `mnq_5m_acquisition.py` only to add artifact/checkpoint
+  binding dispatch and provenance-version selection; it does not branch or
+  alter shared provider/source acquisition semantics.
+- Task 11 must pass the immutable-real-evidence legacy regression with a fresh
+  disposable legacy checkpoint chain and byte-identical evidence before Task
+  12 may freeze the inventory-v2 toolset.
 - The official inventory remains outside this plan's execution authorization.
 
 ## Execution and Review Gates
