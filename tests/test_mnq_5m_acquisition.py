@@ -388,7 +388,7 @@ def _build_bundle(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     source.write_text("\n".join(rows) + "\n", encoding="utf-8", newline="")
 
     exporter = tmp_path / "ExportMnq5mCohortSource.cs"
-    exporter.write_text("// frozen exporter fixture\n", encoding="utf-8")
+    exporter.write_bytes(b"// frozen exporter fixture\n")
     trace = tmp_path / "trace.txt"
     trace.write_text(
         "2026-06-21 23:45:00.000 (My NinjaTrader) "
