@@ -214,6 +214,14 @@ def test_toolset_v2_enforces_exact_ordered_roles_and_repository_paths() -> None:
     plan_path = copy.deepcopy(valid)
     plan_path["components"][0]["path"] = "docs/superpowers/plans/2026-09-16-mnq-5m-official-inventory-scanner-implementation-plan.md"
     assert list(validator.iter_errors(plan_path))
+    for invalid_component in ({}, "not-a-component"):
+        malformed = copy.deepcopy(valid)
+        malformed["components"][0] = invalid_component
+        assert list(validator.iter_errors(malformed))
+    for missing_field in ("sha256", "producing_commit"):
+        malformed = copy.deepcopy(valid)
+        del malformed["components"][0][missing_field]
+        assert list(validator.iter_errors(malformed))
 
 
 def test_source_inventory_hash_nullability_tracks_serializability_and_defects() -> None:
@@ -231,6 +239,11 @@ def test_source_inventory_hash_nullability_tracks_serializability_and_defects() 
     invalid_complete_null = _valid_inventory(incomplete=True)
     invalid_complete_null["entries"][0]["complete_session_source_sha256"] = None
     assert list(validator.iter_errors(invalid_complete_null))
+    impossible_missing_first_hash = _valid_inventory(incomplete=True)
+    entry = impossible_missing_first_hash["entries"][0]
+    entry["observed_native_bar_count"] = 276
+    entry["exclusion_reasons"] = ["INVALID_OHLC_GEOMETRY"]
+    assert list(validator.iter_errors(impossible_missing_first_hash))
 
 
 def test_toolset_and_provenance_keep_selected_source_stage_status() -> None:
@@ -274,3 +287,37 @@ def test_representative_documents_respect_legacy_v2_boundaries_and_local_provena
     v2_provenance["checkpoint_verification"] = _checkpoint("SELECTION")
     assert not list(Draft202012Validator(_load("provenance"), registry=registry).iter_errors(v2_provenance))
     assert list(Draft202012Validator(json.loads((SCHEMA_DIR / "provenance.schema.json").read_text(encoding="utf-8")), registry=registry).iter_errors(v2_provenance))
+
+
+def test_representative_v2_documents_are_valid_only_for_versioned_contracts() -> None:
+    legacy_names = {
+        "inventory": "source_inventory.schema.json",
+        "exclusions": "exclusions.schema.json",
+        "selection": "selection_registry.schema.json",
+        "toolset": "toolset_manifest.schema.json",
+        "checkpoint": "checkpoint_attestation.schema.json",
+    }
+    selection = copy.deepcopy(_legacy_documents()["selection"])
+    selection.update({
+        "schema_version": "2.0",
+        "source_inventory": _bound_artifact("source_inventory.json"),
+        "exclusion_ledger": _bound_artifact("exclusions.json"),
+        "trusted_inventory_checkpoint": COMMIT,
+    })
+    documents = {
+        "inventory": _valid_inventory(),
+        "exclusions": {
+            "schema_version": "2.0", "status": "FROZEN_INVENTORY",
+            "cohort_outcome": "COHORT_INCOMPLETE", "cohort_id": "mnq-202609-5m-v1",
+            "source_inventory_sha256": SHA, "producing_checkpoint": COMMIT,
+            "entries": [{"trading_date": "2026-07-01", "reasons": ["FEWER_THAN_250_NATIVE_BARS"]}],
+            "aggregate_payload_sha256": SHA,
+        },
+        "selection": selection,
+        "toolset": _toolset_document(),
+        "checkpoint": _checkpoint("INVENTORY"),
+    }
+    for name, document in documents.items():
+        assert not list(Draft202012Validator(_load(name)).iter_errors(document))
+        legacy_schema = json.loads((SCHEMA_DIR / legacy_names[name]).read_text(encoding="utf-8"))
+        assert list(Draft202012Validator(legacy_schema).iter_errors(document))
