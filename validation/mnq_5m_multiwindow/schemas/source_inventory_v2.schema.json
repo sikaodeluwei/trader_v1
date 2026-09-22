@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sikaodeluwei/trader_v1/validation/mnq_5m_multiwindow/schemas/source_inventory_v2.schema.json",
+  "title": "MNQ 5-minute versioned source inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "cohort_outcome", "cohort_id", "contract_policy", "inventory_scan", "inventory_provenance", "producing_checkpoint", "candidate_count", "eligible_count", "entries", "aggregate_payload_sha256"],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "status": {"const": "FROZEN_INVENTORY"},
+    "cohort_outcome": {"enum": ["READY_FOR_SELECTION", "COHORT_INCOMPLETE"]},
+    "cohort_id": {"const": "mnq-202609-5m-v1"},
+    "contract_policy": {"$ref": "#/$defs/contract_policy"},
+    "inventory_scan": {"$ref": "#/$defs/inventory_artifact"},
+    "inventory_provenance": {"$ref": "#/$defs/inventory_artifact"},
+    "producing_checkpoint": {"$ref": "#/$defs/commit"},
+    "candidate_count": {"type": "integer", "minimum": 0},
+    "eligible_count": {"type": "integer", "minimum": 0},
+    "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+    "aggregate_payload_sha256": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "contract_policy": {"type": "object", "additionalProperties": false, "required": ["contract_label", "full_name", "expiry_month", "expiry_year", "candidate_date_start", "candidate_date_end"], "properties": {"contract_label": {"const": "MNQ SEP26"}, "full_name": {"const": "MNQ SEP26"}, "expiry_month": {"const": 9}, "expiry_year": {"const": 2026}, "candidate_date_start": {"const": "2026-06-22"}, "candidate_date_end": {"const": "2026-07-24"}}},
+    "inventory_artifact": {"type": "object", "additionalProperties": false, "required": ["path", "schema_version", "sha256", "producing_checkpoint"], "properties": {"path": {"type": "string", "minLength": 1}, "schema_version": {"const": "1.0"}, "sha256": {"$ref": "#/$defs/sha256"}, "producing_checkpoint": {"$ref": "#/$defs/commit"}}},
+    "entry": {"type": "object", "additionalProperties": false, "required": ["trading_date", "eligible", "exclusion_reasons", "session_begin_application", "session_end_application", "observed_native_bar_count", "first_250_source_sha256", "complete_session_source_sha256"], "properties": {"trading_date": {"type": "string", "format": "date"}, "eligible": {"type": "boolean"}, "exclusion_reasons": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/exclusion_reason"}}, "session_begin_application": {"type": "string", "pattern": "^[0-9]{8} [0-9]{6}$"}, "session_end_application": {"type": "string", "pattern": "^[0-9]{8} [0-9]{6}$"}, "observed_native_bar_count": {"type": "integer", "minimum": 0}, "first_250_source_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"}, "complete_session_source_sha256": {"$ref": "#/$defs/sha256"}}, "allOf": [{"if": {"properties": {"first_250_source_sha256": {"type": "null"}}}, "then": {"properties": {"eligible": {"const": false}, "observed_native_bar_count": {"maximum": 249}}}}]},
+    "exclusion_reason": {"enum": ["INCOMPLETE_PROVENANCE", "FEWER_THAN_250_NATIVE_BARS", "DUPLICATE_OR_NON_MONOTONIC_TIMESTAMPS", "TRADING_HOURS_INCONSISTENCY", "MALFORMED_OR_NON_FINITE_OHLCV", "INVALID_OHLC_GEOMETRY", "UNEXPECTED_MISSING_BARS", "SOURCE_CORRUPTION", "SOURCE_HASH_MISMATCH", "OUTSIDE_POLICY"]},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
