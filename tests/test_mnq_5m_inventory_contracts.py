@@ -32,6 +32,9 @@ LEGACY_HASHES = {
 ROLES = [
     "protocol_spec", "inventory_design_spec", "validation_dependencies", "acquisition_exporter", "acquisition_finalizer", "inventory_scanner", "inventory_common", "inventory_evidence_finalizer", "inventory_calendar_verifier", "inventory_builder", "selection_generator", "selected_source_checker", "checkpoint_verifier", "provenance_schema", "inventory_scan_schema", "inventory_runtime_capture_schema", "inventory_acquisition_evidence_schema", "inventory_provenance_schema", "checkpoint_attestation_schema", "selection_registry_schema", "toolset_manifest_schema", "source_inventory_schema", "exclusion_ledger_schema",
 ]
+ROLE_PATHS = {
+    "protocol_spec": "docs/superpowers/specs/2026-09-13-mnq-5m-multiwindow-validation-design.md", "inventory_design_spec": "docs/superpowers/specs/2026-09-16-mnq-5m-official-inventory-scanner-design.md", "validation_dependencies": "requirements-validation.txt", "acquisition_exporter": "tools/validation/ninjatrader/ExportMnq5mCohortSource.cs", "acquisition_finalizer": "tools/validation/mnq_5m_acquisition.py", "inventory_scanner": "tools/validation/ninjatrader/ScanMnq5mSourceInventory.cs", "inventory_common": "tools/validation/mnq_5m_inventory_common.py", "inventory_evidence_finalizer": "tools/validation/mnq_5m_inventory_evidence.py", "inventory_calendar_verifier": "tools/validation/mnq_5m_inventory_calendar.py", "inventory_builder": "tools/validation/mnq_5m_inventory.py", "selection_generator": "tools/validation/mnq_5m_selection.py", "selected_source_checker": "tools/validation/mnq_5m_selected_source_check.py", "checkpoint_verifier": "tools/validation/mnq_5m_checkpoint_verify.py", "provenance_schema": "validation/mnq_5m_multiwindow/schemas/provenance_v1_3.schema.json", "inventory_scan_schema": "validation/mnq_5m_multiwindow/schemas/inventory_scan.schema.json", "inventory_runtime_capture_schema": "validation/mnq_5m_multiwindow/schemas/inventory_runtime_capture.schema.json", "inventory_acquisition_evidence_schema": "validation/mnq_5m_multiwindow/schemas/inventory_acquisition_evidence.schema.json", "inventory_provenance_schema": "validation/mnq_5m_multiwindow/schemas/inventory_provenance.schema.json", "checkpoint_attestation_schema": "validation/mnq_5m_multiwindow/schemas/checkpoint_attestation_v2.schema.json", "selection_registry_schema": "validation/mnq_5m_multiwindow/schemas/selection_registry_v2.schema.json", "toolset_manifest_schema": "validation/mnq_5m_multiwindow/schemas/toolset_manifest_v2.schema.json", "source_inventory_schema": "validation/mnq_5m_multiwindow/schemas/source_inventory_v2.schema.json", "exclusion_ledger_schema": "validation/mnq_5m_multiwindow/schemas/exclusions_v2.schema.json",
+}
 COMPATIBILITY_REASONS = [
     "INCOMPLETE_PROVENANCE", "FEWER_THAN_250_NATIVE_BARS", "DUPLICATE_OR_NON_MONOTONIC_TIMESTAMPS", "TRADING_HOURS_INCONSISTENCY", "MALFORMED_OR_NON_FINITE_OHLCV", "INVALID_OHLC_GEOMETRY", "UNEXPECTED_MISSING_BARS", "SOURCE_CORRUPTION", "SOURCE_HASH_MISMATCH", "OUTSIDE_POLICY",
 ]
@@ -62,6 +65,10 @@ def _valid_inventory(*, incomplete: bool = False) -> dict[str, object]:
 
 def _bound_artifact(path: str) -> dict[str, str]:
     return {"path": path, "bundle_path": path, "schema_version": "2.0", "sha256": SHA, "producing_checkpoint": COMMIT}
+
+
+def _toolset_document() -> dict[str, object]:
+    return {"schema_version": "2.0", "stage": "SOURCE_ACQUISITION", "status": "FROZEN_FOR_SOURCE_ACQUISITION", "cohort_id": "mnq-202609-5m-v1", "producing_checkpoint": COMMIT, "pinned_production_hierarchy_commit": "04a73e1401d44688660b211d9db6918113482856", "runtime": {"implementation": "CPython", "version": "3.12", "dependencies": [{"name": "jsonschema", "version": "4.25.1"}]}, "canonicalization": "JSON_UTF8_SORTED_KEYS_COMPACT_EXCLUDE_AGGREGATE_PAYLOAD_SHA256", "components": [{"role": role, "path": ROLE_PATHS[role], "bundle_path": ROLE_PATHS[role], "sha256": SHA, "producing_commit": COMMIT} for role in ROLES], "deferred_components": ["independent_oracle", "blind_project_runner", "comparator", "cohort_aggregator"], "aggregate_payload_sha256": SHA}
 
 
 @pytest.mark.parametrize("filename", SCHEMA_FILES.values())
@@ -123,7 +130,7 @@ def test_toolset_manifest_v2_has_only_the_approved_23_roles() -> None:
     components = toolset["properties"]["components"]
     assert components["minItems"] == components["maxItems"] == 23
     assert toolset["$defs"]["component"]["properties"]["role"]["enum"] == ROLES
-    document = {"schema_version": "2.0", "stage": "INVENTORY_VALIDATION", "status": "FROZEN_FOR_INVENTORY", "cohort_id": "mnq-202609-5m-v1", "producing_checkpoint": COMMIT, "pinned_production_hierarchy_commit": "04a73e1401d44688660b211d9db6918113482856", "runtime": {"implementation": "CPython", "version": "3.12", "dependencies": [{"name": "jsonschema", "version": "4.25.1"}]}, "canonicalization": "JSON_UTF8_SORTED_KEYS_COMPACT_EXCLUDE_AGGREGATE_PAYLOAD_SHA256", "components": [{"role": role, "path": f"validation/{role}.txt", "bundle_path": f"validation/{role}.txt", "sha256": SHA, "producing_commit": COMMIT} for role in ROLES], "deferred_components": ["independent_oracle", "blind_project_runner", "comparator", "cohort_aggregator"], "aggregate_payload_sha256": SHA}
+    document = _toolset_document()
     validator = Draft202012Validator(toolset)
     assert not list(validator.iter_errors(document))
     for count in (22, 24):
@@ -187,3 +194,49 @@ def test_legacy_schema_bytes_are_frozen_and_v1_documents_do_not_cross_v2_boundar
     for name in SCHEMA_FILES:
         legacy_version = "1.2" if name == "provenance" else "1.0"
         assert list(Draft202012Validator(_load(name)).iter_errors({"schema_version": legacy_version}))
+
+
+def test_toolset_v2_enforces_exact_ordered_roles_and_repository_paths() -> None:
+    toolset = _load("toolset")
+    validator = Draft202012Validator(toolset)
+    valid = _toolset_document()
+    assert not list(validator.iter_errors(valid))
+    duplicate = copy.deepcopy(valid)
+    duplicate["components"][1] = copy.deepcopy(duplicate["components"][0])
+    assert list(validator.iter_errors(duplicate))
+    reordered = copy.deepcopy(valid)
+    reordered["components"][0], reordered["components"][1] = reordered["components"][1], reordered["components"][0]
+    assert list(validator.iter_errors(reordered))
+    legacy_path = copy.deepcopy(valid)
+    legacy_path["components"][13]["path"] = "validation/mnq_5m_multiwindow/schemas/provenance.schema.json"
+    assert list(validator.iter_errors(legacy_path))
+    plan_path = copy.deepcopy(valid)
+    plan_path["components"][0]["path"] = "docs/superpowers/plans/2026-09-16-mnq-5m-official-inventory-scanner-implementation-plan.md"
+    assert list(validator.iter_errors(plan_path))
+
+
+def test_source_inventory_hash_nullability_tracks_serializability_and_defects() -> None:
+    validator = Draft202012Validator(_load("inventory"))
+    nonserializable = _valid_inventory(incomplete=True)
+    entry = nonserializable["entries"][0]
+    entry["observed_native_bar_count"] = 276
+    entry["complete_session_source_sha256"] = None
+    entry["exclusion_reasons"] = ["SOURCE_CORRUPTION"]
+    assert not list(validator.iter_errors(nonserializable))
+    impossible_first_hash = copy.deepcopy(nonserializable)
+    impossible_first_hash["entries"][0]["observed_native_bar_count"] = 100
+    impossible_first_hash["entries"][0]["first_250_source_sha256"] = SHA
+    assert list(validator.iter_errors(impossible_first_hash))
+    invalid_complete_null = _valid_inventory(incomplete=True)
+    invalid_complete_null["entries"][0]["complete_session_source_sha256"] = None
+    assert list(validator.iter_errors(invalid_complete_null))
+
+
+def test_toolset_and_provenance_keep_selected_source_stage_status() -> None:
+    toolset = _load("toolset")
+    provenance = _load("provenance")
+    assert toolset["properties"]["stage"] == {"const": "SOURCE_ACQUISITION"}
+    assert toolset["properties"]["status"] == {"const": "FROZEN_FOR_SOURCE_ACQUISITION"}
+    binding = provenance["$defs"]["toolset_binding"]["properties"]
+    assert binding["stage"] == {"const": "SOURCE_ACQUISITION"}
+    assert binding["status"] == {"const": "FROZEN_FOR_SOURCE_ACQUISITION"}
