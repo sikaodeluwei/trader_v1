@@ -22,6 +22,12 @@ SCHEMA_FILES = {
     "checkpoint": "checkpoint_attestation_v2.schema.json",
     "provenance": "provenance_v1_3.schema.json",
 }
+INVENTORY_EVIDENCE_SCHEMA_FILES = {
+    "scan": "inventory_scan.schema.json",
+    "runtime": "inventory_runtime_capture.schema.json",
+    "acquisition": "inventory_acquisition_evidence.schema.json",
+    "provenance": "inventory_provenance.schema.json",
+}
 LEGACY_HASHES = {
     "source_inventory.schema.json": "76665617a84f3250adbdafc4d80c509a0640ab39f5c397daaa17b69de1352f6e",
     "exclusions.schema.json": "6e66d0eb32aadbaf722dc36bdb2c826e64d0d7186353647a0793fb2f2fe0d776",
@@ -41,10 +47,399 @@ COMPATIBILITY_REASONS = [
 ]
 SHA = "a" * 64
 COMMIT = "b" * 40
+ACQUISITION_ID = "dryrun-mnq-202609-5m-inventory-20260622-20260724-v1"
+CANONICALIZATION_ID = "NINJATRADER_SEMICOLON_OHLCV_UTF8_LF_FINAL_NEWLINE_V1"
 
 
 def _load(name: str) -> dict[str, object]:
     return json.loads((SCHEMA_DIR / SCHEMA_FILES[name]).read_text(encoding="utf-8"))
+
+
+def _load_inventory_evidence(name: str) -> dict[str, object]:
+    return json.loads(
+        (SCHEMA_DIR / INVENTORY_EVIDENCE_SCHEMA_FILES[name]).read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def _transformations() -> dict[str, bool]:
+    return {
+        "sorted": False,
+        "filled": False,
+        "interpolated": False,
+        "resampled": False,
+        "timezone_converted": False,
+        "back_adjusted": False,
+    }
+
+
+def _scanner_transformations() -> dict[str, bool]:
+    return {
+        "sorted": False,
+        "deduplicated": False,
+        "filled": False,
+        "interpolated": False,
+        "resampled": False,
+        "timezone_converted": False,
+        "back_adjusted": False,
+        "repaired": False,
+    }
+
+
+def _segment() -> dict[str, str]:
+    return {
+        "begin_application": "2026-06-21T17:00:00-05:00",
+        "end_application": "2026-06-22T16:00:00-05:00",
+        "begin_pc": "2026-06-22T06:00:00+08:00",
+        "end_pc": "2026-06-23T05:00:00+08:00",
+    }
+
+
+def _schedule(*, has_session: bool) -> dict[str, object]:
+    segment = _segment()
+    return {
+        "holiday_name": None,
+        "partial_session": False,
+        "expected_open_segments": [segment] if has_session else [],
+        "scheduled_breaks": [],
+        "application_session_begin": segment["begin_application"] if has_session else None,
+        "application_session_end": segment["end_application"] if has_session else None,
+        "pc_log_session_begin": segment["begin_pc"] if has_session else None,
+        "pc_log_session_end": segment["end_pc"] if has_session else None,
+        "effective_schedule_source": (
+            "SessionIterator using Bars.TradingHours and ActualTradingDayExchange"
+        ),
+    }
+
+
+def _quality() -> dict[str, object]:
+    return {
+        "observed_native_five_minute_bar_count": 276,
+        "observed_valid_count_from_session_start": 276,
+        "first_observed_timestamp": "20260621 170500",
+        "two_hundred_fiftieth_native_timestamp": "20260622 135000",
+        "last_observed_session_timestamp": "20260622 160000",
+        "supplied_order_strictly_increasing": True,
+        "duplicate_timestamp_indexes": [],
+        "duplicate_timestamp_count": 0,
+        "decreasing_timestamp_indexes": [],
+        "decreasing_timestamp_count": 0,
+        "missing_expected_open_timestamps": [],
+        "missing_expected_open_timestamp_count": 0,
+        "unexpected_timestamps": [],
+        "unexpected_timestamp_count": 0,
+        "malformed_or_non_finite_ohlcv_indexes": [],
+        "malformed_or_non_finite_ohlcv_count": 0,
+        "invalid_ohlc_geometry_indexes": [],
+        "invalid_ohlc_geometry_count": 0,
+        "negative_volume_indexes": [],
+        "negative_volume_count": 0,
+        "non_integral_volume_indexes": [],
+        "non_integral_volume_count": 0,
+        "first_250_source_sha256": SHA,
+        "complete_session_source_sha256": "c" * 64,
+        "canonicalization_id": CANONICALIZATION_ID,
+    }
+
+
+def _valid_inventory_scan() -> dict[str, object]:
+    observations: list[dict[str, object]] = []
+    for day in range(22, 31):
+        observations.append(
+            {
+                "civil_date": f"2026-06-{day:02d}",
+                "classification": "NO_SESSION",
+                "exchange_trading_date": None,
+                "schedule_evidence": _schedule(has_session=False),
+                "quality": None,
+            }
+        )
+    for day in range(1, 25):
+        observations.append(
+            {
+                "civil_date": f"2026-07-{day:02d}",
+                "classification": "NO_SESSION",
+                "exchange_trading_date": None,
+                "schedule_evidence": _schedule(has_session=False),
+                "quality": None,
+            }
+        )
+    observations[0] = {
+        "civil_date": "2026-06-22",
+        "classification": "SESSION",
+        "exchange_trading_date": "2026-06-22",
+        "schedule_evidence": _schedule(has_session=True),
+        "quality": _quality(),
+    }
+    return {
+        "schema_version": "1.0",
+        "acquisition_id": ACQUISITION_ID,
+        "cohort_id": "mnq-202609-5m-v1",
+        "contract": {
+            "contract_label": "MNQ SEP26",
+            "master_name": "MNQ",
+            "full_name": "MNQ SEP26",
+            "expiry_month": 9,
+            "expiry_year": 2026,
+        },
+        "bar_series": {
+            "type": "Minute",
+            "value": 5,
+            "native": True,
+            "timestamp_semantics": (
+                "NinjaTrader native Minute bar close timestamp in application time"
+            ),
+        },
+        "trading_hours": {
+            "name": "CME US Index Futures ETH",
+            "timezone_id": "Central Standard Time",
+            "exchange_trading_date_member": "ActualTradingDayExchange",
+        },
+        "civil_date_start": "2026-06-22",
+        "civil_date_end": "2026-07-24",
+        "canonicalization_id": CANONICALIZATION_ID,
+        "observations": observations,
+        "transformations": _scanner_transformations(),
+        "completed_at": "2026-09-16T12:00:00+08:00",
+    }
+
+
+def _timezone() -> dict[str, object]:
+    return {
+        "id": "Singapore Standard Time",
+        "display_name": "(UTC+08:00) Kuala Lumpur, Singapore",
+        "standard_name": "Singapore Standard Time",
+        "daylight_name": "Singapore Standard Time",
+        "base_utc_offset": "+08:00",
+        "supports_dst": False,
+    }
+
+
+def _valid_inventory_runtime_capture() -> dict[str, object]:
+    return {
+        "schema_version": "1.0",
+        "acquisition_id": ACQUISITION_ID,
+        "cohort_id": "mnq-202609-5m-v1",
+        "instrument": {
+            "contract_label": "MNQ SEP26",
+            "full_name": "MNQ SEP26",
+            "master_name": "MNQ",
+            "expiry_month": 9,
+            "expiry_year": 2026,
+        },
+        "ninjatrader_version": "8.1.6.1",
+        "scanner_identity": {
+            "name": "ScanMnq5mSourceInventory",
+            "scanner_sha256": None,
+            "scanner_sha256_recording_authority": "operator/finalizer",
+        },
+        "bar_series": {
+            "type": "Minute",
+            "value": 5,
+            "native": True,
+            "calculate": "OnBarClose",
+        },
+        "application_timezone": _timezone(),
+        "pc_timezone": _timezone(),
+        "trading_hours": {
+            "name": "CME US Index Futures ETH",
+            "timezone_id": "Central Standard Time",
+        },
+        "active_connections": [
+            {
+                "name": "My NinjaTrader",
+                "provider": "Provider31",
+                "status": "Connected",
+                "price_status": "Connected",
+                "instrument_types": ["Future"],
+            }
+        ],
+        "connection_snapshot_phase": (
+            "immediately after operator arm and before inventory scan"
+        ),
+        "lifecycle": {
+            "initialized_at": "2026-09-16T11:00:00+08:00",
+            "realtime_observed_at": "2026-09-16T11:01:00+08:00",
+            "armed_at": "2026-09-16T11:02:00+08:00",
+            "completed_at": "2026-09-16T12:00:00+08:00",
+        },
+        "artifact_hashes": {
+            "inventory_scan": {
+                "file_name": "inventory_scan.json",
+                "sha256": SHA,
+            },
+            "inventory_runtime_capture": {
+                "file_name": "inventory_runtime_capture.json",
+                "sha256": None,
+                "sha256_recording_authority": "operator/finalizer",
+            },
+            "trading_hours_template": {
+                "file_name": "trading_hours_template.xml",
+                "sha256": "c" * 64,
+            },
+            "ninjatrader_config": {
+                "file_name": "NinjaTrader.Config.xml",
+                "sha256": "d" * 64,
+            },
+        },
+    }
+
+
+def _evidence_file(role: str, path: str, digest: str) -> dict[str, object]:
+    return {"role": role, "path": path, "sha256": digest, "byte_length": 1234}
+
+
+def _valid_inventory_acquisition_evidence() -> dict[str, object]:
+    return {
+        "schema_version": "1.0",
+        "acquisition_id": ACQUISITION_ID,
+        "cohort_id": "mnq-202609-5m-v1",
+        "intended_provider": {
+            "provider_profile_id": "NINJATRADER_TRADOVATE_PROVIDER31_HDS_V1",
+            "runtime_provider_id": "Provider31",
+            "trace_adapter": "Tradovate.Adapter",
+            "historical_service": "NinjaTrader HDS",
+        },
+        "intended_connection_name": "My NinjaTrader",
+        "historical_trigger": {
+            "source_role": "ninjatrader_trace",
+            "instrument": "MNQ SEP26",
+            "provider_request_period": "1 Minute",
+            "observed_at": "2026-09-16T11:01:30+08:00",
+            "requested_start": "2026-06-21T17:00:00",
+            "requested_end": "2026-07-24T16:00:00",
+            "qualifying_request_count": 1,
+        },
+        "lifecycle": {
+            "adapter_connection_initiated_at": "2026-09-16T10:59:00+08:00",
+            "connection_ready_at": "2026-09-16T10:59:30+08:00",
+            "pre_request_realtime_at": "2026-09-16T11:00:00+08:00",
+            "request_observed_at": "2026-09-16T11:01:30+08:00",
+            "post_request_initialized_at": "2026-09-16T11:02:00+08:00",
+            "post_request_realtime_at": "2026-09-16T11:02:01+08:00",
+            "inventory_scan_armed_at": "2026-09-16T11:03:00+08:00",
+            "inventory_scan_completed_at": "2026-09-16T12:00:01+08:00",
+        },
+        "evidence_files": [
+            _evidence_file("ninjatrader_config", "external/NinjaTrader.Config.xml", "c" * 64),
+            _evidence_file("ninjatrader_log", "external/log.txt", "d" * 64),
+            _evidence_file("ninjatrader_trace", "external/trace.txt", "e" * 64),
+        ],
+        "expected_toolset_checkpoint": COMMIT,
+        "transformations": _transformations(),
+    }
+
+
+def _valid_inventory_provenance() -> dict[str, object]:
+    return {
+        "schema_version": "1.0",
+        "status": "PROVEN",
+        "acquisition_id": ACQUISITION_ID,
+        "cohort_id": "mnq-202609-5m-v1",
+        "contract": {
+            "contract_label": "MNQ SEP26",
+            "full_name": "MNQ SEP26",
+            "master_name": "MNQ",
+            "expiry_month": 9,
+            "expiry_year": 2026,
+        },
+        "bar_series": {"type": "Minute", "value": 5, "native": True},
+        "provider_acquisition": {
+            "status": "PROVEN",
+            "provider_profile_id": "NINJATRADER_TRADOVATE_PROVIDER31_HDS_V1",
+            "runtime_provider_id": "Provider31",
+            "trace_adapter": "Tradovate.Adapter",
+            "intended_connection_name": "My NinjaTrader",
+            "active_connection": {
+                "name": "My NinjaTrader",
+                "provider": "Provider31",
+                "status": "Connected",
+                "price_status": "Connected",
+                "instrument_types": ["Future"],
+            },
+            "historical_service": {
+                "name": "NinjaTrader HDS",
+                "host": "hds-us-nt-007.ninjatrader.com",
+                "port": 31655,
+                "use_ssl": True,
+                "connected_at": "2026-09-16T10:59:00+08:00",
+            },
+            "configuration_binding": {
+                "mode": "EXPLICIT_PREFERENCE",
+                "preferred_future_connection": "My NinjaTrader",
+                "preferred_realtime_future_connection": "My NinjaTrader",
+                "saved_connection_matches": 1,
+            },
+            "acquisition_id": ACQUISITION_ID,
+            "lifecycle": _valid_inventory_acquisition_evidence()["lifecycle"],
+            "historical_request": {
+                "source_role": "ninjatrader_trace",
+                "observed_at": "2026-09-16T11:01:30+08:00",
+                "instrument": "MNQ SEP26",
+                "requested_start": "2026-06-21T17:00:00",
+                "requested_end": "2026-07-24T16:00:00",
+                "provider_request_period": "1 Minute",
+                "covers_verified_inventory_bounds": True,
+            },
+            "competing_historical_provider_connections": 0,
+            "intended_provider_disconnects": 0,
+            "log_timezone_id": "Singapore Standard Time",
+            "log_utc_offset": "+08:00",
+        },
+        "calendar_binding": {
+            "status": "VERIFIED",
+            "trading_hours_name": "CME US Index Futures ETH",
+            "civil_date_start": "2026-06-22",
+            "civil_date_end": "2026-07-24",
+            "civil_date_count": 33,
+            "session_count": 24,
+            "earliest_session_begin": "2026-06-21T17:00:00-05:00",
+            "latest_session_end": "2026-07-24T16:00:00-05:00",
+            "trading_hours_template_sha256": "c" * 64,
+            "calendar_binding_sha256": "9" * 64,
+        },
+        "artifact_hashes": {
+            "inventory_scan": SHA,
+            "inventory_runtime_capture": "b" * 64,
+            "inventory_acquisition_evidence": "f" * 64,
+            "scanner": "8" * 64,
+            "trading_hours_template": "c" * 64,
+            "ninjatrader_config": "c" * 64,
+            "ninjatrader_log": "d" * 64,
+            "ninjatrader_trace": "e" * 64,
+            "toolset_manifest": "7" * 64,
+        },
+        "external_evidence": [
+            _evidence_file("ninjatrader_config", "external/NinjaTrader.Config.xml", "c" * 64),
+            _evidence_file("ninjatrader_log", "external/log.txt", "d" * 64),
+            _evidence_file("ninjatrader_trace", "external/trace.txt", "e" * 64),
+        ],
+        "inventory_scan_binding": {
+            "path": "inventory_scan.json",
+            "schema_version": "1.0",
+            "sha256": SHA,
+        },
+        "transformations": _transformations(),
+        "toolset_binding": {
+            "status": "FROZEN_FOR_SOURCE_ACQUISITION",
+            "stage": "SOURCE_ACQUISITION",
+            "schema_version": "2.0",
+            "producing_checkpoint": COMMIT,
+            "trusted_checkpoint": COMMIT,
+            "pinned_production_hierarchy_commit": (
+                "04a73e1401d44688660b211d9db6918113482856"
+            ),
+            "aggregate_payload_sha256": "a" * 64,
+        },
+        "checkpoint_verification": {
+            "status": "VERIFIED",
+            "trusted_toolset_checkpoint": COMMIT,
+            "pinned_production_hierarchy_commit": (
+                "04a73e1401d44688660b211d9db6918113482856"
+            ),
+        },
+    }
 
 
 def _require_contracts() -> None:
@@ -321,3 +716,265 @@ def test_representative_v2_documents_are_valid_only_for_versioned_contracts() ->
         assert not list(Draft202012Validator(_load(name)).iter_errors(document))
         legacy_schema = json.loads((SCHEMA_DIR / legacy_names[name]).read_text(encoding="utf-8"))
         assert list(Draft202012Validator(legacy_schema).iter_errors(document))
+
+
+@pytest.mark.parametrize("filename", INVENTORY_EVIDENCE_SCHEMA_FILES.values())
+def test_inventory_evidence_schema_file_is_present(filename: str) -> None:
+    schema = json.loads((SCHEMA_DIR / filename).read_text(encoding="utf-8"))
+    assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+
+
+def test_inventory_evidence_schemas_are_strict_unique_draft_2020_12_contracts() -> None:
+    schemas = {
+        name: _load_inventory_evidence(name)
+        for name in INVENTORY_EVIDENCE_SCHEMA_FILES
+    }
+    assert [schema["properties"]["schema_version"] for schema in schemas.values()] == [
+        {"const": "1.0"}
+    ] * 4
+    schema_ids = [schema["$id"] for schema in schemas.values()]
+    assert len(schema_ids) == len(set(schema_ids)) == 4
+    repository_schema_ids = [
+        json.loads(path.read_text(encoding="utf-8"))["$id"]
+        for path in SCHEMA_DIR.glob("*.schema.json")
+    ]
+    assert len(repository_schema_ids) == len(set(repository_schema_ids))
+    for filename, schema_id in zip(INVENTORY_EVIDENCE_SCHEMA_FILES.values(), schema_ids):
+        assert schema_id.endswith(filename)
+    for schema in schemas.values():
+        Draft202012Validator.check_schema(schema)
+
+
+def test_every_owned_inventory_evidence_object_rejects_additional_properties() -> None:
+    def assert_strict_objects(node: object, path: str) -> None:
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                assert node.get("additionalProperties") is False, path
+            for key, value in node.items():
+                assert_strict_objects(value, f"{path}/{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                assert_strict_objects(value, f"{path}/{index}")
+
+    for name in INVENTORY_EVIDENCE_SCHEMA_FILES:
+        assert_strict_objects(_load_inventory_evidence(name), name)
+
+
+@pytest.mark.parametrize(
+    ("schema_name", "document_factory"),
+    [
+        ("scan", _valid_inventory_scan),
+        ("runtime", _valid_inventory_runtime_capture),
+        ("acquisition", _valid_inventory_acquisition_evidence),
+        ("provenance", _valid_inventory_provenance),
+    ],
+)
+def test_inventory_evidence_schemas_accept_exact_documents_and_reject_unknown_fields(
+    schema_name: str, document_factory: object
+) -> None:
+    schema = _load_inventory_evidence(schema_name)
+    validator = Draft202012Validator(schema)
+    document = document_factory()
+    assert not list(validator.iter_errors(document))
+    document["unknown_field"] = "not allowed"
+    assert list(validator.iter_errors(document))
+
+
+def test_inventory_scan_contract_matches_scanner_and_rejects_policy_or_raw_rows() -> None:
+    schema = _load_inventory_evidence("scan")
+    validator = Draft202012Validator(schema)
+    valid = _valid_inventory_scan()
+    assert schema["required"] == [
+        "schema_version",
+        "acquisition_id",
+        "cohort_id",
+        "contract",
+        "bar_series",
+        "trading_hours",
+        "civil_date_start",
+        "civil_date_end",
+        "canonicalization_id",
+        "observations",
+        "transformations",
+        "completed_at",
+    ]
+    assert not list(validator.iter_errors(valid))
+
+    for forbidden_field in (
+        "raw_ohlcv",
+        "bars",
+        "eligible",
+        "exclusion_reasons",
+        "hierarchy_output",
+        "oracle_output",
+        "project_output",
+        "comparator_output",
+        "trend_state",
+        "strategy_output",
+        "pnl",
+        "selection_result",
+    ):
+        altered = copy.deepcopy(valid)
+        altered[forbidden_field] = []
+        assert list(validator.iter_errors(altered)), forbidden_field
+
+    absent_coverage = copy.deepcopy(valid)
+    absent_coverage["observations"].pop()
+    assert list(validator.iter_errors(absent_coverage))
+
+    missing_canonicalization = copy.deepcopy(valid)
+    del missing_canonicalization["canonicalization_id"]
+    assert list(validator.iter_errors(missing_canonicalization))
+
+    raw_rows_nested = copy.deepcopy(valid)
+    raw_rows_nested["observations"][0]["raw_ohlcv"] = [[1, 2, 3, 4, 5]]
+    assert list(validator.iter_errors(raw_rows_nested))
+
+
+def test_inventory_scan_distinguishes_no_session_and_session_quality_shapes() -> None:
+    validator = Draft202012Validator(_load_inventory_evidence("scan"))
+    valid = _valid_inventory_scan()
+    assert not list(validator.iter_errors(valid))
+
+    bad_no_session = copy.deepcopy(valid)
+    bad_no_session["observations"][1]["quality"] = _quality()
+    assert list(validator.iter_errors(bad_no_session))
+
+    bad_session = copy.deepcopy(valid)
+    bad_session["observations"][0]["quality"] = None
+    assert list(validator.iter_errors(bad_session))
+
+    bad_quality_hash = copy.deepcopy(valid)
+    bad_quality_hash["observations"][0]["quality"]["first_250_source_sha256"] = "A" * 64
+    assert list(validator.iter_errors(bad_quality_hash))
+
+
+def test_inventory_runtime_capture_is_facts_only_and_uses_strict_hashes() -> None:
+    validator = Draft202012Validator(_load_inventory_evidence("runtime"))
+    valid = _valid_inventory_runtime_capture()
+    assert not list(validator.iter_errors(valid))
+
+    invalid_hash = copy.deepcopy(valid)
+    invalid_hash["artifact_hashes"]["inventory_scan"]["sha256"] = "not-a-sha"
+    assert list(validator.iter_errors(invalid_hash))
+
+    provider_claim = copy.deepcopy(valid)
+    provider_claim["provider_proven"] = True
+    assert list(validator.iter_errors(provider_claim))
+
+    provider_claim_nested = copy.deepcopy(valid)
+    provider_claim_nested["active_connections"][0]["historical_service"] = "NinjaTrader HDS"
+    assert list(validator.iter_errors(provider_claim_nested))
+
+
+def test_acquisition_evidence_requires_exact_provider_linkage_and_external_evidence() -> None:
+    validator = Draft202012Validator(_load_inventory_evidence("acquisition"))
+    valid = _valid_inventory_acquisition_evidence()
+    assert not list(validator.iter_errors(valid))
+
+    for missing in ("intended_provider", "intended_connection_name", "historical_trigger"):
+        altered = copy.deepcopy(valid)
+        del altered[missing]
+        assert list(validator.iter_errors(altered)), missing
+
+    for missing in ("role", "path", "sha256", "byte_length"):
+        altered = copy.deepcopy(valid)
+        del altered["evidence_files"][0][missing]
+        assert list(validator.iter_errors(altered)), missing
+
+    invalid_sha = copy.deepcopy(valid)
+    invalid_sha["evidence_files"][0]["sha256"] = "C" * 64
+    assert list(validator.iter_errors(invalid_sha))
+
+
+@pytest.mark.parametrize(
+    ("schema_name", "document_factory", "evidence_field"),
+    [
+        ("acquisition", _valid_inventory_acquisition_evidence, "evidence_files"),
+        ("provenance", _valid_inventory_provenance, "external_evidence"),
+    ],
+)
+@pytest.mark.parametrize(
+    "required_role",
+    ["ninjatrader_config", "ninjatrader_log", "ninjatrader_trace"],
+)
+def test_required_external_evidence_role_cardinality_is_exactly_one(
+    schema_name: str,
+    document_factory: object,
+    evidence_field: str,
+    required_role: str,
+) -> None:
+    validator = Draft202012Validator(_load_inventory_evidence(schema_name))
+    valid = document_factory()
+    assert not list(validator.iter_errors(valid))
+
+    omitted = copy.deepcopy(valid)
+    omitted[evidence_field] = [
+        item for item in omitted[evidence_field] if item["role"] != required_role
+    ]
+    assert list(validator.iter_errors(omitted))
+
+    duplicate_substitution = copy.deepcopy(valid)
+    items = duplicate_substitution[evidence_field]
+    missing_index = next(
+        index for index, item in enumerate(items) if item["role"] == required_role
+    )
+    replacement_index = 0 if missing_index != 0 else 1
+    items[missing_index] = copy.deepcopy(items[replacement_index])
+    assert list(validator.iter_errors(duplicate_substitution))
+
+
+def test_inventory_provenance_is_proven_only_and_has_no_selected_case_binding() -> None:
+    schema = _load_inventory_evidence("provenance")
+    validator = Draft202012Validator(schema)
+    valid = _valid_inventory_provenance()
+    assert schema["properties"]["status"] == {"const": "PROVEN"}
+    assert not list(validator.iter_errors(valid))
+
+    failed = copy.deepcopy(valid)
+    failed["status"] = "FAILED"
+    assert list(validator.iter_errors(failed))
+
+    selected_source = copy.deepcopy(valid)
+    selected_source["selected_source_binding"] = {
+        "expected_sha256": SHA,
+        "observed_sha256": SHA,
+    }
+    assert list(validator.iter_errors(selected_source))
+
+    selection = copy.deepcopy(valid)
+    selection["selection_binding"] = {"status": "FROZEN_FOR_SOURCE_ACQUISITION"}
+    assert list(validator.iter_errors(selection))
+
+    missing_calendar_hash = copy.deepcopy(valid)
+    del missing_calendar_hash["calendar_binding"]["calendar_binding_sha256"]
+    assert list(validator.iter_errors(missing_calendar_hash))
+
+    missing_provider_link = copy.deepcopy(valid)
+    del missing_provider_link["provider_acquisition"]["historical_request"]
+    assert list(validator.iter_errors(missing_provider_link))
+
+
+def test_inventory_contract_identities_and_immutable_transformations_are_enforced() -> None:
+    fixtures = {
+        "scan": _valid_inventory_scan(),
+        "runtime": _valid_inventory_runtime_capture(),
+        "acquisition": _valid_inventory_acquisition_evidence(),
+        "provenance": _valid_inventory_provenance(),
+    }
+    for name, document in fixtures.items():
+        validator = Draft202012Validator(_load_inventory_evidence(name))
+        assert not list(validator.iter_errors(document))
+
+        wrong_cohort = copy.deepcopy(document)
+        wrong_cohort["cohort_id"] = "mnq-wrong-cohort"
+        assert list(validator.iter_errors(wrong_cohort)), name
+
+        wrong_acquisition = copy.deepcopy(document)
+        wrong_acquisition["acquisition_id"] = ""
+        assert list(validator.iter_errors(wrong_acquisition)), name
+
+        if "transformations" in document:
+            transformed = copy.deepcopy(document)
+            transformed["transformations"]["sorted"] = True
+            assert list(validator.iter_errors(transformed)), name

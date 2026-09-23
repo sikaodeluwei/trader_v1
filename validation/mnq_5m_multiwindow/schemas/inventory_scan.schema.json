@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sikaodeluwei/trader_v1/validation/mnq_5m_multiwindow/schemas/inventory_scan.schema.json",
+  "title": "MNQ five-minute raw inventory scan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "acquisition_id",
+    "cohort_id",
+    "contract",
+    "bar_series",
+    "trading_hours",
+    "civil_date_start",
+    "civil_date_end",
+    "canonicalization_id",
+    "observations",
+    "transformations",
+    "completed_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "acquisition_id": { "$ref": "#/$defs/acquisition_id" },
+    "cohort_id": { "const": "mnq-202609-5m-v1" },
+    "contract": { "$ref": "#/$defs/contract" },
+    "bar_series": { "$ref": "#/$defs/bar_series" },
+    "trading_hours": { "$ref": "#/$defs/trading_hours" },
+    "civil_date_start": { "const": "2026-06-22" },
+    "civil_date_end": { "const": "2026-07-24" },
+    "canonicalization_id": { "$ref": "#/$defs/canonicalization_id" },
+    "observations": {
+      "type": "array",
+      "minItems": 33,
+      "maxItems": 33,
+      "items": { "oneOf": [
+        { "$ref": "#/$defs/no_session_observation" },
+        { "$ref": "#/$defs/session_observation" }
+      ] }
+    },
+    "transformations": { "$ref": "#/$defs/scanner_transformations" },
+    "completed_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "acquisition_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "canonicalization_id": {
+      "const": "NINJATRADER_SEMICOLON_OHLCV_UTF8_LF_FINAL_NEWLINE_V1"
+    },
+    "sha256_or_null": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_label", "master_name", "full_name", "expiry_month", "expiry_year"],
+      "properties": {
+        "contract_label": { "const": "MNQ SEP26" },
+        "master_name": { "const": "MNQ" },
+        "full_name": { "const": "MNQ SEP26" },
+        "expiry_month": { "const": 9 },
+        "expiry_year": { "const": 2026 }
+      }
+    },
+    "bar_series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value", "native", "timestamp_semantics"],
+      "properties": {
+        "type": { "const": "Minute" },
+        "value": { "const": 5 },
+        "native": { "const": true },
+        "timestamp_semantics": {
+          "const": "NinjaTrader native Minute bar close timestamp in application time"
+        }
+      }
+    },
+    "trading_hours": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "timezone_id", "exchange_trading_date_member"],
+      "properties": {
+        "name": { "const": "CME US Index Futures ETH" },
+        "timezone_id": { "type": "string", "minLength": 1 },
+        "exchange_trading_date_member": { "const": "ActualTradingDayExchange" }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["begin_application", "end_application", "begin_pc", "end_pc"],
+      "properties": {
+        "begin_application": { "type": "string", "format": "date-time" },
+        "end_application": { "type": "string", "format": "date-time" },
+        "begin_pc": { "type": "string", "format": "date-time" },
+        "end_pc": { "type": "string", "format": "date-time" }
+      }
+    },
+    "schedule_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "holiday_name",
+        "partial_session",
+        "expected_open_segments",
+        "scheduled_breaks",
+        "application_session_begin",
+        "application_session_end",
+        "pc_log_session_begin",
+        "pc_log_session_end",
+        "effective_schedule_source"
+      ],
+      "properties": {
+        "holiday_name": { "type": ["string", "null"] },
+        "partial_session": { "type": "boolean" },
+        "expected_open_segments": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/segment" }
+        },
+        "scheduled_breaks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/segment" }
+        },
+        "application_session_begin": { "type": ["string", "null"], "format": "date-time" },
+        "application_session_end": { "type": ["string", "null"], "format": "date-time" },
+        "pc_log_session_begin": { "type": ["string", "null"], "format": "date-time" },
+        "pc_log_session_end": { "type": ["string", "null"], "format": "date-time" },
+        "effective_schedule_source": {
+          "const": "SessionIterator using Bars.TradingHours and ActualTradingDayExchange"
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed_native_five_minute_bar_count",
+        "observed_valid_count_from_session_start",
+        "first_observed_timestamp",
+        "two_hundred_fiftieth_native_timestamp",
+        "last_observed_session_timestamp",
+        "supplied_order_strictly_increasing",
+        "duplicate_timestamp_indexes",
+        "duplicate_timestamp_count",
+        "decreasing_timestamp_indexes",
+        "decreasing_timestamp_count",
+        "missing_expected_open_timestamps",
+        "missing_expected_open_timestamp_count",
+        "unexpected_timestamps",
+        "unexpected_timestamp_count",
+        "malformed_or_non_finite_ohlcv_indexes",
+        "malformed_or_non_finite_ohlcv_count",
+        "invalid_ohlc_geometry_indexes",
+        "invalid_ohlc_geometry_count",
+        "negative_volume_indexes",
+        "negative_volume_count",
+        "non_integral_volume_indexes",
+        "non_integral_volume_count",
+        "first_250_source_sha256",
+        "complete_session_source_sha256",
+        "canonicalization_id"
+      ],
+      "properties": {
+        "observed_native_five_minute_bar_count": { "type": "integer", "minimum": 0 },
+        "observed_valid_count_from_session_start": { "type": "integer", "minimum": 0 },
+        "first_observed_timestamp": { "$ref": "#/$defs/bar_timestamp_or_null" },
+        "two_hundred_fiftieth_native_timestamp": { "$ref": "#/$defs/bar_timestamp_or_null" },
+        "last_observed_session_timestamp": { "$ref": "#/$defs/bar_timestamp_or_null" },
+        "supplied_order_strictly_increasing": { "type": "boolean" },
+        "duplicate_timestamp_indexes": { "$ref": "#/$defs/indexes" },
+        "duplicate_timestamp_count": { "type": "integer", "minimum": 0 },
+        "decreasing_timestamp_indexes": { "$ref": "#/$defs/indexes" },
+        "decreasing_timestamp_count": { "type": "integer", "minimum": 0 },
+        "missing_expected_open_timestamps": { "$ref": "#/$defs/bar_timestamps" },
+        "missing_expected_open_timestamp_count": { "type": "integer", "minimum": 0 },
+        "unexpected_timestamps": { "$ref": "#/$defs/bar_timestamps" },
+        "unexpected_timestamp_count": { "type": "integer", "minimum": 0 },
+        "malformed_or_non_finite_ohlcv_indexes": { "$ref": "#/$defs/indexes" },
+        "malformed_or_non_finite_ohlcv_count": { "type": "integer", "minimum": 0 },
+        "invalid_ohlc_geometry_indexes": { "$ref": "#/$defs/indexes" },
+        "invalid_ohlc_geometry_count": { "type": "integer", "minimum": 0 },
+        "negative_volume_indexes": { "$ref": "#/$defs/indexes" },
+        "negative_volume_count": { "type": "integer", "minimum": 0 },
+        "non_integral_volume_indexes": { "$ref": "#/$defs/indexes" },
+        "non_integral_volume_count": { "type": "integer", "minimum": 0 },
+        "first_250_source_sha256": { "$ref": "#/$defs/sha256_or_null" },
+        "complete_session_source_sha256": { "$ref": "#/$defs/sha256_or_null" },
+        "canonicalization_id": { "$ref": "#/$defs/canonicalization_id" }
+      }
+    },
+    "bar_timestamp_or_null": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{8} [0-9]{6}$"
+    },
+    "bar_timestamps": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[0-9]{8} [0-9]{6}$" }
+    },
+    "indexes": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 }
+    },
+    "no_session_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["civil_date", "classification", "exchange_trading_date", "schedule_evidence", "quality"],
+      "properties": {
+        "civil_date": { "type": "string", "format": "date" },
+        "classification": { "const": "NO_SESSION" },
+        "exchange_trading_date": { "const": null },
+        "schedule_evidence": {
+          "$ref": "#/$defs/schedule_evidence",
+          "properties": {
+            "expected_open_segments": { "maxItems": 0 },
+            "scheduled_breaks": { "maxItems": 0 },
+            "application_session_begin": { "const": null },
+            "application_session_end": { "const": null },
+            "pc_log_session_begin": { "const": null },
+            "pc_log_session_end": { "const": null }
+          }
+        },
+        "quality": { "const": null }
+      }
+    },
+    "session_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["civil_date", "classification", "exchange_trading_date", "schedule_evidence", "quality"],
+      "properties": {
+        "civil_date": { "type": "string", "format": "date" },
+        "classification": { "const": "SESSION" },
+        "exchange_trading_date": { "type": "string", "format": "date" },
+        "schedule_evidence": {
+          "$ref": "#/$defs/schedule_evidence",
+          "properties": { "expected_open_segments": { "minItems": 1 } }
+        },
+        "quality": { "$ref": "#/$defs/quality" }
+      }
+    },
+    "scanner_transformations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sorted", "deduplicated", "filled", "interpolated", "resampled", "timezone_converted", "back_adjusted", "repaired"],
+      "properties": {
+        "sorted": { "const": false },
+        "deduplicated": { "const": false },
+        "filled": { "const": false },
+        "interpolated": { "const": false },
+        "resampled": { "const": false },
+        "timezone_converted": { "const": false },
+        "back_adjusted": { "const": false },
+        "repaired": { "const": false }
+      }
+    }
+  }
+}
