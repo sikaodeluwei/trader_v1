@@ -393,6 +393,28 @@ def test_canonicalization_and_hashing_match_the_selected_case_bytes() -> None:
     )
 
 
+def test_first_250_hash_uses_canonical_rows_not_eligibility_valid_prefix() -> None:
+    """Catches suppressing an available identity hash for finite defect rows."""
+    body = _method_body(_scanner_source(), "InspectSessionBars")
+
+    assert re.search(
+        r"if\s*\(bar\.HasFiniteOhlcv\)\s*"
+        r"bar\.CanonicalRow\s*=\s*CanonicalizeBar\(bar\);",
+        body,
+    )
+    assert "bar.HasFiniteOhlcv\n                    && (bar.Low > bar.High" in body
+
+    first_hash = body[
+        body.index("string first250Hash = null;") : body.index("string completeHash = null;")
+    ]
+    assert re.search(r"if\s*\(bars\.Count\s*>=\s*250\)", first_hash)
+    assert re.search(
+        r"bars\.Take\(250\)\.Select\(value\s*=>\s*value\.CanonicalRow\)",
+        first_hash,
+    )
+    assert "validFromSessionStart" not in first_hash
+
+
 @pytest.mark.skipif(
     not (CSC.is_file() and SYSTEM_WEB_EXTENSIONS.is_file()),
     reason="the installed .NET Framework serializer compiler is unavailable",

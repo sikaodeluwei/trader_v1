@@ -452,7 +452,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             }
 
             string first250Hash = null;
-            if (validFromSessionStart >= 250 && bars.Count >= 250)
+            if (bars.Count >= 250)
                 first250Hash = Sha256CanonicalRows(
                     bars.Take(250).Select(value => value.CanonicalRow).ToList());
 
