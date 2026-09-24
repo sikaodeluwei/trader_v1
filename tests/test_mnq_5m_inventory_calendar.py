@@ -295,6 +295,26 @@ def _schedule_evidence(observation: dict[str, object]) -> dict[str, object]:
     return value
 
 
+def _rewrite_all_application_timestamps_to_utc(scan: dict[str, object]) -> None:
+    observations = scan["observations"]
+    assert isinstance(observations, list)
+    for observation in observations:
+        schedule = _schedule_evidence(observation)
+        for segment in schedule["expected_open_segments"]:
+            for field in ("begin_application", "end_application"):
+                segment[field] = datetime.fromisoformat(segment[field]).astimezone(timezone.utc).isoformat()
+        for scheduled_break in schedule["scheduled_breaks"]:
+            for field in ("begin_application", "end_application"):
+                scheduled_break[field] = datetime.fromisoformat(scheduled_break[field]).astimezone(
+                    timezone.utc
+                ).isoformat()
+        for field in ("application_session_begin", "application_session_end"):
+            if schedule[field] is not None:
+                schedule[field] = datetime.fromisoformat(schedule[field]).astimezone(
+                    timezone.utc
+                ).isoformat()
+
+
 def test_verifies_complete_calendar_and_exact_public_interfaces() -> None:
     calendar = verify_inventory_calendar(_scan(), BASE_TEMPLATE)
 
@@ -425,6 +445,24 @@ def test_rejects_application_or_pc_timestamp_and_offset_inconsistency(field: str
 
     with pytest.raises(InventoryValidationError):
         verify_inventory_calendar(scan, BASE_TEMPLATE)
+
+
+def test_rejects_coherent_application_timezone_rewrite_to_equivalent_utc_instants() -> None:
+    scan = _scan()
+    _rewrite_all_application_timestamps_to_utc(scan)
+
+    with pytest.raises(InventoryValidationError):
+        verify_inventory_calendar(scan, BASE_TEMPLATE)
+
+
+def test_returns_authoritative_template_application_timezone_for_segments_and_bounds() -> None:
+    calendar = verify_inventory_calendar(_scan(), BASE_TEMPLATE)
+
+    assert getattr(calendar.sessions[0].segments[0].begin_application.tzinfo, "key", None) == (
+        "America/Chicago"
+    )
+    assert getattr(calendar.earliest_session_begin.tzinfo, "key", None) == "America/Chicago"
+    assert getattr(calendar.latest_session_end.tzinfo, "key", None) == "America/Chicago"
 
 
 def test_pc_values_cannot_invent_an_absent_session() -> None:

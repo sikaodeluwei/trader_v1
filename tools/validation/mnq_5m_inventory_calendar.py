@@ -409,6 +409,14 @@ def _same_instant(left: datetime, right: datetime) -> bool:
     return left.astimezone(timezone.utc) == right.astimezone(timezone.utc)
 
 
+def _same_application_representation(observed: datetime, expected: datetime) -> bool:
+    return (
+        observed.replace(tzinfo=None) == expected.replace(tzinfo=None)
+        and observed.utcoffset() == expected.utcoffset()
+        and _same_instant(observed, expected)
+    )
+
+
 def _freeze(value: object) -> object:
     if isinstance(value, Mapping):
         return MappingProxyType({str(key): _freeze(item) for key, item in value.items()})
@@ -436,8 +444,8 @@ def _verify_segment(
     expected_begin, expected_end = expected
     if (
         begin_application >= end_application
-        or not _same_instant(begin_application, expected_begin)
-        or not _same_instant(end_application, expected_end)
+        or not _same_application_representation(begin_application, expected_begin)
+        or not _same_application_representation(end_application, expected_end)
         or not _same_instant(begin_pc, expected_begin)
         or not _same_instant(end_pc, expected_end)
         or not _same_instant(begin_application, begin_pc)
@@ -445,7 +453,7 @@ def _verify_segment(
     ):
         _fail(f"{label} timestamp or offset mismatch")
     return (
-        SessionSegment(begin_application, end_application, begin_pc, end_pc),
+        SessionSegment(expected_begin, expected_end, begin_pc, end_pc),
         {key: str(raw[key]) for key in required},
     )
 
