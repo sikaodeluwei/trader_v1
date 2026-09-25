@@ -473,11 +473,18 @@ def _validate_against_schema(
 ) -> None:
     schema = _load_json_bytes(schema_bytes, f"{label} schema")
     if expected_pinned_production_commit != DEFAULT_PINNED_PRODUCTION_COMMIT:
-        properties = schema.get("properties")
-        if isinstance(properties, dict):
-            pinned = properties.get("pinned_production_hierarchy_commit")
-            if isinstance(pinned, dict) and "const" in pinned:
-                pinned["const"] = expected_pinned_production_commit
+        pending: list[object] = [schema]
+        while pending:
+            current = pending.pop()
+            if isinstance(current, dict):
+                properties = current.get("properties")
+                if isinstance(properties, dict):
+                    pinned = properties.get("pinned_production_hierarchy_commit")
+                    if isinstance(pinned, dict) and "const" in pinned:
+                        pinned["const"] = expected_pinned_production_commit
+                pending.extend(current.values())
+            elif isinstance(current, list):
+                pending.extend(current)
     try:
         errors = sorted(
             Draft202012Validator(
@@ -506,6 +513,7 @@ def _verify_inventory_toolset(
     list[dict[str, Any]],
     dict[str, dict[str, Any]],
     dict[str, bytes],
+    str,
 ]:
     manifest_bytes = _snapshot_path(
         snapshots, manifest_bundle, "inventory toolset manifest"
@@ -526,28 +534,6 @@ def _verify_inventory_toolset(
         != expected_pinned_production_commit
     ):
         _fail("wrong pinned production hierarchy commit")
-
-    schema_bytes = {
-        role: _git_bytes(
-            repository,
-            trusted_toolset_checkpoint,
-            REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS[role],
-            f"frozen {role}",
-        )
-        for role in (
-            "toolset_manifest_schema",
-            "source_inventory_schema",
-            "exclusion_ledger_schema",
-            "selection_registry_schema",
-            "checkpoint_attestation_schema",
-        )
-    }
-    _validate_against_schema(
-        manifest,
-        schema_bytes["toolset_manifest_schema"],
-        "inventory toolset manifest",
-        expected_pinned_production_commit=expected_pinned_production_commit,
-    )
 
     manifest_producer = _immutable_object_id(
         manifest.get("producing_checkpoint"),
@@ -639,6 +625,32 @@ def _verify_inventory_toolset(
         artifacts.append(record)
         by_role[role] = record
 
+    schema_bytes = {
+        role: _git_bytes(
+            repository,
+            trusted_toolset_checkpoint,
+            REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS[role],
+            f"frozen {role}",
+        )
+        for role in (
+            "toolset_manifest_schema",
+            "inventory_scan_schema",
+            "inventory_runtime_capture_schema",
+            "inventory_acquisition_evidence_schema",
+            "inventory_provenance_schema",
+            "source_inventory_schema",
+            "exclusion_ledger_schema",
+            "selection_registry_schema",
+            "checkpoint_attestation_schema",
+        )
+    }
+    _validate_against_schema(
+        manifest,
+        schema_bytes["toolset_manifest_schema"],
+        "inventory toolset manifest",
+        expected_pinned_production_commit=expected_pinned_production_commit,
+    )
+
     verifier_component = by_role.get("checkpoint_verifier")
     if verifier_component is None:
         _fail("inventory toolset is missing checkpoint_verifier")
@@ -652,6 +664,7 @@ def _verify_inventory_toolset(
         artifacts,
         by_role,
         schema_bytes,
+        executing_verifier_hash,
     )
 
 
@@ -707,13 +720,54 @@ def _verify_inventory_documents(
                 _fail(f"{role} changed after the inventory checkpoint")
 
     documents: dict[str, dict[str, Any]] = {}
-    for role, expected_version in INVENTORY_ARTIFACT_SCHEMA_VERSIONS.items():
-        document = _load_json_bytes(artifact_bytes[role], role)
-        if role not in {"source_inventory", "exclusions"} and (
-            document.get("schema_version") != expected_version
-        ):
-            _fail(f"{role} schema version mismatch")
-        documents[role] = document
+    for role in INVENTORY_ARTIFACT_SCHEMA_VERSIONS:
+        documents[role] = _load_json_bytes(artifact_bytes[role], role)
+
+    for role, schema_role, label in (
+        (
+            "inventory_runtime_capture",
+            "inventory_runtime_capture_schema",
+            "inventory runtime capture",
+        ),
+        ("inventory_scan", "inventory_scan_schema", "inventory scan"),
+        (
+            "inventory_acquisition_evidence",
+            "inventory_acquisition_evidence_schema",
+            "inventory acquisition evidence",
+        ),
+        (
+            "inventory_provenance",
+            "inventory_provenance_schema",
+            "inventory provenance",
+        ),
+    ):
+        _validate_against_schema(
+            documents[role],
+            schema_bytes[schema_role],
+            label,
+            expected_pinned_production_commit=expected_pinned_production_commit,
+        )
+
+    evidence_roles = (
+        "inventory_runtime_capture",
+        "inventory_scan",
+        "inventory_acquisition_evidence",
+        "inventory_provenance",
+    )
+    acquisition_ids = [documents[role].get("acquisition_id") for role in evidence_roles]
+    cohort_ids = [documents[role].get("cohort_id") for role in evidence_roles]
+    provenance = documents["inventory_provenance"]
+    provider_acquisition = _mapping(
+        provenance.get("provider_acquisition"),
+        "inventory provenance provider acquisition",
+    )
+    if (
+        not all(value == acquisition_ids[0] for value in acquisition_ids)
+        or provider_acquisition.get("acquisition_id") != acquisition_ids[0]
+    ):
+        _fail("inventory evidence acquisition identity mismatch")
+    if not all(value == cohort_ids[0] for value in cohort_ids):
+        _fail("inventory evidence cohort identity mismatch")
 
     source_inventory = documents["source_inventory"]
     exclusions = documents["exclusions"]
@@ -975,6 +1029,7 @@ def _verify_inventory_or_selection_checkpoint(
         artifacts,
         component_records,
         schema_bytes,
+        executing_verifier_hash,
     ) = _verify_inventory_toolset(
         repository=repository,
         bundle=bundle,
@@ -1120,11 +1175,13 @@ def _verify_inventory_or_selection_checkpoint(
             "repository_path": verifier_component["repository_path"],
             "producing_commit": verifier_component["producing_commit"],
             "frozen_sha256": verifier_component["sha256"],
-            "executing_sha256": _sha256(Path(__file__).read_bytes()),
+            "executing_sha256": executing_verifier_hash,
         },
     }
     if trusted_selection_checkpoint is not None:
         result["trusted_selection_checkpoint"] = trusted_selection_checkpoint
+    if result["verifier"]["frozen_sha256"] != result["verifier"]["executing_sha256"]:
+        _fail("executing verifier differs from frozen tool identity")
     result["attestation_sha256"] = _canonical_hash(result)
     _validate_against_schema(
         result,

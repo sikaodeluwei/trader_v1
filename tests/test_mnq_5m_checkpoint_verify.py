@@ -119,6 +119,7 @@ INVENTORY_ARTIFACT_REPOSITORY_PATHS = {
     "exclusions": "exclusions.json",
 }
 V2_SELECTION_REGISTRY_PATH = "selection_registry.json"
+INVENTORY_ACQUISITION_ID = "inventory-acquisition"
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -433,11 +434,408 @@ def _refresh_inventory_bundle(fixture: InventoryCheckpointFixture) -> None:
     )
 
 
+def _inventory_transformations() -> dict[str, bool]:
+    return {
+        "sorted": False,
+        "filled": False,
+        "interpolated": False,
+        "resampled": False,
+        "timezone_converted": False,
+        "back_adjusted": False,
+    }
+
+
+def _inventory_scanner_transformations() -> dict[str, bool]:
+    return {
+        **_inventory_transformations(),
+        "deduplicated": False,
+        "repaired": False,
+    }
+
+
+def _inventory_schedule(*, has_session: bool) -> dict[str, object]:
+    segment = {
+        "begin_application": "2026-06-21T17:00:00-05:00",
+        "end_application": "2026-06-22T16:00:00-05:00",
+        "begin_pc": "2026-06-22T06:00:00+08:00",
+        "end_pc": "2026-06-23T05:00:00+08:00",
+    }
+    return {
+        "holiday_name": None,
+        "partial_session": False,
+        "expected_open_segments": [segment] if has_session else [],
+        "scheduled_breaks": [],
+        "application_session_begin": (
+            segment["begin_application"] if has_session else None
+        ),
+        "application_session_end": segment["end_application"] if has_session else None,
+        "pc_log_session_begin": segment["begin_pc"] if has_session else None,
+        "pc_log_session_end": segment["end_pc"] if has_session else None,
+        "effective_schedule_source": (
+            "SessionIterator using Bars.TradingHours and ActualTradingDayExchange"
+        ),
+    }
+
+
+def _inventory_quality() -> dict[str, object]:
+    return {
+        "observed_native_five_minute_bar_count": 276,
+        "observed_valid_count_from_session_start": 276,
+        "first_observed_timestamp": "20260621 170500",
+        "two_hundred_fiftieth_native_timestamp": "20260622 135000",
+        "last_observed_session_timestamp": "20260622 160000",
+        "supplied_order_strictly_increasing": True,
+        "duplicate_timestamp_indexes": [],
+        "duplicate_timestamp_count": 0,
+        "decreasing_timestamp_indexes": [],
+        "decreasing_timestamp_count": 0,
+        "missing_expected_open_timestamps": [],
+        "missing_expected_open_timestamp_count": 0,
+        "unexpected_timestamps": [],
+        "unexpected_timestamp_count": 0,
+        "malformed_or_non_finite_ohlcv_indexes": [],
+        "malformed_or_non_finite_ohlcv_count": 0,
+        "invalid_ohlc_geometry_indexes": [],
+        "invalid_ohlc_geometry_count": 0,
+        "negative_volume_indexes": [],
+        "negative_volume_count": 0,
+        "non_integral_volume_indexes": [],
+        "non_integral_volume_count": 0,
+        "first_250_source_sha256": "a" * 64,
+        "complete_session_source_sha256": "b" * 64,
+        "canonicalization_id": (
+            "NINJATRADER_SEMICOLON_OHLCV_UTF8_LF_FINAL_NEWLINE_V1"
+        ),
+    }
+
+
+def _valid_inventory_scan_document() -> dict[str, object]:
+    observations = [
+        {
+            "civil_date": f"2026-06-{day:02d}",
+            "classification": "NO_SESSION",
+            "exchange_trading_date": None,
+            "schedule_evidence": _inventory_schedule(has_session=False),
+            "quality": None,
+        }
+        for day in range(22, 31)
+    ] + [
+        {
+            "civil_date": f"2026-07-{day:02d}",
+            "classification": "NO_SESSION",
+            "exchange_trading_date": None,
+            "schedule_evidence": _inventory_schedule(has_session=False),
+            "quality": None,
+        }
+        for day in range(1, 25)
+    ]
+    observations[0] = {
+        "civil_date": "2026-06-22",
+        "classification": "SESSION",
+        "exchange_trading_date": "2026-06-22",
+        "schedule_evidence": _inventory_schedule(has_session=True),
+        "quality": _inventory_quality(),
+    }
+    return {
+        "schema_version": "1.0",
+        "acquisition_id": INVENTORY_ACQUISITION_ID,
+        "cohort_id": "mnq-202609-5m-v1",
+        "contract": {
+            "contract_label": "MNQ SEP26",
+            "master_name": "MNQ",
+            "full_name": "MNQ SEP26",
+            "expiry_month": 9,
+            "expiry_year": 2026,
+        },
+        "bar_series": {
+            "type": "Minute",
+            "value": 5,
+            "native": True,
+            "timestamp_semantics": (
+                "NinjaTrader native Minute bar close timestamp in application time"
+            ),
+        },
+        "trading_hours": {
+            "name": "CME US Index Futures ETH",
+            "timezone_id": "Central Standard Time",
+            "exchange_trading_date_member": "ActualTradingDayExchange",
+        },
+        "civil_date_start": "2026-06-22",
+        "civil_date_end": "2026-07-24",
+        "canonicalization_id": (
+            "NINJATRADER_SEMICOLON_OHLCV_UTF8_LF_FINAL_NEWLINE_V1"
+        ),
+        "observations": observations,
+        "transformations": _inventory_scanner_transformations(),
+        "completed_at": "2026-09-16T12:00:00+08:00",
+    }
+
+
+def _inventory_timezone() -> dict[str, object]:
+    return {
+        "id": "Singapore Standard Time",
+        "display_name": "(UTC+08:00) Kuala Lumpur, Singapore",
+        "standard_name": "Singapore Standard Time",
+        "daylight_name": "Singapore Standard Time",
+        "base_utc_offset": "+08:00",
+        "supports_dst": False,
+    }
+
+
+def _valid_inventory_runtime_document(
+    *, scan_sha256: str, scanner_sha256: str, template_sha256: str, config_sha256: str
+) -> dict[str, object]:
+    return {
+        "schema_version": "1.0",
+        "acquisition_id": INVENTORY_ACQUISITION_ID,
+        "cohort_id": "mnq-202609-5m-v1",
+        "instrument": {
+            "contract_label": "MNQ SEP26",
+            "full_name": "MNQ SEP26",
+            "master_name": "MNQ",
+            "expiry_month": 9,
+            "expiry_year": 2026,
+        },
+        "ninjatrader_version": "8.1.6.1",
+        "scanner_identity": {
+            "name": "ScanMnq5mSourceInventory",
+            "scanner_sha256": scanner_sha256,
+            "scanner_sha256_recording_authority": "operator/finalizer",
+        },
+        "bar_series": {
+            "type": "Minute",
+            "value": 5,
+            "native": True,
+            "calculate": "OnBarClose",
+        },
+        "application_timezone": _inventory_timezone(),
+        "pc_timezone": _inventory_timezone(),
+        "trading_hours": {
+            "name": "CME US Index Futures ETH",
+            "timezone_id": "Central Standard Time",
+        },
+        "active_connections": [
+            {
+                "name": "My NinjaTrader",
+                "provider": "Provider31",
+                "status": "Connected",
+                "price_status": "Connected",
+                "instrument_types": ["Future"],
+            }
+        ],
+        "connection_snapshot_phase": (
+            "immediately after operator arm and before inventory scan"
+        ),
+        "lifecycle": {
+            "initialized_at": "2026-09-16T11:00:00+08:00",
+            "realtime_observed_at": "2026-09-16T11:01:00+08:00",
+            "armed_at": "2026-09-16T11:02:00+08:00",
+            "completed_at": "2026-09-16T12:00:00+08:00",
+        },
+        "artifact_hashes": {
+            "inventory_scan": {
+                "file_name": "inventory_scan.json",
+                "sha256": scan_sha256,
+            },
+            "inventory_runtime_capture": {
+                "file_name": "inventory_runtime_capture.json",
+                "sha256": None,
+                "sha256_recording_authority": "operator/finalizer",
+            },
+            "trading_hours_template": {
+                "file_name": "trading_hours_template.xml",
+                "sha256": template_sha256,
+            },
+            "ninjatrader_config": {
+                "file_name": "NinjaTrader.Config.xml",
+                "sha256": config_sha256,
+            },
+        },
+    }
+
+
+def _inventory_evidence_records(
+    external_evidence: dict[str, Path],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "role": role,
+            "path": path.parent.name + "/" + path.name,
+            "sha256": _sha256(path),
+            "byte_length": len(path.read_bytes()),
+        }
+        for role, path in external_evidence.items()
+    ]
+
+
+def _inventory_provider_lifecycle() -> dict[str, str]:
+    return {
+        "adapter_connection_initiated_at": "2026-09-16T10:59:00+08:00",
+        "connection_ready_at": "2026-09-16T10:59:30+08:00",
+        "pre_request_realtime_at": "2026-09-16T11:00:00+08:00",
+        "request_observed_at": "2026-09-16T11:01:30+08:00",
+        "post_request_initialized_at": "2026-09-16T11:02:00+08:00",
+        "post_request_realtime_at": "2026-09-16T11:02:01+08:00",
+        "inventory_scan_armed_at": "2026-09-16T11:03:00+08:00",
+        "inventory_scan_completed_at": "2026-09-16T12:00:01+08:00",
+    }
+
+
+def _valid_inventory_acquisition_document(
+    *, toolset_checkpoint: str, evidence_records: list[dict[str, object]]
+) -> dict[str, object]:
+    return {
+        "schema_version": "1.0",
+        "acquisition_id": INVENTORY_ACQUISITION_ID,
+        "cohort_id": "mnq-202609-5m-v1",
+        "intended_provider": {
+            "provider_profile_id": "NINJATRADER_TRADOVATE_PROVIDER31_HDS_V1",
+            "runtime_provider_id": "Provider31",
+            "trace_adapter": "Tradovate.Adapter",
+            "historical_service": "NinjaTrader HDS",
+        },
+        "intended_connection_name": "My NinjaTrader",
+        "historical_trigger": {
+            "source_role": "ninjatrader_trace",
+            "instrument": "MNQ SEP26",
+            "provider_request_period": "1 Minute",
+            "observed_at": "2026-09-16T11:01:30+08:00",
+            "requested_start": "2026-06-21T17:00:00",
+            "requested_end": "2026-07-24T16:00:00",
+            "qualifying_request_count": 1,
+        },
+        "lifecycle": _inventory_provider_lifecycle(),
+        "evidence_files": evidence_records,
+        "expected_toolset_checkpoint": toolset_checkpoint,
+        "transformations": _inventory_transformations(),
+    }
+
+
+def _valid_inventory_provenance_document(
+    *,
+    toolset_checkpoint: str,
+    component_commit: str,
+    pinned_commit: str,
+    manifest_sha256: str,
+    manifest_aggregate_sha256: str,
+    scanner_sha256: str,
+    scan_sha256: str,
+    runtime_sha256: str,
+    acquisition_sha256: str,
+    template_sha256: str,
+    evidence_records: list[dict[str, object]],
+) -> dict[str, object]:
+    evidence_hashes = {
+        item["role"]: item["sha256"] for item in evidence_records
+    }
+    return {
+        "schema_version": "1.0",
+        "status": "PROVEN",
+        "acquisition_id": INVENTORY_ACQUISITION_ID,
+        "cohort_id": "mnq-202609-5m-v1",
+        "contract": {
+            "contract_label": "MNQ SEP26",
+            "full_name": "MNQ SEP26",
+            "master_name": "MNQ",
+            "expiry_month": 9,
+            "expiry_year": 2026,
+        },
+        "bar_series": {"type": "Minute", "value": 5, "native": True},
+        "provider_acquisition": {
+            "status": "PROVEN",
+            "provider_profile_id": "NINJATRADER_TRADOVATE_PROVIDER31_HDS_V1",
+            "runtime_provider_id": "Provider31",
+            "trace_adapter": "Tradovate.Adapter",
+            "intended_connection_name": "My NinjaTrader",
+            "active_connection": {
+                "name": "My NinjaTrader",
+                "provider": "Provider31",
+                "status": "Connected",
+                "price_status": "Connected",
+                "instrument_types": ["Future"],
+            },
+            "historical_service": {
+                "name": "NinjaTrader HDS",
+                "host": "hds-us-nt-007.ninjatrader.com",
+                "port": 31655,
+                "use_ssl": True,
+                "connected_at": "2026-09-16T10:59:00+08:00",
+            },
+            "configuration_binding": {
+                "mode": "EXPLICIT_PREFERENCE",
+                "preferred_future_connection": "My NinjaTrader",
+                "preferred_realtime_future_connection": "My NinjaTrader",
+                "saved_connection_matches": 1,
+            },
+            "acquisition_id": INVENTORY_ACQUISITION_ID,
+            "lifecycle": _inventory_provider_lifecycle(),
+            "historical_request": {
+                "source_role": "ninjatrader_trace",
+                "observed_at": "2026-09-16T11:01:30+08:00",
+                "instrument": "MNQ SEP26",
+                "requested_start": "2026-06-21T17:00:00",
+                "requested_end": "2026-07-24T16:00:00",
+                "provider_request_period": "1 Minute",
+                "covers_verified_inventory_bounds": True,
+            },
+            "competing_historical_provider_connections": 0,
+            "intended_provider_disconnects": 0,
+            "log_timezone_id": "Singapore Standard Time",
+            "log_utc_offset": "+08:00",
+        },
+        "calendar_binding": {
+            "status": "VERIFIED",
+            "trading_hours_name": "CME US Index Futures ETH",
+            "civil_date_start": "2026-06-22",
+            "civil_date_end": "2026-07-24",
+            "civil_date_count": 33,
+            "session_count": 24,
+            "earliest_session_begin": "2026-06-21T17:00:00-05:00",
+            "latest_session_end": "2026-07-24T16:00:00-05:00",
+            "trading_hours_template_sha256": template_sha256,
+            "calendar_binding_sha256": "9" * 64,
+        },
+        "artifact_hashes": {
+            "inventory_scan": scan_sha256,
+            "inventory_runtime_capture": runtime_sha256,
+            "inventory_acquisition_evidence": acquisition_sha256,
+            "scanner": scanner_sha256,
+            "trading_hours_template": template_sha256,
+            "ninjatrader_config": evidence_hashes["ninjatrader_config"],
+            "ninjatrader_log": evidence_hashes["ninjatrader_log"],
+            "ninjatrader_trace": evidence_hashes["ninjatrader_trace"],
+            "toolset_manifest": manifest_sha256,
+        },
+        "external_evidence": evidence_records,
+        "inventory_scan_binding": {
+            "path": "inventory_scan.json",
+            "schema_version": "1.0",
+            "sha256": scan_sha256,
+        },
+        "transformations": _inventory_transformations(),
+        "toolset_binding": {
+            "status": "FROZEN_FOR_SOURCE_ACQUISITION",
+            "stage": "SOURCE_ACQUISITION",
+            "schema_version": "2.0",
+            "producing_checkpoint": component_commit,
+            "trusted_checkpoint": toolset_checkpoint,
+            "pinned_production_hierarchy_commit": pinned_commit,
+            "aggregate_payload_sha256": manifest_aggregate_sha256,
+        },
+        "checkpoint_verification": {
+            "status": "VERIFIED",
+            "trusted_toolset_checkpoint": toolset_checkpoint,
+            "pinned_production_hierarchy_commit": pinned_commit,
+        },
+    }
+
+
 def _build_inventory_checkpoints(
     tmp_path: Path,
     *,
     fake_verifier: bool = False,
     manifest_mutator=None,
+    artifact_mutators=None,
     provenance_mutator=None,
     inventory_mutator=None,
     registry_mutator=None,
@@ -505,84 +903,73 @@ def _build_inventory_checkpoints(
     external_evidence["ninjatrader_config"].write_bytes(b"<Config />\n")
     external_evidence["ninjatrader_log"].write_bytes(b"provider log\n")
     external_evidence["ninjatrader_trace"].write_bytes(b"request trace\n")
-
-    raw_documents: dict[str, dict[str, object]] = {
-        "inventory_runtime_capture": {
-            "schema_version": "1.0",
-            "acquisition_id": "inventory-acquisition",
-        },
-        "inventory_scan": {
-            "schema_version": "1.0",
-            "acquisition_id": "inventory-acquisition",
-        },
-        "inventory_acquisition_evidence": {
-            "schema_version": "1.0",
-            "acquisition_id": "inventory-acquisition",
-            "expected_toolset_checkpoint": toolset_checkpoint,
-        },
-    }
-    for role, value in raw_documents.items():
-        _write_canonical_json(repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS[role], value)
     (repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS["trading_hours_template"]).write_bytes(
         b"<TradingHours name=\"CME US Index Futures ETH\" />\n"
     )
 
-    internal_hashes = {
-        role: _sha256(repo / relative)
-        for role, relative in INVENTORY_ARTIFACT_REPOSITORY_PATHS.items()
-        if role
-        in {
-            "inventory_runtime_capture",
-            "inventory_scan",
-            "trading_hours_template",
-            "inventory_acquisition_evidence",
-        }
-    }
-    evidence_records = [
-        {
-            "role": role,
-            "path": path.relative_to(bundle).as_posix(),
-            "sha256": _sha256(path),
-            "byte_length": len(path.read_bytes()),
-        }
-        for role, path in external_evidence.items()
+    artifact_mutators = artifact_mutators or {}
+    scan = _valid_inventory_scan_document()
+    if "inventory_scan" in artifact_mutators:
+        artifact_mutators["inventory_scan"](scan)
+    scan_path = repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS["inventory_scan"]
+    _write_canonical_json(scan_path, scan)
+
+    scanner_sha256 = _sha256_bytes(
+        _git_blob(
+            repo,
+            component_commit,
+            EXPECTED_INVENTORY_TOOLSET_COMPONENT_PATHS["inventory_scanner"],
+        )
+    )
+    template_path = repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS[
+        "trading_hours_template"
     ]
-    provenance: dict[str, object] = {
-        "schema_version": "1.0",
-        "status": "PROVEN",
-        "artifact_hashes": {
-            **internal_hashes,
-            "scanner": _sha256_bytes(
-                _git_blob(
-                    repo,
-                    component_commit,
-                    EXPECTED_INVENTORY_TOOLSET_COMPONENT_PATHS["inventory_scanner"],
-                )
-            ),
-            **{role: _sha256(path) for role, path in external_evidence.items()},
-            "toolset_manifest": _sha256(repo / TOOLSET_MANIFEST_PATH),
-        },
-        "external_evidence": evidence_records,
-        "inventory_scan_binding": {
-            "path": "inventory_scan.json",
-            "schema_version": "1.0",
-            "sha256": internal_hashes["inventory_scan"],
-        },
-        "toolset_binding": {
-            "status": "FROZEN_FOR_SOURCE_ACQUISITION",
-            "stage": "SOURCE_ACQUISITION",
-            "schema_version": "2.0",
-            "producing_checkpoint": component_commit,
-            "trusted_checkpoint": toolset_checkpoint,
-            "pinned_production_hierarchy_commit": pinned_commit,
-            "aggregate_payload_sha256": manifest["aggregate_payload_sha256"],
-        },
-        "checkpoint_verification": {
-            "status": "VERIFIED",
-            "trusted_toolset_checkpoint": toolset_checkpoint,
-            "pinned_production_hierarchy_commit": pinned_commit,
-        },
+    runtime = _valid_inventory_runtime_document(
+        scan_sha256=_sha256(scan_path),
+        scanner_sha256=scanner_sha256,
+        template_sha256=_sha256(template_path),
+        config_sha256=_sha256(external_evidence["ninjatrader_config"]),
+    )
+    if "inventory_runtime_capture" in artifact_mutators:
+        artifact_mutators["inventory_runtime_capture"](runtime)
+    runtime_path = repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS[
+        "inventory_runtime_capture"
+    ]
+    _write_canonical_json(runtime_path, runtime)
+
+    evidence_records = _inventory_evidence_records(external_evidence)
+    acquisition = _valid_inventory_acquisition_document(
+        toolset_checkpoint=toolset_checkpoint,
+        evidence_records=evidence_records,
+    )
+    if "inventory_acquisition_evidence" in artifact_mutators:
+        artifact_mutators["inventory_acquisition_evidence"](acquisition)
+    acquisition_path = repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS[
+        "inventory_acquisition_evidence"
+    ]
+    _write_canonical_json(acquisition_path, acquisition)
+
+    internal_hashes = {
+        "inventory_runtime_capture": _sha256(runtime_path),
+        "inventory_scan": _sha256(scan_path),
+        "trading_hours_template": _sha256(template_path),
+        "inventory_acquisition_evidence": _sha256(acquisition_path),
     }
+    provenance = _valid_inventory_provenance_document(
+        toolset_checkpoint=toolset_checkpoint,
+        component_commit=component_commit,
+        pinned_commit=pinned_commit,
+        manifest_sha256=_sha256(repo / TOOLSET_MANIFEST_PATH),
+        manifest_aggregate_sha256=manifest["aggregate_payload_sha256"],
+        scanner_sha256=scanner_sha256,
+        scan_sha256=internal_hashes["inventory_scan"],
+        runtime_sha256=internal_hashes["inventory_runtime_capture"],
+        acquisition_sha256=internal_hashes["inventory_acquisition_evidence"],
+        template_sha256=internal_hashes["trading_hours_template"],
+        evidence_records=evidence_records,
+    )
+    if "inventory_provenance" in artifact_mutators:
+        artifact_mutators["inventory_provenance"](provenance)
     if provenance_mutator is not None:
         provenance_mutator(provenance)
     provenance_path = repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS["inventory_provenance"]
@@ -1483,6 +1870,200 @@ def test_v2_uses_fixed_schemas_instead_of_self_declared_version(tmp_path: Path) 
 
     with pytest.raises(CheckpointVerificationError, match="source inventory schema"):
         _verify_inventory(fixture)
+
+
+@pytest.mark.parametrize(
+    ("role", "required_field", "schema_label"),
+    [
+        ("inventory_runtime_capture", "instrument", "inventory runtime capture"),
+        ("inventory_scan", "observations", "inventory scan"),
+        (
+            "inventory_acquisition_evidence",
+            "historical_trigger",
+            "inventory acquisition evidence",
+        ),
+        ("inventory_provenance", "provider_acquisition", "inventory provenance"),
+    ],
+)
+def test_v2_applies_each_frozen_evidence_schema_to_missing_required_fields(
+    tmp_path: Path, role: str, required_field: str, schema_label: str
+) -> None:
+    def remove_required(document: dict[str, object]) -> None:
+        document.pop(required_field)
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path, artifact_mutators={role: remove_required}
+    )
+
+    with pytest.raises(
+        CheckpointVerificationError,
+        match=rf"{schema_label} schema validation failed.*required property",
+    ):
+        _verify_inventory(fixture)
+
+
+@pytest.mark.parametrize(
+    ("role", "schema_label"),
+    [
+        ("inventory_runtime_capture", "inventory runtime capture"),
+        ("inventory_scan", "inventory scan"),
+        ("inventory_acquisition_evidence", "inventory acquisition evidence"),
+        ("inventory_provenance", "inventory provenance"),
+    ],
+)
+def test_v2_applies_each_frozen_evidence_schema_to_unknown_fields(
+    tmp_path: Path, role: str, schema_label: str
+) -> None:
+    def add_unknown(document: dict[str, object]) -> None:
+        document["review_probe_unknown_field"] = True
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path, artifact_mutators={role: add_unknown}
+    )
+
+    with pytest.raises(
+        CheckpointVerificationError,
+        match=rf"{schema_label} schema validation failed.*Additional properties",
+    ):
+        _verify_inventory(fixture)
+
+
+@pytest.mark.parametrize(
+    ("role", "fixed_field", "invalid_value", "schema_label"),
+    [
+        (
+            "inventory_runtime_capture",
+            "connection_snapshot_phase",
+            "after inventory scan",
+            "inventory runtime capture",
+        ),
+        ("inventory_scan", "civil_date_start", "2026-06-23", "inventory scan"),
+        (
+            "inventory_acquisition_evidence",
+            "intended_connection_name",
+            "Replay Connection",
+            "inventory acquisition evidence",
+        ),
+        ("inventory_provenance", "status", "UNVERIFIED", "inventory provenance"),
+    ],
+)
+def test_v2_applies_each_frozen_evidence_schema_to_invalid_fixed_values(
+    tmp_path: Path,
+    role: str,
+    fixed_field: str,
+    invalid_value: str,
+    schema_label: str,
+) -> None:
+    def replace_fixed_value(document: dict[str, object]) -> None:
+        document[fixed_field] = invalid_value
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path, artifact_mutators={role: replace_fixed_value}
+    )
+
+    with pytest.raises(
+        CheckpointVerificationError,
+        match=rf"{schema_label} schema validation failed",
+    ):
+        _verify_inventory(fixture)
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        "inventory_runtime_capture",
+        "inventory_scan",
+        "inventory_acquisition_evidence",
+        "inventory_provenance",
+    ],
+)
+def test_v2_reconciles_acquisition_identity_across_every_evidence_document(
+    tmp_path: Path, role: str
+) -> None:
+    def change_acquisition(document: dict[str, object]) -> None:
+        document["acquisition_id"] = "different-inventory-acquisition"
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path, artifact_mutators={role: change_acquisition}
+    )
+
+    with pytest.raises(
+        CheckpointVerificationError,
+        match="inventory evidence acquisition identity mismatch",
+    ):
+        _verify_inventory(fixture)
+
+
+@pytest.mark.parametrize(
+    ("role", "schema_label"),
+    [
+        ("inventory_runtime_capture", "inventory runtime capture"),
+        ("inventory_scan", "inventory scan"),
+        ("inventory_acquisition_evidence", "inventory acquisition evidence"),
+        ("inventory_provenance", "inventory provenance"),
+    ],
+)
+def test_v2_rejects_mismatched_fixed_cohort_identity_in_every_evidence_document(
+    tmp_path: Path, role: str, schema_label: str
+) -> None:
+    def change_cohort(document: dict[str, object]) -> None:
+        document["cohort_id"] = "mnq-wrong-cohort"
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path, artifact_mutators={role: change_cohort}
+    )
+
+    with pytest.raises(
+        CheckpointVerificationError,
+        match=rf"{schema_label} schema validation failed",
+    ):
+        _verify_inventory(fixture)
+
+
+def test_v2_reconciles_provenance_provider_acquisition_identity(
+    tmp_path: Path,
+) -> None:
+    def change_nested_acquisition(document: dict[str, object]) -> None:
+        provider = document["provider_acquisition"]
+        assert isinstance(provider, dict)
+        provider["acquisition_id"] = "different-inventory-acquisition"
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        artifact_mutators={"inventory_provenance": change_nested_acquisition},
+    )
+
+    with pytest.raises(
+        CheckpointVerificationError,
+        match="inventory evidence acquisition identity mismatch",
+    ):
+        _verify_inventory(fixture)
+
+
+def test_v2_reads_and_checks_the_executing_verifier_exactly_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _build_inventory_checkpoints(tmp_path)
+    executing_path = Path(checkpoint_verify.__file__).resolve()
+    original_read_bytes = Path.read_bytes
+    reads = 0
+
+    def changing_read_bytes(path: Path) -> bytes:
+        nonlocal reads
+        if path.resolve() == executing_path:
+            reads += 1
+            if reads > 1:
+                return b"mutated verifier after identity check\n"
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", changing_read_bytes)
+
+    result = _verify_inventory(fixture)
+
+    assert reads == 1
+    assert result["verifier"]["executing_sha256"] == result["verifier"][
+        "frozen_sha256"
+    ]
 
 
 def test_v2_snapshots_every_supplied_bundle_file_once(
