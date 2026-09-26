@@ -83,14 +83,57 @@ def _contained_paths(root: Path) -> dict[str, Path]:
     return paths
 
 
-def _load_object(path: Path, label: str) -> dict[str, Any]:
+def _load_object_bytes(contents: bytes, label: str) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        value = json.loads(contents.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
         raise SelectedSourceValidationError(f"invalid inventory-v2 {label}") from error
     if not isinstance(value, dict):
         _fail(f"invalid inventory-v2 {label}")
     return value
+
+
+def _verified_artifact_bytes(
+    verification: Mapping[str, Any],
+    paths: Mapping[str, Path],
+) -> dict[str, bytes]:
+    artifacts = verification.get("artifacts")
+    if not isinstance(artifacts, list):
+        _fail("inventory-v2 verification did not return verified artifacts")
+    result: dict[str, bytes] = {}
+    for role, stage in (
+        ("selection_registry", "selection"),
+        ("source_inventory", "inventory"),
+    ):
+        matches = [
+            artifact
+            for artifact in artifacts
+            if isinstance(artifact, dict)
+            and artifact.get("role") == role
+            and artifact.get("stage") == stage
+        ]
+        if len(matches) != 1:
+            _fail(f"verified artifact is missing or duplicated: {role}")
+        expected = matches[0].get("sha256")
+        bundle_expected = matches[0].get("bundle_sha256")
+        if (
+            not isinstance(expected, str)
+            or _SHA256_RE.fullmatch(expected) is None
+            or not isinstance(bundle_expected, str)
+            or _SHA256_RE.fullmatch(bundle_expected) is None
+        ):
+            _fail(f"verified artifact hash is invalid: {role}")
+        try:
+            contents = paths[role].read_bytes()
+        except OSError as error:
+            raise SelectedSourceValidationError(
+                f"cannot read verified artifact: {role}"
+            ) from error
+        observed = hashlib.sha256(contents).hexdigest()
+        if observed != expected or observed != bundle_expected:
+            _fail(f"verified artifact bytes do not match verification: {role}")
+        result[role] = contents
+    return result
 
 
 def verify_selected_source_hash(
@@ -141,11 +184,16 @@ def verify_selected_source_hash(
     ):
         _fail("inventory-v2 selection verification binding mismatch")
 
+    verified_bytes = _verified_artifact_bytes(verification, paths)
     case_match = _CASE_ID_RE.fullmatch(case_id)
     if case_match is None:
         _fail("selected case/date is invalid")
-    registry = _load_object(paths["selection_registry"], "selection registry")
-    inventory = _load_object(paths["source_inventory"], "source inventory")
+    registry = _load_object_bytes(
+        verified_bytes["selection_registry"], "selection registry"
+    )
+    inventory = _load_object_bytes(
+        verified_bytes["source_inventory"], "source inventory"
+    )
     if (
         registry.get("schema_version") != "2.0"
         or inventory.get("schema_version") != "2.0"

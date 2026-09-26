@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import importlib.util
 import json
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -22,6 +25,10 @@ SOURCE_SHA256 = "eec12e2501d546e50e5e3e04206f1a13c9471a77d9b846893dfbffdcaaf7969
 
 def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _build_bundle(tmp_path: Path) -> tuple[Path, Path]:
@@ -95,10 +102,24 @@ def _verified_selection(**kwargs) -> dict[str, object]:
         "trusted_toolset_checkpoint": TOOLSET_CHECKPOINT,
         "trusted_inventory_checkpoint": INVENTORY_CHECKPOINT,
         "trusted_selection_checkpoint": SELECTION_CHECKPOINT,
+        "artifacts": [
+            {
+                "role": "selection_registry",
+                "stage": "selection",
+                "sha256": _sha256(bundle / "selection_registry.json"),
+                "bundle_sha256": _sha256(bundle / "selection_registry.json"),
+            },
+            {
+                "role": "source_inventory",
+                "stage": "inventory",
+                "sha256": _sha256(bundle / "source_inventory.json"),
+                "bundle_sha256": _sha256(bundle / "source_inventory.json"),
+            },
+        ],
     }
 
 
-def _verify(source: Path, bundle: Path, **overrides):
+def _verify(source: Path, bundle: Path, *, verifier=_verified_selection, **overrides):
     arguments = {
         "source_path": source,
         "case_id": CASE_ID,
@@ -111,7 +132,7 @@ def _verify(source: Path, bundle: Path, **overrides):
     arguments.update(overrides)
     with patch(
         "tools.validation.mnq_5m_selected_source_check.verify_selection_checkpoint",
-        side_effect=_verified_selection,
+        side_effect=verifier,
     ):
         return verify_selected_source_hash(**arguments)
 
@@ -182,3 +203,108 @@ def test_selected_source_wrapper_never_substitutes_another_matching_hash(
 
     with pytest.raises(SelectedSourceValidationError, match="selected source SHA-256 mismatch"):
         _verify(source, bundle)
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["selection_registry", "source_inventory"],
+)
+def test_selected_source_wrapper_rejects_bundle_mutation_after_verification(
+    tmp_path: Path, role: str
+) -> None:
+    source, bundle = _build_bundle(tmp_path)
+    if role == "selection_registry":
+        registry_path = bundle / "selection_registry.json"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        registry["selections"][0]["case_id"] = "unverified-case"
+        _write_json(registry_path, registry)
+    else:
+        inventory_path = bundle / "source_inventory.json"
+        inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+        inventory["entries"][0]["first_250_source_sha256"] = "f" * 64
+        _write_json(inventory_path, inventory)
+
+    def verifier(**kwargs):
+        result = _verified_selection(**kwargs)
+        if role == "selection_registry":
+            registry = json.loads(
+                (bundle / "selection_registry.json").read_text(encoding="utf-8")
+            )
+            registry["selections"][0]["case_id"] = CASE_ID
+            _write_json(bundle / "selection_registry.json", registry)
+        else:
+            inventory = json.loads(
+                (bundle / "source_inventory.json").read_text(encoding="utf-8")
+            )
+            inventory["entries"][0]["first_250_source_sha256"] = SOURCE_SHA256
+            _write_json(bundle / "source_inventory.json", inventory)
+        return result
+
+    with pytest.raises(SelectedSourceValidationError, match="verified artifact"):
+        _verify(source, bundle, verifier=verifier)
+
+
+@pytest.mark.parametrize("defect", ["missing", "duplicate", "sha256", "bundle_sha256"])
+def test_selected_source_wrapper_requires_unique_matching_verified_artifacts(
+    tmp_path: Path, defect: str
+) -> None:
+    source, bundle = _build_bundle(tmp_path)
+
+    def verifier(**kwargs):
+        result = _verified_selection(**kwargs)
+        artifacts = result["artifacts"]
+        if defect == "missing":
+            artifacts.pop()
+        elif defect == "duplicate":
+            artifacts.append(dict(artifacts[0]))
+        else:
+            artifacts[0][defect] = "f" * 64
+        return result
+
+    with pytest.raises(SelectedSourceValidationError, match="verified artifact"):
+        _verify(source, bundle, verifier=verifier)
+
+
+def test_selected_source_wrapper_accepts_real_task9_immutable_git_verification(
+    tmp_path: Path,
+) -> None:
+    helper_path = Path(__file__).with_name("test_mnq_5m_checkpoint_verify.py")
+    spec = importlib.util.spec_from_file_location("_task9_fixture_helpers", helper_path)
+    assert spec is not None and spec.loader is not None
+    helpers = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = helpers
+    spec.loader.exec_module(helpers)
+
+    source = tmp_path / "bars.txt"
+    source.write_bytes(b"real verified selected bytes\n")
+    source_hash = _sha256(source)
+    fixture = helpers._build_inventory_checkpoints(
+        tmp_path / "task9",
+        inventory_mutator=lambda inventory: inventory["entries"][0].__setitem__(
+            "first_250_source_sha256", source_hash
+        ),
+    )
+
+    def real_verifier(**kwargs):
+        return helpers.checkpoint_verify._verify_selection_checkpoint_with_test_pinned_commit(
+            **kwargs,
+            expected_pinned_production_commit=fixture.pinned_commit,
+        )
+
+    with patch(
+        "tools.validation.mnq_5m_selected_source_check.verify_selection_checkpoint",
+        side_effect=real_verifier,
+    ):
+        result = verify_selected_source_hash(
+            source_path=source,
+            case_id="mnq-202609-5m-td2026-07-01-w01",
+            repository_path=fixture.repo,
+            inventory_checkpoint_bundle_root=fixture.bundle,
+            trusted_toolset_checkpoint=fixture.toolset_checkpoint,
+            trusted_inventory_checkpoint=fixture.inventory_checkpoint,
+            trusted_selection_checkpoint=fixture.selection_checkpoint,
+            expected_repository_identity=helpers.REPOSITORY_IDENTITY,
+        )
+
+    assert result.expected_sha256 == source_hash
+    assert result.observed_sha256 == source_hash
