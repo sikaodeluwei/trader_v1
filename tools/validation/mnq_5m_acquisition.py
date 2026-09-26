@@ -11,8 +11,10 @@ import argparse
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping
 from xml.etree import ElementTree
@@ -23,6 +25,7 @@ try:
         REQUIRED_TOOLSET_COMPONENT_PATHS,
         CheckpointVerificationError,
         verify_checkpoints,
+        verify_selection_checkpoint,
     )
 except ModuleNotFoundError as error:
     if error.name != "tools":
@@ -32,6 +35,7 @@ except ModuleNotFoundError as error:
         REQUIRED_TOOLSET_COMPONENT_PATHS,
         CheckpointVerificationError,
         verify_checkpoints,
+        verify_selection_checkpoint,
     )
 
 
@@ -39,6 +43,27 @@ RUNTIME_CAPTURE_SCHEMA_VERSION = "1.1"
 ACQUISITION_EVIDENCE_SCHEMA_VERSION = "1.2"
 PROVENANCE_SCHEMA_VERSION = "1.2"
 BOUND_ARTIFACT_SCHEMA_VERSION = "1.0"
+INVENTORY_V2_PROVENANCE_SCHEMA_VERSION = "1.3"
+INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS: Mapping[str, str] = {
+    "toolset_manifest": "toolset_manifest.json",
+    "inventory_runtime_capture": "inventory_runtime_capture.json",
+    "inventory_scan": "inventory_scan.json",
+    "trading_hours_template": "trading_hours_template.xml",
+    "inventory_acquisition_evidence": "inventory_acquisition_evidence.json",
+    "inventory_provenance": "inventory_provenance.json",
+    "source_inventory": "source_inventory.json",
+    "exclusions": "exclusions.json",
+    "selection_registry": "selection_registry.json",
+}
+INVENTORY_V2_ARTIFACT_ROLES = (
+    "inventory_runtime_capture",
+    "inventory_scan",
+    "trading_hours_template",
+    "inventory_acquisition_evidence",
+    "inventory_provenance",
+    "source_inventory",
+    "exclusions",
+)
 PINNED_PRODUCTION_HIERARCHY_COMMIT = (
     "04a73e1401d44688660b211d9db6918113482856"
 )
@@ -161,6 +186,22 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 
 class AcquisitionValidationError(ValueError):
     """Raised when an acquisition bundle cannot prove its provenance."""
+
+
+class SelectedBindingMode(str, Enum):
+    LEGACY_V1_BINDING = "legacy-v1"
+    INVENTORY_V2_BINDING = "inventory-v2"
+
+
+@dataclass(frozen=True)
+class _SelectedBinding:
+    selection_binding: dict[str, Any]
+    toolset_binding: dict[str, Any]
+    checkpoint_verification: dict[str, Any]
+    verification_arguments: dict[str, Any]
+    inventory_binding: dict[str, Any] | None = None
+    exclusion_binding: dict[str, Any] | None = None
+    selected_source_expected_sha256: str | None = None
 
 
 def _fail(message: str) -> None:
@@ -1060,6 +1101,387 @@ def _validate_toolset_manifest(
     }
 
 
+def _validate_legacy_selected_binding(
+    *,
+    repository_path: Path,
+    evidence_path: Path,
+    evidence: Mapping[str, Any],
+    evidence_hashes: Mapping[str, str],
+    evidence_contents: Mapping[str, str],
+    evidence_paths: Mapping[str, Path],
+    exporter_hash: str,
+    cohort_id: str,
+    case_id: str,
+    trading_date: date,
+    trusted_toolset_checkpoint: str,
+    trusted_selection_checkpoint: str,
+    trusted_acquisition_checkpoint: str | None,
+    expected_repository_identity: str,
+    remote_name: str | None,
+    remote_branch: str | None,
+) -> _SelectedBinding:
+    arguments = {
+        "repository_path": repository_path,
+        "bundle_root": evidence_path.parent,
+        "toolset_manifest_path": evidence_paths["toolset_manifest"],
+        "selection_registry_path": evidence_paths["selection_registry"],
+        "trusted_toolset_checkpoint": trusted_toolset_checkpoint,
+        "trusted_selection_checkpoint": trusted_selection_checkpoint,
+        "trusted_acquisition_checkpoint": trusted_acquisition_checkpoint,
+        "expected_repository_identity": expected_repository_identity,
+        "remote_name": remote_name,
+        "remote_branch": remote_branch,
+    }
+    try:
+        verification = verify_checkpoints(**arguments)
+    except CheckpointVerificationError as error:
+        raise AcquisitionValidationError(
+            f"independent Git checkpoint verification failed: {error}"
+        ) from error
+    verified_hashes = _verified_bundle_hashes(verification)
+    for role in ("toolset_manifest", "selection_registry"):
+        if evidence_hashes[role] != verified_hashes[role]:
+            _fail(f"verified checkpoint artifact differs from bundle snapshot: {role}")
+    selection_binding = _validate_selection_registry(
+        evidence_path=evidence_path,
+        evidence=evidence,
+        registry_text=evidence_contents["selection_registry"],
+        cohort_id=cohort_id,
+        case_id=case_id,
+        trading_date=trading_date,
+        trusted_checkpoint=trusted_selection_checkpoint,
+        trusted_toolset_checkpoint=trusted_toolset_checkpoint,
+        verified_bundle_hashes=verified_hashes,
+    )
+    toolset_binding = _validate_toolset_manifest(
+        evidence_path=evidence_path,
+        evidence=evidence,
+        manifest_text=evidence_contents["toolset_manifest"],
+        exporter_hash=exporter_hash,
+        trusted_checkpoint=trusted_toolset_checkpoint,
+    )
+    return _SelectedBinding(
+        selection_binding=selection_binding,
+        toolset_binding=toolset_binding,
+        checkpoint_verification=verification,
+        verification_arguments=arguments,
+    )
+
+
+def _inventory_v2_paths(bundle_root: Path) -> dict[str, Path]:
+    return {
+        role: _contained_artifact_path(
+            bundle_root, relative, f"inventory-v2 {role}"
+        )
+        for role, relative in INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS.items()
+    }
+
+
+def _verified_inventory_v2_hashes(
+    verification: Mapping[str, Any], paths: Mapping[str, Path]
+) -> dict[str, str]:
+    stages = {
+        "toolset_manifest": "toolset",
+        "selection_registry": "selection",
+        **{role: "inventory" for role in INVENTORY_V2_ARTIFACT_ROLES},
+    }
+    artifacts = verification.get("artifacts")
+    if not isinstance(artifacts, list):
+        _fail("inventory-v2 verification did not return artifact identities")
+    result: dict[str, str] = {}
+    for role, stage in stages.items():
+        matches = [
+            item
+            for item in artifacts
+            if isinstance(item, dict)
+            and item.get("role") == role
+            and item.get("stage") == stage
+        ]
+        if len(matches) != 1:
+            _fail(f"inventory-v2 verified artifact is missing or duplicated: {role}")
+        digest = matches[0].get("sha256")
+        if (
+            not isinstance(digest, str)
+            or SHA256_RE.fullmatch(digest) is None
+            or matches[0].get("bundle_sha256") != digest
+            or _sha256(paths[role]) != digest
+        ):
+            _fail(f"inventory-v2 verified artifact hash mismatch: {role}")
+        result[role] = digest
+    return result
+
+
+def _v2_artifact_binding(
+    value: object,
+    *,
+    role: str,
+    expected_hash: str,
+    trusted_toolset_checkpoint: str,
+) -> dict[str, Any]:
+    reference = _mapping(value, f"inventory-v2 {role} binding")
+    if (
+        reference.get("path") != INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS[role]
+        or reference.get("bundle_path")
+        != INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS[role]
+        or reference.get("schema_version") != "2.0"
+        or reference.get("sha256") != expected_hash
+        or reference.get("producing_checkpoint") != trusted_toolset_checkpoint
+    ):
+        _fail(f"inventory-v2 {role} binding mismatch")
+    return {
+        "path": reference["path"],
+        "schema_version": "2.0",
+        "sha256": expected_hash,
+        "producing_checkpoint": trusted_toolset_checkpoint,
+    }
+
+
+def _validate_inventory_v2_selected_binding(
+    *,
+    repository_path: Path,
+    bundle_root: Path,
+    evidence: Mapping[str, Any],
+    evidence_hashes: Mapping[str, str],
+    exporter_hash: str,
+    cohort_id: str,
+    case_id: str,
+    trading_date: date,
+    trusted_toolset_checkpoint: str,
+    trusted_inventory_checkpoint: str,
+    trusted_selection_checkpoint: str,
+    expected_repository_identity: str,
+    remote_name: str | None,
+    remote_branch: str | None,
+) -> _SelectedBinding:
+    paths = _inventory_v2_paths(bundle_root)
+    arguments = {
+        "repository_path": repository_path,
+        "bundle_root": bundle_root,
+        "toolset_manifest_path": paths["toolset_manifest"],
+        "inventory_artifact_paths": {
+            role: paths[role] for role in INVENTORY_V2_ARTIFACT_ROLES
+        },
+        "selection_registry_path": paths["selection_registry"],
+        "trusted_toolset_checkpoint": trusted_toolset_checkpoint,
+        "trusted_inventory_checkpoint": trusted_inventory_checkpoint,
+        "trusted_selection_checkpoint": trusted_selection_checkpoint,
+        "expected_repository_identity": expected_repository_identity,
+        "remote_name": remote_name,
+        "remote_branch": remote_branch,
+    }
+    try:
+        verification = verify_selection_checkpoint(**arguments)
+    except CheckpointVerificationError as error:
+        raise AcquisitionValidationError(
+            f"independent inventory-v2 selection verification failed: {error}"
+        ) from error
+    if (
+        verification.get("schema_version") != "2.0"
+        or verification.get("stage") != "SELECTION"
+        or verification.get("status") != "VERIFIED"
+        or verification.get("trusted_toolset_checkpoint")
+        != trusted_toolset_checkpoint
+        or verification.get("trusted_inventory_checkpoint")
+        != trusted_inventory_checkpoint
+        or verification.get("trusted_selection_checkpoint")
+        != trusted_selection_checkpoint
+    ):
+        _fail("inventory-v2 checkpoint verification binding mismatch")
+    verified_hashes = _verified_inventory_v2_hashes(verification, paths)
+    for role in ("toolset_manifest", "selection_registry"):
+        if evidence_hashes[role] != verified_hashes[role]:
+            _fail(f"inventory-v2 acquisition evidence hash mismatch: {role}")
+    if (
+        evidence.get("expected_toolset_checkpoint") != trusted_toolset_checkpoint
+        or evidence.get("expected_selection_checkpoint")
+        != trusted_selection_checkpoint
+    ):
+        _fail("inventory-v2 acquisition evidence checkpoint mismatch")
+
+    registry = _load_object(paths["selection_registry"], "inventory-v2 selection registry")
+    inventory = _load_object(paths["source_inventory"], "inventory-v2 source inventory")
+    exclusions = _load_object(paths["exclusions"], "inventory-v2 exclusions")
+    manifest = _load_object(paths["toolset_manifest"], "inventory-v2 toolset manifest")
+    if (
+        registry.get("schema_version") != "2.0"
+        or inventory.get("schema_version") != "2.0"
+        or exclusions.get("schema_version") != "2.0"
+        or manifest.get("schema_version") != "2.0"
+    ):
+        _fail("inventory-v2 binding contains a legacy schema family")
+    if (
+        registry.get("status") != APPROVED_FROZEN_STATUS
+        or registry.get("cohort_id") != cohort_id
+        or registry.get("selection_algorithm") != APPROVED_SELECTION_ALGORITHM
+        or registry.get("selection_count") != 10
+        or registry.get("trusted_inventory_checkpoint")
+        != trusted_inventory_checkpoint
+        or registry.get("producing_checkpoint") != trusted_inventory_checkpoint
+    ):
+        _fail("invalid inventory-v2 selection registry")
+    influence = registry.get("selection_influence")
+    if influence != {
+        "hierarchy_output_used": False,
+        "oracle_output_used": False,
+        "project_output_used": False,
+    }:
+        _fail("inventory-v2 selection influence mismatch")
+    inventory_binding = _v2_artifact_binding(
+        registry.get("source_inventory"),
+        role="source_inventory",
+        expected_hash=verified_hashes["source_inventory"],
+        trusted_toolset_checkpoint=trusted_toolset_checkpoint,
+    )
+    exclusion_binding = _v2_artifact_binding(
+        registry.get("exclusion_ledger"),
+        role="exclusions",
+        expected_hash=verified_hashes["exclusions"],
+        trusted_toolset_checkpoint=trusted_toolset_checkpoint,
+    )
+    entries = inventory.get("entries")
+    if not isinstance(entries, list):
+        _fail("invalid inventory-v2 source inventory")
+    eligible_dates: list[str] = []
+    seen_dates: set[str] = set()
+    previous_date: str | None = None
+    for entry_value in entries:
+        entry = _mapping(entry_value, "inventory-v2 source inventory entry")
+        entry_date = _text(entry.get("trading_date"), "inventory-v2 trading date")
+        if entry_date in seen_dates or (previous_date is not None and entry_date <= previous_date):
+            _fail("inventory-v2 source inventory dates are not chronological and unique")
+        seen_dates.add(entry_date)
+        previous_date = entry_date
+        if entry.get("eligible") is True:
+            eligible_dates.append(entry_date)
+    if len(eligible_dates) < 10:
+        _fail("inventory-v2 source inventory has fewer than ten eligible dates")
+    selections = registry.get("selections")
+    if not isinstance(selections, list) or len(selections) != 10:
+        _fail("invalid inventory-v2 selections")
+    normalized: list[dict[str, Any]] = []
+    selected_cases: set[str] = set()
+    selected_dates: set[str] = set()
+    count = len(eligible_dates)
+    for zero_index, selection_value in enumerate(selections):
+        selection = _mapping(selection_value, "inventory-v2 selection")
+        stratum = zero_index + 1
+        start = zero_index * count // 10
+        end = (zero_index + 1) * count // 10 - 1
+        selected_date = eligible_dates[start]
+        expected = {
+            "case_id": f"mnq-202609-5m-td{selected_date}-w{stratum:02d}",
+            "trading_date": selected_date,
+            "stratum_number": stratum,
+            "stratum_start_index": start,
+            "stratum_end_index": end,
+            "selected_eligible_index": start,
+            "window_policy": APPROVED_WINDOW_POLICY,
+        }
+        if selection != expected:
+            _fail("inventory-v2 selection violates deterministic ten-stratum rule")
+        if expected["case_id"] in selected_cases or selected_date in selected_dates:
+            _fail("inventory-v2 selections are not unique")
+        selected_cases.add(expected["case_id"])
+        selected_dates.add(selected_date)
+        normalized.append(dict(selection))
+    matches = [item for item in normalized if item["case_id"] == case_id]
+    if len(matches) != 1 or matches[0]["trading_date"] != trading_date.isoformat():
+        _fail("inventory-v2 selection does not contain the requested case/date exactly once")
+    inventory_matches = [
+        entry for entry in entries
+        if isinstance(entry, dict) and entry.get("trading_date") == trading_date.isoformat()
+    ]
+    if len(inventory_matches) != 1 or inventory_matches[0].get("eligible") is not True:
+        _fail("inventory-v2 selected inventory entry is not uniquely eligible")
+    expected_source_hash = inventory_matches[0].get("first_250_source_sha256")
+    if (
+        not isinstance(expected_source_hash, str)
+        or SHA256_RE.fullmatch(expected_source_hash) is None
+    ):
+        _fail("inventory-v2 selected inventory entry has no frozen source hash")
+    if (
+        manifest.get("stage") != APPROVED_TOOLSET_STAGE
+        or manifest.get("status") != APPROVED_FROZEN_STATUS
+        or manifest.get("cohort_id") != cohort_id
+        or manifest.get("pinned_production_hierarchy_commit")
+        != PINNED_PRODUCTION_HIERARCHY_COMMIT
+    ):
+        _fail("invalid inventory-v2 toolset manifest")
+    components = manifest.get("components")
+    if not isinstance(components, list):
+        _fail("invalid inventory-v2 toolset manifest components")
+    exporter_components = [
+        item for item in components
+        if isinstance(item, dict) and item.get("role") == "acquisition_exporter"
+    ]
+    if len(exporter_components) != 1 or exporter_components[0].get("sha256") != exporter_hash:
+        _fail("inventory-v2 acquisition exporter is not the supplied exporter")
+    toolset_binding = {
+        "status": APPROVED_FROZEN_STATUS,
+        "stage": APPROVED_TOOLSET_STAGE,
+        "schema_version": "2.0",
+        "producing_checkpoint": _validate_commit(
+            manifest.get("producing_checkpoint"),
+            "inventory-v2 toolset producing checkpoint",
+        ),
+        "trusted_checkpoint": trusted_toolset_checkpoint,
+        "pinned_production_hierarchy_commit": PINNED_PRODUCTION_HIERARCHY_COMMIT,
+        "aggregate_payload_sha256": _text(
+            manifest.get("aggregate_payload_sha256"),
+            "inventory-v2 toolset aggregate hash",
+        ),
+    }
+    selection_binding = {
+        "status": APPROVED_FROZEN_STATUS,
+        "producing_checkpoint": trusted_inventory_checkpoint,
+        "trusted_checkpoint": trusted_selection_checkpoint,
+        "aggregate_payload_sha256": _text(
+            registry.get("aggregate_payload_sha256"),
+            "inventory-v2 selection aggregate hash",
+        ),
+        "selection": matches[0],
+        "inventory": inventory_binding,
+        "exclusion_ledger": exclusion_binding,
+    }
+    return _SelectedBinding(
+        selection_binding=selection_binding,
+        toolset_binding=toolset_binding,
+        checkpoint_verification=verification,
+        verification_arguments=arguments,
+        inventory_binding=inventory_binding,
+        exclusion_binding=exclusion_binding,
+        selected_source_expected_sha256=expected_source_hash,
+    )
+
+
+def _reverify_selected_binding(
+    binding: _SelectedBinding, mode: SelectedBindingMode
+) -> dict[str, Any]:
+    try:
+        if mode is SelectedBindingMode.LEGACY_V1_BINDING:
+            final = verify_checkpoints(**binding.verification_arguments)
+            fields = (
+                "trusted_toolset_checkpoint",
+                "trusted_selection_checkpoint",
+                "trusted_acquisition_checkpoint",
+                "pinned_production_hierarchy_commit",
+                "artifacts",
+                "ancestry",
+                "verifier",
+            )
+            if any(binding.checkpoint_verification.get(field) != final.get(field) for field in fields):
+                _fail("checkpoint artifacts changed during provenance finalization")
+        else:
+            final = verify_selection_checkpoint(**binding.verification_arguments)
+            if binding.checkpoint_verification != final:
+                _fail("inventory-v2 checkpoint artifacts changed during provenance finalization")
+    except CheckpointVerificationError as error:
+        raise AcquisitionValidationError(
+            f"independent Git checkpoint re-verification failed: {error}"
+        ) from error
+    return final
+
+
 def _event_time(line: str) -> datetime | None:
     match = LOG_TIMESTAMP_RE.match(line)
     if match is None:
@@ -1573,11 +1995,34 @@ def finalize_provenance(
     remote_branch: str | None = None,
     checkpoint_attestation: Mapping[str, Any] | None = None,
     output_path: str | Path | None = None,
+    binding_mode: SelectedBindingMode = SelectedBindingMode.LEGACY_V1_BINDING,
+    trusted_inventory_checkpoint: str | None = None,
+    inventory_checkpoint_bundle_root: str | Path | None = None,
 ) -> dict[str, object]:
-    """Validate an acquisition bundle and return its frozen provenance."""
+    """Finalize through an explicit legacy-v1 or inventory-v2 binding."""
 
     if checkpoint_attestation is not None:
         _fail("user-supplied checkpoint attestation is not accepted")
+    try:
+        selected_mode = SelectedBindingMode(binding_mode)
+    except ValueError as error:
+        raise AcquisitionValidationError("unsupported selected binding mode") from error
+    if selected_mode is SelectedBindingMode.LEGACY_V1_BINDING:
+        if (
+            trusted_inventory_checkpoint is not None
+            or inventory_checkpoint_bundle_root is not None
+        ):
+            _fail("legacy-v1 binding rejects inventory-v2-only arguments")
+    elif (
+        trusted_inventory_checkpoint is None
+        or inventory_checkpoint_bundle_root is None
+    ):
+        _fail("inventory-v2 binding requires its checkpoint and bundle root")
+    if (
+        selected_mode is SelectedBindingMode.INVENTORY_V2_BINDING
+        and trusted_acquisition_checkpoint is not None
+    ):
+        _fail("inventory-v2 binding rejects legacy acquisition checkpoint")
 
     source = Path(source_path)
     runtime_path = Path(runtime_capture_path)
@@ -1589,6 +2034,10 @@ def finalize_provenance(
     trusted_toolset_checkpoint = _validate_commit(
         trusted_toolset_checkpoint, "trusted toolset checkpoint"
     )
+    if trusted_inventory_checkpoint is not None:
+        trusted_inventory_checkpoint = _validate_commit(
+            trusted_inventory_checkpoint, "trusted inventory checkpoint"
+        )
     runtime = _load_object(runtime_path, "runtime capture")
     evidence = _load_object(evidence_path, "acquisition evidence")
     if (
@@ -1613,28 +2062,7 @@ def finalize_provenance(
 
     if repository_path is None:
         _fail("independent Git checkpoint verification is required")
-    try:
-        checkpoint_verification = verify_checkpoints(
-            repository_path=repository_path,
-            bundle_root=evidence_path.parent,
-            toolset_manifest_path=evidence_paths["toolset_manifest"],
-            selection_registry_path=evidence_paths["selection_registry"],
-            trusted_toolset_checkpoint=trusted_toolset_checkpoint,
-            trusted_selection_checkpoint=trusted_selection_checkpoint,
-            trusted_acquisition_checkpoint=trusted_acquisition_checkpoint,
-            expected_repository_identity=expected_repository_identity,
-            remote_name=remote_name,
-            remote_branch=remote_branch,
-        )
-    except CheckpointVerificationError as error:
-        raise AcquisitionValidationError(
-            f"independent Git checkpoint verification failed: {error}"
-        ) from error
-
-    verified_bundle_hashes = _verified_bundle_hashes(checkpoint_verification)
-    for role in ("toolset_manifest", "selection_registry"):
-        if evidence_hashes[role] != verified_bundle_hashes[role]:
-            _fail(f"verified checkpoint artifact differs from bundle snapshot: {role}")
+    repository = Path(repository_path)
 
     transformations = _mapping(evidence.get("transformations"), "transformation declarations")
     if set(transformations) != PROHIBITED_TRANSFORMATIONS:
@@ -1664,24 +2092,44 @@ def finalize_provenance(
     ):
         _fail("runtime/evidence identity mismatch")
 
-    selection_binding = _validate_selection_registry(
-        evidence_path=evidence_path,
-        evidence=evidence,
-        registry_text=evidence_contents["selection_registry"],
-        cohort_id=cohort_id,
-        case_id=case_id,
-        trading_date=trading_date,
-        trusted_checkpoint=trusted_selection_checkpoint,
-        trusted_toolset_checkpoint=trusted_toolset_checkpoint,
-        verified_bundle_hashes=verified_bundle_hashes,
-    )
-    toolset_binding = _validate_toolset_manifest(
-        evidence_path=evidence_path,
-        evidence=evidence,
-        manifest_text=evidence_contents["toolset_manifest"],
-        exporter_hash=exporter_hash,
-        trusted_checkpoint=trusted_toolset_checkpoint,
-    )
+    if selected_mode is SelectedBindingMode.LEGACY_V1_BINDING:
+        selected_binding = _validate_legacy_selected_binding(
+            repository_path=repository,
+            evidence_path=evidence_path,
+            evidence=evidence,
+            evidence_hashes=evidence_hashes,
+            evidence_contents=evidence_contents,
+            evidence_paths=evidence_paths,
+            exporter_hash=exporter_hash,
+            cohort_id=cohort_id,
+            case_id=case_id,
+            trading_date=trading_date,
+            trusted_toolset_checkpoint=trusted_toolset_checkpoint,
+            trusted_selection_checkpoint=trusted_selection_checkpoint,
+            trusted_acquisition_checkpoint=trusted_acquisition_checkpoint,
+            expected_repository_identity=expected_repository_identity,
+            remote_name=remote_name,
+            remote_branch=remote_branch,
+        )
+    else:
+        assert trusted_inventory_checkpoint is not None
+        assert inventory_checkpoint_bundle_root is not None
+        selected_binding = _validate_inventory_v2_selected_binding(
+            repository_path=repository,
+            bundle_root=Path(inventory_checkpoint_bundle_root),
+            evidence=evidence,
+            evidence_hashes=evidence_hashes,
+            exporter_hash=exporter_hash,
+            cohort_id=cohort_id,
+            case_id=case_id,
+            trading_date=trading_date,
+            trusted_toolset_checkpoint=trusted_toolset_checkpoint,
+            trusted_inventory_checkpoint=trusted_inventory_checkpoint,
+            trusted_selection_checkpoint=trusted_selection_checkpoint,
+            expected_repository_identity=expected_repository_identity,
+            remote_name=remote_name,
+            remote_branch=remote_branch,
+        )
 
     contract = _validate_contract(runtime)
     bar_series = _validate_bar_series(runtime)
@@ -1732,39 +2180,21 @@ def finalize_provenance(
         "first 250 native 5-minute bars of the declared Trading Hours session"
     ):
         _fail("selected row/range derivation is not the approved policy")
-    try:
-        final_checkpoint_verification = verify_checkpoints(
-            repository_path=repository_path,
-            bundle_root=evidence_path.parent,
-            toolset_manifest_path=evidence_paths["toolset_manifest"],
-            selection_registry_path=evidence_paths["selection_registry"],
-            trusted_toolset_checkpoint=trusted_toolset_checkpoint,
-            trusted_selection_checkpoint=trusted_selection_checkpoint,
-            trusted_acquisition_checkpoint=trusted_acquisition_checkpoint,
-            expected_repository_identity=expected_repository_identity,
-            remote_name=remote_name,
-            remote_branch=remote_branch,
-        )
-    except CheckpointVerificationError as error:
-        raise AcquisitionValidationError(
-            f"independent Git checkpoint re-verification failed: {error}"
-        ) from error
-    for field in (
-        "trusted_toolset_checkpoint",
-        "trusted_selection_checkpoint",
-        "trusted_acquisition_checkpoint",
-        "pinned_production_hierarchy_commit",
-        "artifacts",
-        "ancestry",
-        "verifier",
-    ):
-        if checkpoint_verification.get(field) != final_checkpoint_verification.get(
-            field
-        ):
-            _fail("checkpoint artifacts changed during provenance finalization")
-    checkpoint_verification = final_checkpoint_verification
+    checkpoint_verification = _reverify_selected_binding(
+        selected_binding, selected_mode
+    )
+    if selected_mode is SelectedBindingMode.INVENTORY_V2_BINDING:
+        observed_source_hash = _sha256(source)
+        if observed_source_hash != selected_binding.selected_source_expected_sha256:
+            _fail("selected source SHA-256 mismatch")
+        if observed_source_hash != source_hash:
+            _fail("selected source changed during provenance finalization")
     result: dict[str, object] = {
-        "schema_version": PROVENANCE_SCHEMA_VERSION,
+        "schema_version": (
+            PROVENANCE_SCHEMA_VERSION
+            if selected_mode is SelectedBindingMode.LEGACY_V1_BINDING
+            else INVENTORY_V2_PROVENANCE_SCHEMA_VERSION
+        ),
         "cohort_id": cohort_id,
         "case_id": case_id,
         "contract": contract,
@@ -1794,8 +2224,8 @@ def finalize_provenance(
             "known_limitations": known_limitations,
         },
         "artifact_hashes": artifact_hashes,
-        "selection_binding": selection_binding,
-        "toolset_binding": toolset_binding,
+        "selection_binding": selected_binding.selection_binding,
+        "toolset_binding": selected_binding.toolset_binding,
         "checkpoint_verification": checkpoint_verification,
         "source_quality_findings": quality_findings,
         "transformations": transformations,
@@ -1808,6 +2238,22 @@ def finalize_provenance(
             "june_rollover_transition_excluded": True,
         },
     }
+    if selected_mode is SelectedBindingMode.INVENTORY_V2_BINDING:
+        assert trusted_inventory_checkpoint is not None
+        assert selected_binding.inventory_binding is not None
+        assert selected_binding.exclusion_binding is not None
+        assert selected_binding.selected_source_expected_sha256 is not None
+        result.update(
+            {
+                "inventory_binding": selected_binding.inventory_binding,
+                "exclusion_binding": selected_binding.exclusion_binding,
+                "trusted_inventory_checkpoint": trusted_inventory_checkpoint,
+                "selected_source_binding": {
+                    "expected_sha256": selected_binding.selected_source_expected_sha256,
+                    "observed_sha256": source_hash,
+                },
+            }
+        )
 
     if output_path is not None:
         destination = Path(output_path)
@@ -1836,6 +2282,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repository-identity", default=DEFAULT_REPOSITORY_IDENTITY)
     parser.add_argument("--remote-name")
     parser.add_argument("--remote-branch")
+    parser.add_argument(
+        "--binding-mode",
+        choices=[mode.value for mode in SelectedBindingMode],
+        default=SelectedBindingMode.LEGACY_V1_BINDING.value,
+    )
+    parser.add_argument("--trusted-inventory-checkpoint")
+    parser.add_argument("--inventory-checkpoint-bundle-root", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
@@ -1852,6 +2305,9 @@ def main(argv: list[str] | None = None) -> int:
             remote_name=args.remote_name,
             remote_branch=args.remote_branch,
             output_path=args.output,
+            binding_mode=SelectedBindingMode(args.binding_mode),
+            trusted_inventory_checkpoint=args.trusted_inventory_checkpoint,
+            inventory_checkpoint_bundle_root=args.inventory_checkpoint_bundle_root,
         )
     except AcquisitionValidationError as error:
         parser.exit(2, f"STOP: {error}\n")

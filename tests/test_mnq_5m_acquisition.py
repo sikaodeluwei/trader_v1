@@ -11,10 +11,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 from tools.validation import mnq_5m_acquisition
 from tools.validation.mnq_5m_acquisition import (
     AcquisitionValidationError,
+    INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS,
+    SelectedBindingMode,
     finalize_provenance as _finalize_provenance,
 )
 
@@ -821,6 +825,273 @@ def _refresh_evidence_role_hash(evidence: Path, role: str) -> None:
         entry["sha256"] = _sha256(role_path)
 
     _rewrite_json(evidence, update)
+
+
+def _build_inventory_v2_bundle(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, Path, dict[str, object]]:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    source_hash = _sha256(source)
+    dates = [
+        "2026-06-22",
+        "2026-06-24",
+        "2026-06-25",
+        "2026-06-26",
+        "2026-06-29",
+        "2026-06-30",
+        "2026-07-01",
+        "2026-07-02",
+        "2026-07-03",
+        "2026-07-06",
+    ]
+    inventory = {
+        "schema_version": "2.0",
+        "status": "FROZEN_INVENTORY",
+        "cohort_outcome": "READY_FOR_SELECTION",
+        "cohort_id": COHORT_ID,
+        "producing_checkpoint": TOOLSET_CHECKPOINT,
+        "entries": [
+            {
+                "trading_date": trading_date,
+                "eligible": True,
+                "exclusion_reasons": [],
+                "first_250_source_sha256": source_hash if index == 1 else "a" * 64,
+            }
+            for index, trading_date in enumerate(dates, 1)
+        ],
+    }
+    exclusions = {
+        "schema_version": "2.0",
+        "status": "FROZEN_INVENTORY",
+        "cohort_outcome": "READY_FOR_SELECTION",
+        "cohort_id": COHORT_ID,
+        "producing_checkpoint": TOOLSET_CHECKPOINT,
+        "entries": [],
+    }
+    inventory_path = tmp_path / "source_inventory.json"
+    exclusions_path = tmp_path / "exclusions.json"
+    _write_json(inventory_path, inventory)
+    _write_json(exclusions_path, exclusions)
+    registry = {
+        "schema_version": "2.0",
+        "status": "FROZEN_FOR_SOURCE_ACQUISITION",
+        "cohort_id": COHORT_ID,
+        "selection_algorithm": {
+            "id": "CHRONOLOGICAL_TEN_STRATA_EARLIEST",
+            "version": "1.0",
+            "stratum_count": 10,
+        },
+        "selection_count": 10,
+        "source_inventory": {
+            "path": "source_inventory.json",
+            "bundle_path": "source_inventory.json",
+            "schema_version": "2.0",
+            "sha256": _sha256(inventory_path),
+            "producing_checkpoint": TOOLSET_CHECKPOINT,
+        },
+        "exclusion_ledger": {
+            "path": "exclusions.json",
+            "bundle_path": "exclusions.json",
+            "schema_version": "2.0",
+            "sha256": _sha256(exclusions_path),
+            "producing_checkpoint": TOOLSET_CHECKPOINT,
+        },
+        "trusted_inventory_checkpoint": INVENTORY_CHECKPOINT,
+        "producing_checkpoint": INVENTORY_CHECKPOINT,
+        "selection_influence": {
+            "hierarchy_output_used": False,
+            "oracle_output_used": False,
+            "project_output_used": False,
+        },
+        "selections": [
+            {
+                "case_id": f"mnq-202609-5m-td{trading_date}-w{index:02d}",
+                "trading_date": trading_date,
+                "stratum_number": index,
+                "stratum_start_index": index - 1,
+                "stratum_end_index": index - 1,
+                "selected_eligible_index": index - 1,
+                "window_policy": "FIRST_250_NATIVE_5M_SESSION_BARS",
+            }
+            for index, trading_date in enumerate(dates, 1)
+        ],
+        "aggregate_payload_sha256": "b" * 64,
+    }
+    _write_json(tmp_path / "selection_registry.json", registry)
+    manifest = {
+        "schema_version": "2.0",
+        "stage": "SOURCE_ACQUISITION",
+        "status": "FROZEN_FOR_SOURCE_ACQUISITION",
+        "cohort_id": COHORT_ID,
+        "producing_checkpoint": "5" * 40,
+        "pinned_production_hierarchy_commit": PINNED_PRODUCTION_COMMIT,
+        "components": [
+            {
+                "role": "acquisition_exporter",
+                "sha256": _sha256(exporter),
+            }
+        ],
+        "aggregate_payload_sha256": "c" * 64,
+    }
+    _write_json(tmp_path / "toolset_manifest.json", manifest)
+    (tmp_path / "trading_hours_template.xml").write_bytes(
+        _evidence_role_path(evidence, "trading_hours_template").read_bytes()
+    )
+    for role, relative in INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS.items():
+        path = tmp_path / relative
+        if not path.exists():
+            _write_json(path, {})
+    _rewrite_json(
+        evidence,
+        lambda value: value.update(
+            {
+                "expected_toolset_checkpoint": TOOLSET_CHECKPOINT,
+                "expected_selection_checkpoint": SELECTION_CHECKPOINT,
+            }
+        ),
+    )
+    _refresh_evidence_role_hash(evidence, "selection_registry")
+    _refresh_evidence_role_hash(evidence, "toolset_manifest")
+
+    stage_by_role = {
+        "toolset_manifest": "toolset",
+        "selection_registry": "selection",
+    }
+    artifacts = []
+    for role, relative in INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS.items():
+        stage = stage_by_role.get(role, "inventory")
+        digest = _sha256(tmp_path / relative)
+        artifacts.append(
+            {
+                "role": role,
+                "stage": stage,
+                "repository_path": relative,
+                "checkpoint": SELECTION_CHECKPOINT if stage == "selection" else TOOLSET_CHECKPOINT,
+                "git_object_id": "6" * 40,
+                "sha256": digest,
+                "bundle_sha256": digest,
+            }
+        )
+    attestation = {
+        "schema_version": "2.0",
+        "stage": "SELECTION",
+        "status": "VERIFIED",
+        "repository": {
+            "identity": "https://github.com/sikaodeluwei/trader_v1.git",
+            "git_object_format": "sha1",
+        },
+        "trusted_toolset_checkpoint": TOOLSET_CHECKPOINT,
+        "trusted_inventory_checkpoint": INVENTORY_CHECKPOINT,
+        "trusted_selection_checkpoint": SELECTION_CHECKPOINT,
+        "pinned_production_hierarchy_commit": PINNED_PRODUCTION_COMMIT,
+        "artifacts": artifacts,
+        "ancestry": [
+            {
+                "ancestor": PINNED_PRODUCTION_COMMIT,
+                "descendant": TOOLSET_CHECKPOINT,
+                "verified": True,
+            },
+            {
+                "ancestor": TOOLSET_CHECKPOINT,
+                "descendant": INVENTORY_CHECKPOINT,
+                "verified": True,
+            },
+            {
+                "ancestor": INVENTORY_CHECKPOINT,
+                "descendant": SELECTION_CHECKPOINT,
+                "verified": True,
+            },
+        ],
+        "remote_publication": {"status": "NOT_CHECKED"},
+        "verifier": {
+            "version": "2.0",
+            "repository_path": "tools/validation/mnq_5m_checkpoint_verify.py",
+            "producing_commit": "5" * 40,
+            "frozen_sha256": "d" * 64,
+            "executing_sha256": "d" * 64,
+        },
+        "attestation_sha256": "e" * 64,
+    }
+    return source, runtime, evidence, exporter, attestation
+
+
+def _inventory_v2_verifier(attestation: dict[str, object], **kwargs):
+    bundle = Path(kwargs["bundle_root"])
+    expected_inventory_paths = {
+        role: bundle / INVENTORY_V2_CHECKPOINT_BUNDLE_PATHS[role]
+        for role in (
+            "inventory_runtime_capture",
+            "inventory_scan",
+            "trading_hours_template",
+            "inventory_acquisition_evidence",
+            "inventory_provenance",
+            "source_inventory",
+            "exclusions",
+        )
+    }
+    if kwargs["toolset_manifest_path"] != bundle / "toolset_manifest.json":
+        raise AssertionError("wrong fixed toolset path")
+    if kwargs["selection_registry_path"] != bundle / "selection_registry.json":
+        raise AssertionError("wrong fixed selection path")
+    if kwargs["inventory_artifact_paths"] != expected_inventory_paths:
+        raise AssertionError("wrong fixed inventory paths")
+    return deepcopy(attestation)
+
+
+def _finalize_inventory_v2(
+    source: Path,
+    runtime: Path,
+    evidence: Path,
+    exporter: Path,
+    attestation: dict[str, object],
+    *,
+    verifier=None,
+    **overrides,
+):
+    arguments = {
+        "source_path": source,
+        "runtime_capture_path": runtime,
+        "acquisition_evidence_path": evidence,
+        "exporter_path": exporter,
+        "trusted_selection_checkpoint": SELECTION_CHECKPOINT,
+        "trusted_toolset_checkpoint": TOOLSET_CHECKPOINT,
+        "repository_path": source.parent,
+        "binding_mode": SelectedBindingMode.INVENTORY_V2_BINDING,
+        "trusted_inventory_checkpoint": INVENTORY_CHECKPOINT,
+        "inventory_checkpoint_bundle_root": source.parent,
+    }
+    arguments.update(overrides)
+    verifier = verifier or (lambda **kwargs: _inventory_v2_verifier(attestation, **kwargs))
+    with patch(
+        "tools.validation.mnq_5m_acquisition.verify_selection_checkpoint",
+        side_effect=verifier,
+    ):
+        return _finalize_provenance(**arguments)
+
+
+def _provenance_validators() -> tuple[Draft202012Validator, Draft202012Validator]:
+    schema_dir = (
+        Path(__file__).resolve().parents[1]
+        / "validation"
+        / "mnq_5m_multiwindow"
+        / "schemas"
+    )
+    schemas = [
+        json.loads((schema_dir / name).read_text(encoding="utf-8"))
+        for name in (
+            "provenance.schema.json",
+            "checkpoint_attestation.schema.json",
+            "checkpoint_attestation_v2.schema.json",
+            "provenance_v1_3.schema.json",
+        )
+    ]
+    registry = Registry().with_resources(
+        [(schema["$id"], Resource.from_contents(schema)) for schema in schemas]
+    )
+    return (
+        Draft202012Validator(schemas[0], registry=registry),
+        Draft202012Validator(schemas[3], registry=registry),
+    )
 
 
 def _rewrite_evidence_role_text(evidence: Path, role: str, transform) -> Path:
@@ -2735,6 +3006,230 @@ def test_rejects_source_mutation_against_runtime_hash(tmp_path: Path) -> None:
             runtime_capture_path=runtime,
             acquisition_evidence_path=evidence,
             exporter_path=exporter,
+        )
+
+
+def test_legacy_binding_mode_default_is_semantically_identical(tmp_path: Path) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+
+    omitted = finalize_provenance(
+        source_path=source,
+        runtime_capture_path=runtime,
+        acquisition_evidence_path=evidence,
+        exporter_path=exporter,
+    )
+    explicit = finalize_provenance(
+        source_path=source,
+        runtime_capture_path=runtime,
+        acquisition_evidence_path=evidence,
+        exporter_path=exporter,
+        binding_mode=SelectedBindingMode.LEGACY_V1_BINDING,
+    )
+
+    assert omitted == explicit
+    assert omitted["schema_version"] == "1.2"
+    assert "selected_source_binding" not in omitted
+    assert "trusted_inventory_checkpoint" not in omitted
+    legacy_validator, inventory_v2_validator = _provenance_validators()
+    assert not list(legacy_validator.iter_errors(omitted))
+    assert list(inventory_v2_validator.iter_errors(omitted))
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"trusted_inventory_checkpoint": INVENTORY_CHECKPOINT},
+        {"inventory_checkpoint_bundle_root": "."},
+        {
+            "trusted_inventory_checkpoint": INVENTORY_CHECKPOINT,
+            "inventory_checkpoint_bundle_root": ".",
+        },
+    ],
+    ids=["inventory-checkpoint", "bundle-root", "both"],
+)
+def test_legacy_binding_mode_rejects_inventory_v2_only_arguments(
+    tmp_path: Path, arguments: dict[str, object]
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+
+    with pytest.raises(AcquisitionValidationError, match="legacy-v1"):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+            **arguments,
+        )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {},
+        {"trusted_inventory_checkpoint": INVENTORY_CHECKPOINT},
+        {"inventory_checkpoint_bundle_root": "."},
+    ],
+    ids=["neither", "checkpoint-only", "bundle-only"],
+)
+def test_inventory_v2_binding_mode_requires_both_v2_only_arguments(
+    tmp_path: Path, arguments: dict[str, object]
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+
+    with pytest.raises(AcquisitionValidationError, match="inventory-v2"):
+        _finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+            trusted_selection_checkpoint=SELECTION_CHECKPOINT,
+            trusted_toolset_checkpoint=TOOLSET_CHECKPOINT,
+            repository_path=tmp_path,
+            binding_mode=SelectedBindingMode.INVENTORY_V2_BINDING,
+            **arguments,
+        )
+
+
+def test_inventory_v2_binding_emits_schema_1_3_with_exact_source_hash(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter, attestation = _build_inventory_v2_bundle(
+        tmp_path
+    )
+
+    result = _finalize_inventory_v2(
+        source, runtime, evidence, exporter, attestation
+    )
+
+    assert result["schema_version"] == "1.3"
+    assert result["trusted_inventory_checkpoint"] == INVENTORY_CHECKPOINT
+    assert result["checkpoint_verification"]["stage"] == "SELECTION"
+    assert result["selection_binding"]["selection"] == {
+        "case_id": "mnq-202609-5m-td2026-06-22-w01",
+        "trading_date": "2026-06-22",
+        "stratum_number": 1,
+        "stratum_start_index": 0,
+        "stratum_end_index": 0,
+        "selected_eligible_index": 0,
+        "window_policy": "FIRST_250_NATIVE_5M_SESSION_BARS",
+    }
+    assert result["selected_source_binding"] == {
+        "expected_sha256": _sha256(source),
+        "observed_sha256": _sha256(source),
+    }
+    assert result["inventory_binding"]["schema_version"] == "2.0"
+    assert result["exclusion_binding"]["schema_version"] == "2.0"
+    assert result["toolset_binding"]["schema_version"] == "2.0"
+    legacy_validator, inventory_v2_validator = _provenance_validators()
+    assert not list(inventory_v2_validator.iter_errors(result))
+    assert list(legacy_validator.iter_errors(result))
+
+
+def test_inventory_v2_direct_finalizer_rejects_selected_source_hash_mismatch(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter, attestation = _build_inventory_v2_bundle(
+        tmp_path
+    )
+    inventory = json.loads((tmp_path / "source_inventory.json").read_text(encoding="utf-8"))
+    inventory["entries"][0]["first_250_source_sha256"] = "f" * 64
+    _write_json(tmp_path / "source_inventory.json", inventory)
+    for artifact in attestation["artifacts"]:
+        if artifact["role"] == "source_inventory":
+            artifact["sha256"] = _sha256(tmp_path / "source_inventory.json")
+            artifact["bundle_sha256"] = artifact["sha256"]
+    registry = json.loads((tmp_path / "selection_registry.json").read_text(encoding="utf-8"))
+    registry["source_inventory"]["sha256"] = _sha256(tmp_path / "source_inventory.json")
+    _write_json(tmp_path / "selection_registry.json", registry)
+    _refresh_evidence_role_hash(evidence, "selection_registry")
+    for artifact in attestation["artifacts"]:
+        if artifact["role"] == "selection_registry":
+            artifact["sha256"] = _sha256(tmp_path / "selection_registry.json")
+            artifact["bundle_sha256"] = artifact["sha256"]
+
+    with pytest.raises(AcquisitionValidationError, match="selected source SHA-256 mismatch"):
+        _finalize_inventory_v2(source, runtime, evidence, exporter, attestation)
+
+
+def test_inventory_v2_rechecks_selected_source_after_wrapper_success(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter, attestation = _build_inventory_v2_bundle(
+        tmp_path
+    )
+    calls = 0
+
+    def verifier(**kwargs):
+        nonlocal calls
+        calls += 1
+        result = _inventory_v2_verifier(attestation, **kwargs)
+        if calls == 2:
+            source.write_bytes(source.read_bytes() + b"mutated after early gate\n")
+        return result
+
+    with pytest.raises(AcquisitionValidationError, match="selected source SHA-256 mismatch"):
+        _finalize_inventory_v2(
+            source, runtime, evidence, exporter, attestation, verifier=verifier
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda paths: _rewrite_json(
+                paths[1], lambda value: value["instrument"].__setitem__("master_name", "ES")
+            ),
+            "approved MNQ SEP26 contract",
+        ),
+        (
+            lambda paths: _rewrite_json(
+                paths[2], lambda value: value["transformations"].__setitem__("sorted", True)
+            ),
+            "prohibited transformation",
+        ),
+    ],
+    ids=["contract", "transformation"],
+)
+def test_inventory_v2_uses_shared_post_binding_validators(
+    tmp_path: Path, mutation, message: str
+) -> None:
+    source, runtime, evidence, exporter, attestation = _build_inventory_v2_bundle(
+        tmp_path
+    )
+    mutation((source, runtime, evidence, exporter))
+    _refresh_runtime_hash(runtime, evidence)
+
+    with pytest.raises(AcquisitionValidationError, match=message):
+        _finalize_inventory_v2(source, runtime, evidence, exporter, attestation)
+
+
+def test_inventory_v2_rejects_legacy_schema_family_and_caller_attestation(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter, attestation = _build_inventory_v2_bundle(
+        tmp_path
+    )
+    _rewrite_json(
+        tmp_path / "selection_registry.json",
+        lambda value: value.__setitem__("schema_version", "1.0"),
+    )
+    _refresh_evidence_role_hash(evidence, "selection_registry")
+    for artifact in attestation["artifacts"]:
+        if artifact["role"] == "selection_registry":
+            artifact["sha256"] = _sha256(tmp_path / "selection_registry.json")
+            artifact["bundle_sha256"] = artifact["sha256"]
+
+    with pytest.raises(AcquisitionValidationError, match="inventory-v2"):
+        _finalize_inventory_v2(source, runtime, evidence, exporter, attestation)
+    with pytest.raises(AcquisitionValidationError, match="user-supplied"):
+        _finalize_inventory_v2(
+            source,
+            runtime,
+            evidence,
+            exporter,
+            attestation,
+            checkpoint_attestation=attestation,
         )
 
 
