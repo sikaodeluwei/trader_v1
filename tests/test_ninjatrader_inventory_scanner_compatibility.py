@@ -39,7 +39,12 @@ def _code_without_comments(source: str) -> str:
 
 
 def _method_body(source: str, method_name: str) -> str:
-    match = re.search(rf"\b{re.escape(method_name)}\s*\([^;]*?\)\s*\{{", source)
+    match = re.search(
+        rf"(?m)^\s*(?:public|private|protected|internal)\s+"
+        rf"(?:(?:static|override|virtual|sealed|async|new)\s+)*"
+        rf"[^;{{}}\r\n]+\b{re.escape(method_name)}\s*\([^;{{}}]*\)\s*\{{",
+        source,
+    )
     assert match is not None, f"missing method body: {method_name}"
     opening = source.find("{", match.start())
     depth = 0
@@ -160,6 +165,97 @@ def test_arm_and_output_guards_fail_closed() -> None:
     assert "File.Exists(OutputDirectoryPath)" in runtime
     assert "Path.GetFileName" in runtime
     assert "MakeSafeFileName(AcquisitionId)" in runtime
+
+
+def test_realtime_periodic_arm_poll_can_export_without_a_bar_update() -> None:
+    """Catches making a post-Realtime arm depend on a later market bar."""
+    source = _scanner_source()
+    state_change = _method_body(source, "OnStateChange")
+    start = _method_body(source, "StartArmPolling")
+    timer_callback = _method_body(source, "PollForArm")
+    marshaled_callback = _method_body(source, "ProcessArmPoll")
+
+    assert "private System.Threading.Timer armPollTimer;" in source
+    assert state_change.count("StartArmPolling();") == 1
+    assert re.search(
+        r"else if\s*\(State\s*==\s*State\.Realtime\)\s*\{"
+        r"(?:(?!else if\s*\(State\s*==)[\s\S])*?StartArmPolling\(\);\s*\}",
+        state_change,
+    )
+    assert "new System.Threading.Timer(" in start
+    assert "PollForArm" in start
+    assert "ArmPollIntervalMilliseconds" in start
+    assert "TriggerCustomEvent(ProcessArmPoll, null);" in timer_callback
+    assert "TryExportArmedAcquisition();" in marshaled_callback
+    assert "PollForArm" not in _method_body(source, "OnBarUpdate")
+
+
+def test_periodic_callback_marshals_before_using_ninjatrader_state() -> None:
+    """Catches Bars/session/publication work escaping the NinjaScript context."""
+    source = _scanner_source()
+    timer_callback = _method_body(source, "PollForArm")
+
+    assert "TriggerCustomEvent(ProcessArmPoll, null);" in timer_callback
+    for unsafe_use in (
+        "State",
+        "Bars",
+        "Instrument",
+        "TryArmAcquisition",
+        "CaptureSessionObservation",
+        "WriteBundleAtomically",
+        "LogScanComplete",
+        "Log(",
+        "Print(",
+        "Core.",
+        "Connection.",
+        "File.",
+        "Directory.",
+    ):
+        assert unsafe_use not in timer_callback
+
+
+def test_bar_and_periodic_paths_share_one_single_shot_export_path() -> None:
+    """Catches duplicate publication logic or a race between callback paths."""
+    source = _scanner_source()
+    update = _method_body(source, "OnBarUpdate")
+    marshaled_callback = _method_body(source, "ProcessArmPoll")
+    export = _method_body(source, "TryExportArmedAcquisition")
+
+    assert "TryExportArmedAcquisition();" in update
+    assert "TryExportArmedAcquisition();" in marshaled_callback
+    for duplicated_call in (
+        "TryArmAcquisition",
+        "CaptureActiveConnections",
+        "CaptureSessionObservation",
+        "WriteBundleAtomically",
+        "LogScanComplete",
+    ):
+        assert duplicated_call not in update
+        assert duplicated_call not in marshaled_callback
+        assert duplicated_call in export
+    assert re.search(
+        r"Interlocked\.CompareExchange\(ref exportStarted, 1, 0\)\s*!=\s*0",
+        export,
+    )
+    no_arm = export[export.index("if (!TryArmAcquisition())") :]
+    assert "Interlocked.Exchange(ref exportStarted, 0);" in no_arm
+
+
+def test_arm_polling_is_disposed_after_export_and_on_termination() -> None:
+    """Catches a polling leak after publication or NinjaScript termination."""
+    source = _scanner_source()
+    state_change = _method_body(source, "OnStateChange")
+    stop = _method_body(source, "StopArmPolling")
+    export = _method_body(source, "TryExportArmedAcquisition")
+
+    assert re.search(
+        r"State\s*==\s*State\.Terminated[\s\S]*?StopArmPolling\(\);",
+        state_change,
+    )
+    assert "Interlocked.Exchange(ref armPollActive, 0);" in stop
+    assert "Interlocked.Exchange(ref armPollTimer, null)" in stop
+    assert "timer.Dispose();" in stop
+    assert export.index("LogScanComplete();") < export.index("StopArmPolling();")
 
 
 def test_civil_date_enumeration_is_inclusive_and_has_no_weekday_filter() -> None:
@@ -624,7 +720,7 @@ def test_atomic_bundle_publication_precedes_completion_marker() -> None:
     """Catches direct JSON writes, partial final publication, or early completion."""
     source = _scanner_source()
     write = _method_body(source, "WriteBundleAtomically")
-    update = _method_body(source, "OnBarUpdate")
+    export = _method_body(source, "TryExportArmedAcquisition")
 
     assert "Directory.Exists(OutputDirectoryPath)" in write
     assert "Directory.CreateDirectory(stagingDirectory)" in write
@@ -642,9 +738,9 @@ def test_atomic_bundle_publication_precedes_completion_marker() -> None:
     assert "File.Move(temporaryPath, finalPath)" in _method_body(
         source, "WriteJsonAtomically"
     )
-    assert update.index("WriteBundleAtomically") < update.index("LogScanComplete")
-    assert "LogScanComplete();" in update
-    assert "LogScanComplete(completedAtPc)" not in update
+    assert export.index("WriteBundleAtomically") < export.index("LogScanComplete")
+    assert "LogScanComplete();" in export
+    assert "LogScanComplete(completedAtPc)" not in export
 
     completion = _method_body(source, "LogScanComplete")
     assert "DateTimeOffset completedAtPc = DateTimeOffset.Now;" in completion
@@ -670,7 +766,7 @@ def test_runtime_capture_is_objective_and_binds_all_task_three_outputs() -> None
     source = _scanner_source()
     runtime = _method_body(source, "BuildRuntimeCapture")
     connections = _method_body(source, "CaptureActiveConnections")
-    update = _method_body(source, "OnBarUpdate")
+    export = _method_body(source, "TryExportArmedAcquisition")
 
     top_level_keys = set(
         re.findall(r"(?m)^ {16}([a-z][a-z0-9_]*)\s*=", runtime)
@@ -711,7 +807,7 @@ def test_runtime_capture_is_objective_and_binds_all_task_three_outputs() -> None
         "connection_snapshot_phase",
     ):
         assert key in runtime
-    assert update.index("CaptureActiveConnections") < update.index(
+    assert export.index("CaptureActiveConnections") < export.index(
         "CaptureSessionObservation"
     )
     assert "Connection.Connections" in connections

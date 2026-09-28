@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 using NinjaTrader.Cbi;
 using NinjaTrader.Data;
@@ -31,6 +32,7 @@ namespace NinjaTrader.NinjaScript.Indicators
         private const string RuntimeFileName = "inventory_runtime_capture.json";
         private const string TradingHoursFileName = "trading_hours_template.xml";
         private const string ConfigFileName = "NinjaTrader.Config.xml";
+        private const int ArmPollIntervalMilliseconds = 250;
         private const string CanonicalizationId =
             "NINJATRADER_SEMICOLON_OHLCV_UTF8_LF_FINAL_NEWLINE_V1";
         private const string ActualTradingDayExchangeContract =
@@ -39,10 +41,14 @@ namespace NinjaTrader.NinjaScript.Indicators
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
         private bool armed;
+        private int armPollActive;
+        private int armPollPending;
+        private int exportStarted;
         private DateTimeOffset initializedAtPc;
         private DateTimeOffset realtimeAtPc;
         private DateTimeOffset armedAtPc;
         private SessionIterator sessionIterator;
+        private System.Threading.Timer armPollTimer;
 
         [NinjaScriptProperty]
         [Display(Name = "Acquisition ID", Order = 1)]
@@ -92,13 +98,79 @@ namespace NinjaTrader.NinjaScript.Indicators
                     + " inventory realtime lifecycle observed event_time="
                     + realtimeAtPc.ToString("o", CultureInfo.InvariantCulture),
                     LogLevel.Information);
+                StartArmPolling();
+            }
+            else if (State == State.Terminated)
+            {
+                StopArmPolling();
             }
         }
 
         protected override void OnBarUpdate()
         {
-            if (State != State.Realtime || armed || !TryArmAcquisition())
+            TryExportArmedAcquisition();
+        }
+
+        private void StartArmPolling()
+        {
+            if (armPollTimer != null)
                 return;
+
+            Interlocked.Exchange(ref armPollActive, 1);
+            armPollTimer = new System.Threading.Timer(
+                PollForArm,
+                null,
+                0,
+                ArmPollIntervalMilliseconds);
+        }
+
+        private void StopArmPolling()
+        {
+            Interlocked.Exchange(ref armPollActive, 0);
+            System.Threading.Timer timer = Interlocked.Exchange(ref armPollTimer, null);
+            if (timer != null)
+                timer.Dispose();
+            Interlocked.Exchange(ref armPollPending, 0);
+        }
+
+        private void PollForArm(object state)
+        {
+            if (Interlocked.CompareExchange(ref armPollActive, 1, 1) != 1
+                || Interlocked.CompareExchange(ref armPollPending, 1, 0) != 0)
+                return;
+            if (Interlocked.CompareExchange(ref armPollActive, 1, 1) != 1)
+            {
+                Interlocked.Exchange(ref armPollPending, 0);
+                return;
+            }
+
+            TriggerCustomEvent(ProcessArmPoll, null);
+        }
+
+        private void ProcessArmPoll(object state)
+        {
+            try
+            {
+                TryExportArmedAcquisition();
+            }
+            finally
+            {
+                Interlocked.Exchange(ref armPollPending, 0);
+            }
+        }
+
+        private void TryExportArmedAcquisition()
+        {
+            if (State != State.Realtime
+                || armed
+                || Interlocked.CompareExchange(ref exportStarted, 1, 0) != 0)
+                return;
+
+            if (!TryArmAcquisition())
+            {
+                Interlocked.Exchange(ref exportStarted, 0);
+                return;
+            }
 
             TimeZoneInfo applicationTimeZone = Core.Globals.GeneralOptions.TimeZoneInfo;
             if (applicationTimeZone == null)
@@ -121,6 +193,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 scanCompletedAtPc,
                 activeConnections);
             LogScanComplete();
+            StopArmPolling();
         }
 
         private bool TryArmAcquisition()
