@@ -200,7 +200,7 @@ def _generate(
         exclusions=exclusions,
         inventory_attestation=attestation,
         trusted_inventory_checkpoint=INVENTORY_CHECKPOINT,
-        producing_checkpoint=SELECTION_CHECKPOINT,
+        producing_checkpoint=INVENTORY_CHECKPOINT,
     )
 
 
@@ -266,13 +266,26 @@ def test_registry_binds_exact_inventory_exclusions_and_checkpoints() -> None:
         "producing_checkpoint": TOOLSET_CHECKPOINT,
     }
     assert registry["trusted_inventory_checkpoint"] == INVENTORY_CHECKPOINT
-    assert registry["producing_checkpoint"] == SELECTION_CHECKPOINT
+    assert registry["producing_checkpoint"] == INVENTORY_CHECKPOINT
     assert registry["contract_policy"] == inventory["contract_policy"]
     assert registry["selection_influence"] == {
         "hierarchy_output_used": False,
         "oracle_output_used": False,
         "project_output_used": False,
     }
+
+
+def test_rejects_selection_producer_other_than_trusted_inventory_checkpoint() -> None:
+    inventory, exclusions, attestation = _documents(10)
+
+    with pytest.raises(SelectionValidationError, match="producing checkpoint"):
+        generate_selection(
+            source_inventory=inventory,
+            exclusions=exclusions,
+            inventory_attestation=attestation,
+            trusted_inventory_checkpoint=INVENTORY_CHECKPOINT,
+            producing_checkpoint=SELECTION_CHECKPOINT,
+        )
 
 
 def test_registry_is_schema_valid_and_repeated_results_have_stable_bytes() -> None:
@@ -308,7 +321,7 @@ def test_public_interface_has_no_forbidden_selection_influence_inputs() -> None:
             exclusions=exclusions,
             inventory_attestation=attestation,
             trusted_inventory_checkpoint=INVENTORY_CHECKPOINT,
-            producing_checkpoint=SELECTION_CHECKPOINT,
+            producing_checkpoint=INVENTORY_CHECKPOINT,
             hierarchy_output={"preferred_date": "2026-06-30"},  # type: ignore[call-arg]
         )
 
@@ -426,7 +439,7 @@ def test_refuses_missing_inventory_attestation() -> None:
             exclusions=exclusions,
             inventory_attestation=None,  # type: ignore[arg-type]
             trusted_inventory_checkpoint=INVENTORY_CHECKPOINT,
-            producing_checkpoint=SELECTION_CHECKPOINT,
+            producing_checkpoint=INVENTORY_CHECKPOINT,
         )
 
 
@@ -461,7 +474,7 @@ def _cli_args(inputs: tuple[Path, Path, Path], output: Path) -> list[str]:
         "--trusted-inventory-checkpoint",
         INVENTORY_CHECKPOINT,
         "--producing-checkpoint",
-        SELECTION_CHECKPOINT,
+        INVENTORY_CHECKPOINT,
         "--output",
         str(output),
     ]
@@ -543,6 +556,48 @@ def test_one_byte_final_lf_hash_mutation_is_rejected_before_selection_records(
         match="source inventory attestation hash mismatch",
     ):
         _generate(inventory, exclusions, attestation)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["whitespace", "final-lf", "key-order"],
+)
+@pytest.mark.parametrize("artifact_index", [0, 1], ids=["inventory", "exclusions"])
+def test_cli_rejects_exact_selection_input_byte_mutation_before_selection_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    artifact_index: int,
+) -> None:
+    _, _, _, inputs = _write_task7_exact_inputs(tmp_path)
+    artifact_path = inputs[artifact_index]
+    original = artifact_path.read_bytes()
+    if mutation == "whitespace":
+        mutated = original.replace(b"{", b"{ ", 1)
+    elif mutation == "final-lf":
+        mutated = original[:-1]
+    else:
+        document = json.loads(original)
+        mutated = (
+            json.dumps(
+                dict(reversed(list(document.items()))),
+                sort_keys=False,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            )
+            + "\n"
+        ).encode("utf-8")
+        assert mutated != original
+    artifact_path.write_bytes(mutated)
+
+    def fail_if_called(*args: object, **kwargs: object) -> list[dict[str, object]]:
+        raise AssertionError("selection records were built before exact-byte rejection")
+
+    monkeypatch.setattr(mnq_5m_selection, "_build_selection_records", fail_if_called)
+    with pytest.raises(SelectionValidationError, match="exact bytes|attestation hash"):
+        mnq_5m_selection.main(
+            _cli_args(inputs, tmp_path / "selection_registry.json")
+        )
 
 
 def test_cli_writes_byte_identical_canonical_output_and_refuses_overwrite(

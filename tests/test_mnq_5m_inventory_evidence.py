@@ -267,11 +267,12 @@ def _trace(request_lines: list[str] | None = None) -> str:
 def _log() -> str:
     return "\n".join(
         [
+            f"2026-09-16 10:59:59.000 acquisition={ACQUISITION_ID} inventory scanner initialized event_time=2026-09-16T10:59:59+08:00",
             f"2026-09-16 11:00:00.000 acquisition={ACQUISITION_ID} inventory realtime lifecycle observed event_time=2026-09-16T11:00:00+08:00",
             f"2026-09-16 11:02:00.000 acquisition={ACQUISITION_ID} inventory scanner initialized event_time=2026-09-16T11:02:00+08:00",
             f"2026-09-16 11:02:01.000 acquisition={ACQUISITION_ID} inventory realtime lifecycle observed event_time=2026-09-16T11:02:01+08:00",
             f"2026-09-16 11:03:00.000 acquisition={ACQUISITION_ID} inventory scan armed event_time=2026-09-16T11:03:00+08:00",
-            f"2026-09-16 12:00:01.000 acquisition={ACQUISITION_ID} inventory scan complete event_time=2026-09-16T12:00:01+08:00",
+            f"2026-09-16 12:00:02.000 acquisition={ACQUISITION_ID} inventory scan complete event_time=2026-09-16T12:00:02+08:00",
         ]
     ) + "\n"
 
@@ -309,7 +310,7 @@ def _acquisition(checkpoint: str, config: Path, log: Path, trace: Path, template
             "post_request_initialized_at": "2026-09-16T11:02:00+08:00",
             "post_request_realtime_at": "2026-09-16T11:02:01+08:00",
             "inventory_scan_armed_at": "2026-09-16T11:03:00+08:00",
-            "inventory_scan_completed_at": "2026-09-16T12:00:01+08:00",
+            "inventory_scan_completed_at": "2026-09-16T12:00:02+08:00",
         },
         "evidence_files": [
             _evidence_file("ninjatrader_config", config),
@@ -682,6 +683,21 @@ def test_rejects_missing_or_malformed_lifecycle_marker(bundle: dict[str, object]
     _rewrite_external(bundle, "log", mutate(Path(bundle["log"]).read_text(encoding="utf-8")))  # type: ignore[operator]
     with pytest.raises(InventoryValidationError):
         _finalize(bundle)
+
+
+def test_accepts_scanner_shaped_reinitialization_and_post_publication_completion(
+    bundle: dict[str, object],
+) -> None:
+    _rewrite_json(
+        bundle,
+        "scan_path",
+        lambda item: item.__setitem__("completed_at", "2026-09-16T04:00:01+00:00"),
+    )
+
+    loaded = bundle["reload"]()  # type: ignore[operator]
+    result = _finalize(bundle, loaded=loaded)
+
+    assert result.provider_acquisition["historical_request"]["instrument"] == "MNQ SEP26"
 
 
 @pytest.mark.parametrize("field", ["sha256", "byte_length"])

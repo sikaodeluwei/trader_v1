@@ -655,6 +655,9 @@ def test_global_proof_failure_stops_before_build_inventory(
     loaded = _loaded({"scanner_claimed_begin": "1900-01-01T00:00:00+00:00"})
     calendar = _calendar([_quality()])
     calls: list[str] = []
+    monkeypatch.setattr(
+        inventory_module, "verify_inventory_toolset_checkpoint", lambda **_: {}
+    )
 
     def fail(label: str) -> None:
         calls.append(label)
@@ -740,6 +743,9 @@ def test_only_verified_calendar_bounds_feed_provider_request_verification(
         }
     )
     observed: dict[str, object] = {}
+    monkeypatch.setattr(
+        inventory_module, "verify_inventory_toolset_checkpoint", lambda **_: {}
+    )
     monkeypatch.setattr(inventory_module, "load_inventory_evidence", lambda **_: loaded)
     monkeypatch.setattr(inventory_module, "verify_inventory_calendar", lambda *_: calendar)
 
@@ -754,6 +760,32 @@ def test_only_verified_calendar_bounds_feed_provider_request_verification(
         finalize_inventory_bundle(**_finalize_kwargs(tmp_path, template))
     assert observed["earliest_session_begin"] == calendar.earliest_session_begin
     assert observed["latest_session_end"] == calendar.latest_session_end
+
+
+def test_finalizer_verifies_frozen_policy_toolset_before_loading_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    monkeypatch.setattr(
+        inventory_module,
+        "verify_inventory_toolset_checkpoint",
+        lambda **_: events.append("toolset"),
+        raising=False,
+    )
+
+    def stop_load(**_: object) -> object:
+        events.append("load")
+        raise InventoryValidationError("stop after toolset gate")
+
+    monkeypatch.setattr(inventory_module, "load_inventory_evidence", stop_load)
+    template = tmp_path / "template.xml"
+    template.write_bytes(b"template")
+
+    with pytest.raises(InventoryValidationError, match="stop after toolset gate"):
+        finalize_inventory_bundle(**_finalize_kwargs(tmp_path, template))
+
+    assert events == ["toolset", "load"]
 
 
 def test_finalizer_preserves_required_cross_layer_order(
@@ -772,6 +804,11 @@ def test_finalizer_preserves_required_cross_layer_order(
         producing_checkpoint=PRODUCING_CHECKPOINT,
     )
     events: list[str] = []
+    monkeypatch.setattr(
+        inventory_module,
+        "verify_inventory_toolset_checkpoint",
+        lambda **_: events.append("toolset-gate"),
+    )
     monkeypatch.setattr(inventory_module, "load_inventory_evidence", lambda **_: events.append("load") or loaded)
     monkeypatch.setattr(inventory_module, "verify_inventory_calendar", lambda *_: events.append("calendar") or calendar)
     monkeypatch.setattr(inventory_module, "finalize_inventory_evidence", lambda **_: events.append("provider") or evidence)
@@ -790,14 +827,23 @@ def test_finalizer_preserves_required_cross_layer_order(
         events.append(f"validate:{label}")
 
     monkeypatch.setattr(inventory_module, "_validate_document", validate)
-    monkeypatch.setattr(inventory_module, "build_inventory", lambda **_: events.append("build") or built)
+    observed_build: dict[str, object] = {}
+
+    def capture_build(**kwargs: object) -> InventoryBuildResult:
+        observed_build.update(kwargs)
+        events.append("build")
+        return built
+
+    monkeypatch.setattr(inventory_module, "build_inventory", capture_build)
     monkeypatch.setattr(inventory_module, "_cross_reconcile", lambda *_: events.append("reconcile"))
     monkeypatch.setattr(inventory_module, "_publish_bundle", lambda **_: events.append("publish"))
     template = tmp_path / "template.xml"
     template.write_bytes(b"template")
     result = finalize_inventory_bundle(**_finalize_kwargs(tmp_path, template))
     assert isinstance(result, InventoryFinalizationResult)
+    assert observed_build["producing_checkpoint"] == TRUSTED_TOOLSET_CHECKPOINT
     assert events == [
+        "toolset-gate",
         "load",
         "calendar",
         "provider",

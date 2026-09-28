@@ -11,8 +11,8 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 
 from tools.validation.mnq_5m_inventory_common import (
+    _load_schema_validated_json_bytes,
     canonical_payload_sha256,
-    load_schema_validated_json,
     sha256_bytes,
     write_json_atomically,
 )
@@ -281,6 +281,8 @@ def generate_selection(
         _fail("invalid exclusions")
     if not isinstance(inventory_attestation, Mapping):
         _fail("invalid inventory attestation")
+    if producing_checkpoint != trusted_inventory_checkpoint:
+        _fail("selection producing checkpoint must equal trusted inventory checkpoint")
 
     source_artifact, exclusions_artifact = _verify_inventory_attestation(
         source_inventory=source_inventory,
@@ -320,7 +322,7 @@ def generate_selection(
             "producing_checkpoint": exclusions["producing_checkpoint"],
         },
         "trusted_inventory_checkpoint": trusted_inventory_checkpoint,
-        "producing_checkpoint": producing_checkpoint,
+        "producing_checkpoint": trusted_inventory_checkpoint,
         "selection_influence": {
             "hierarchy_output_used": False,
             "oracle_output_used": False,
@@ -349,16 +351,33 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        source_inventory = load_schema_validated_json(
-            args.source_inventory, SOURCE_INVENTORY_SCHEMA, "source inventory"
-        )
-        exclusions = load_schema_validated_json(
-            args.exclusions, EXCLUSIONS_SCHEMA, "exclusions"
-        )
-        inventory_attestation = load_schema_validated_json(
-            args.inventory_attestation,
+        source_inventory_bytes = args.source_inventory.read_bytes()
+        exclusions_bytes = args.exclusions.read_bytes()
+        inventory_attestation_bytes = args.inventory_attestation.read_bytes()
+        inventory_attestation = _load_schema_validated_json_bytes(
+            inventory_attestation_bytes,
             CHECKPOINT_ATTESTATION_SCHEMA,
             "inventory attestation",
+        )
+    except (OSError, ValueError) as error:
+        raise SelectionValidationError("invalid selection input") from error
+    for role, exact_bytes in (
+        ("source_inventory", source_inventory_bytes),
+        ("exclusions", exclusions_bytes),
+    ):
+        artifact = _artifact_for_role(inventory_attestation, role)
+        exact_sha256 = sha256_bytes(exact_bytes)
+        if (
+            artifact.get("sha256") != exact_sha256
+            or artifact.get("bundle_sha256") != exact_sha256
+        ):
+            _fail(f"{role.replace('_', ' ')} exact bytes do not match attestation hash")
+    try:
+        source_inventory = _load_schema_validated_json_bytes(
+            source_inventory_bytes, SOURCE_INVENTORY_SCHEMA, "source inventory"
+        )
+        exclusions = _load_schema_validated_json_bytes(
+            exclusions_bytes, EXCLUSIONS_SCHEMA, "exclusions"
         )
     except ValueError as error:
         raise SelectionValidationError("invalid selection input") from error

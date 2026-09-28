@@ -21,9 +21,11 @@ from tools.validation.mnq_5m_inventory_calendar import (
     verify_inventory_calendar,
 )
 from tools.validation.mnq_5m_inventory_common import (
+    EXCLUSION_REASON_ORDER,
     _load_schema_validated_json_bytes,
     canonical_payload_sha256,
     load_schema_validated_json,
+    reconcile_inventory_entries,
     sha256_bytes,
     write_json_atomically,
 )
@@ -32,6 +34,10 @@ from tools.validation.mnq_5m_inventory_evidence import (
     ValidatedInventoryEvidence,
     finalize_inventory_evidence,
     load_inventory_evidence,
+)
+from tools.validation.mnq_5m_checkpoint_verify import (
+    CheckpointVerificationError,
+    verify_inventory_toolset_checkpoint,
 )
 
 
@@ -48,17 +54,6 @@ CANONICALIZATION_ID = "NINJATRADER_SEMICOLON_OHLCV_UTF8_LF_FINAL_NEWLINE_V1"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 BAR_TIMESTAMP_RE = re.compile(r"^[0-9]{8} [0-9]{6}$")
-
-EXCLUSION_REASON_ORDER: tuple[str, ...] = (
-    "INCOMPLETE_PROVENANCE",
-    "FEWER_THAN_250_NATIVE_BARS",
-    "DUPLICATE_OR_NON_MONOTONIC_TIMESTAMPS",
-    "TRADING_HOURS_INCONSISTENCY",
-    "MALFORMED_OR_NON_FINITE_OHLCV",
-    "INVALID_OHLC_GEOMETRY",
-    "UNEXPECTED_MISSING_BARS",
-    "SOURCE_CORRUPTION",
-)
 
 QUALITY_KEYS = frozenset(
     {
@@ -671,38 +666,10 @@ def _cross_reconcile(
     ):
         _fail("inventory/exclusions identity mismatch")
 
-    inventory_entries = _sequence(source_inventory.get("entries"), "source inventory entries")
-    if source_inventory.get("candidate_count") != len(inventory_entries):
-        _fail("source inventory candidate count mismatch")
-    eligible_count = 0
-    expected_exclusions: list[dict[str, object]] = []
-    previous_date: str | None = None
-    for raw_entry in inventory_entries:
-        entry = _mapping(raw_entry, "source inventory entry")
-        trading_date = entry.get("trading_date")
-        if not isinstance(trading_date, str) or (previous_date is not None and trading_date <= previous_date):
-            _fail("source inventory dates are not strictly chronological")
-        previous_date = trading_date
-        reasons = list(_sequence(entry.get("exclusion_reasons"), "inventory exclusion reasons"))
-        if any(reason not in EXCLUSION_REASON_ORDER for reason in reasons):
-            _fail("inventory contains a forbidden exclusion reason")
-        if reasons != [reason for reason in EXCLUSION_REASON_ORDER if reason in reasons]:
-            _fail("inventory exclusion reasons are not in frozen order")
-        if entry.get("eligible") is True:
-            if reasons:
-                _fail("eligible inventory entry has exclusion reasons")
-            eligible_count += 1
-        elif entry.get("eligible") is False and reasons:
-            expected_exclusions.append({"trading_date": trading_date, "reasons": reasons})
-        else:
-            _fail("inventory disposition does not reconcile")
-    if source_inventory.get("eligible_count") != eligible_count:
-        _fail("source inventory eligible count mismatch")
-    if list(_sequence(exclusions.get("entries"), "exclusions entries")) != expected_exclusions:
-        _fail("source inventory and exclusions do not reconcile")
-    expected_outcome = "READY_FOR_SELECTION" if eligible_count >= 10 else "COHORT_INCOMPLETE"
-    if source_inventory.get("cohort_outcome") != expected_outcome:
-        _fail("inventory cohort outcome mismatch")
+    try:
+        reconcile_inventory_entries(source_inventory, exclusions)
+    except ValueError as error:
+        _fail(str(error))
 
     if not require_provenance:
         return
@@ -819,6 +786,20 @@ def finalize_inventory_bundle(
 ) -> InventoryFinalizationResult:
     """Verify both evidence domains and atomically publish all three results."""
 
+    try:
+        verify_inventory_toolset_checkpoint(
+            repository_path=repository_path,
+            bundle_root=repository_path,
+            toolset_manifest_path=TOOLSET_MANIFEST_REPOSITORY_PATH,
+            trusted_toolset_checkpoint=trusted_toolset_checkpoint,
+            expected_repository_identity=expected_repository_identity,
+            expected_pinned_production_commit=PINNED_HIERARCHY_COMMIT,
+        )
+    except CheckpointVerificationError as error:
+        raise InventoryValidationError(
+            "inventory policy toolset checkpoint verification failed"
+        ) from error
+
     loaded = load_inventory_evidence(
         runtime_capture_path=runtime_capture_path,
         inventory_scan_path=inventory_scan_path,
@@ -863,7 +844,7 @@ def finalize_inventory_bundle(
         calendar=calendar,
         inventory_provenance_sha256=provenance_sha256,
         inventory_scan_sha256=inventory_scan_sha256,
-        producing_checkpoint=producing_checkpoint,
+        producing_checkpoint=trusted_toolset_checkpoint,
     )
     _validate_document(built.source_inventory, SOURCE_INVENTORY_SCHEMA, "source inventory")
     _validate_document(built.exclusions, EXCLUSIONS_SCHEMA, "exclusions")

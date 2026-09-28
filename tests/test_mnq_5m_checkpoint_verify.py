@@ -7,17 +7,34 @@ import os
 import subprocess
 from copy import deepcopy
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
 
 import tools.validation.mnq_5m_checkpoint_verify as checkpoint_verify
-from tools.validation import mnq_5m_acquisition
+import tools.validation.mnq_5m_selection as selection_module
+from tools.validation import (
+    mnq_5m_acquisition,
+    mnq_5m_inventory,
+    mnq_5m_inventory_calendar,
+    mnq_5m_inventory_common,
+    mnq_5m_inventory_evidence,
+)
 from tools.validation.mnq_5m_checkpoint_verify import (
     CheckpointVerificationError,
     _verify_checkpoints_with_test_pinned_commit,
     main as verifier_main,
 )
+from tools.validation.mnq_5m_inventory import build_inventory
+from tools.validation.mnq_5m_inventory_calendar import (
+    SessionSegment,
+    VerifiedInventoryCalendar,
+    VerifiedSession,
+)
+from tools.validation.mnq_5m_inventory_evidence import ValidatedInventoryEvidence
+from tools.validation.mnq_5m_selection import generate_selection
 
 
 REPOSITORY_IDENTITY = "https://github.com/sikaodeluwei/trader_v1.git"
@@ -830,6 +847,75 @@ def _valid_inventory_provenance_document(
     }
 
 
+def _task7_inventory_outputs(
+    *,
+    toolset_checkpoint: str,
+    inventory_scan_sha256: str,
+    inventory_provenance_sha256: str,
+) -> tuple[dict[str, object], dict[str, object]]:
+    sessions: list[VerifiedSession] = []
+    for number in range(1, 11):
+        trading_date = date(2026, 7, number)
+        begin = datetime.combine(
+            trading_date - timedelta(days=1),
+            datetime.min.time(),
+            timezone(timedelta(hours=-5)),
+        ).replace(hour=17)
+        end = datetime.combine(
+            trading_date,
+            datetime.min.time(),
+            timezone(timedelta(hours=-5)),
+        ).replace(hour=16)
+        segment = SessionSegment(
+            begin_application=begin,
+            end_application=end,
+            begin_pc=begin.astimezone(timezone.utc),
+            end_pc=end.astimezone(timezone.utc),
+        )
+        sessions.append(
+            VerifiedSession(
+                civil_date=trading_date,
+                trading_date=trading_date,
+                holiday_name=None,
+                partial_session=False,
+                segments=(segment,),
+                observation=MappingProxyType(
+                    {
+                        "classification": "SESSION",
+                        "exchange_trading_date": trading_date.isoformat(),
+                        "quality": _inventory_quality(),
+                    }
+                ),
+            )
+        )
+    calendar = VerifiedInventoryCalendar(
+        sessions=tuple(sessions),
+        earliest_session_begin=sessions[0].segments[0].begin_application,
+        latest_session_end=sessions[-1].segments[-1].end_application,
+        template_sha256="8" * 64,
+        calendar_binding_sha256="9" * 64,
+    )
+    evidence = ValidatedInventoryEvidence(
+        loaded=None,  # type: ignore[arg-type]
+        provider_acquisition=MappingProxyType({}),
+        qualifying_request=MappingProxyType({}),
+        artifact_hashes=MappingProxyType(
+            {"inventory_scan": inventory_scan_sha256}
+        ),
+        external_evidence=(),
+        earliest_session_begin=calendar.earliest_session_begin,
+        latest_session_end=calendar.latest_session_end,
+    )
+    built = build_inventory(
+        evidence=evidence,
+        calendar=calendar,
+        inventory_provenance_sha256=inventory_provenance_sha256,
+        inventory_scan_sha256=inventory_scan_sha256,
+        producing_checkpoint=toolset_checkpoint,
+    )
+    return dict(built.source_inventory), dict(built.exclusions)
+
+
 def _build_inventory_checkpoints(
     tmp_path: Path,
     *,
@@ -838,6 +924,7 @@ def _build_inventory_checkpoints(
     artifact_mutators=None,
     provenance_mutator=None,
     inventory_mutator=None,
+    exclusions_mutator=None,
     registry_mutator=None,
 ) -> InventoryCheckpointFixture:
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -975,67 +1062,19 @@ def _build_inventory_checkpoints(
     provenance_path = repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS["inventory_provenance"]
     _write_canonical_json(provenance_path, provenance)
 
-    entries = []
-    for number in range(1, 11):
-        trading_date = f"2026-07-{number:02d}"
-        entries.append(
-            {
-                "trading_date": trading_date,
-                "eligible": True,
-                "exclusion_reasons": [],
-                "session_begin_application": f"202607{number:02d} 170000",
-                "session_end_application": f"202607{number:02d} 160000",
-                "observed_native_bar_count": 276,
-                "first_250_source_sha256": "a" * 64,
-                "complete_session_source_sha256": "b" * 64,
-            }
-        )
-    policy = {
-        "contract_label": "MNQ SEP26",
-        "full_name": "MNQ SEP26",
-        "expiry_month": 9,
-        "expiry_year": 2026,
-        "candidate_date_start": "2026-06-22",
-        "candidate_date_end": "2026-07-24",
-    }
-    inventory: dict[str, object] = {
-        "schema_version": "2.0",
-        "status": "FROZEN_INVENTORY",
-        "cohort_outcome": "READY_FOR_SELECTION",
-        "cohort_id": "mnq-202609-5m-v1",
-        "contract_policy": policy,
-        "inventory_scan": {
-            "path": "inventory_scan.json",
-            "schema_version": "1.0",
-            "sha256": internal_hashes["inventory_scan"],
-            "producing_checkpoint": toolset_checkpoint,
-        },
-        "inventory_provenance": {
-            "path": "inventory_provenance.json",
-            "schema_version": "1.0",
-            "sha256": _sha256(provenance_path),
-            "producing_checkpoint": toolset_checkpoint,
-        },
-        "producing_checkpoint": toolset_checkpoint,
-        "candidate_count": 10,
-        "eligible_count": 10,
-        "entries": entries,
-        "aggregate_payload_sha256": "",
-    }
+    inventory, exclusions = _task7_inventory_outputs(
+        toolset_checkpoint=toolset_checkpoint,
+        inventory_scan_sha256=internal_hashes["inventory_scan"],
+        inventory_provenance_sha256=_sha256(provenance_path),
+    )
+    policy = inventory["contract_policy"]
     if inventory_mutator is not None:
         inventory_mutator(inventory)
     inventory_path = repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS["source_inventory"]
     _write_canonical_json(inventory_path, inventory, aggregate=True)
-    exclusions: dict[str, object] = {
-        "schema_version": "2.0",
-        "status": "FROZEN_INVENTORY",
-        "cohort_outcome": "READY_FOR_SELECTION",
-        "cohort_id": "mnq-202609-5m-v1",
-        "source_inventory_sha256": _sha256(inventory_path),
-        "producing_checkpoint": toolset_checkpoint,
-        "entries": [],
-        "aggregate_payload_sha256": "",
-    }
+    exclusions["source_inventory_sha256"] = _sha256(inventory_path)
+    if exclusions_mutator is not None:
+        exclusions_mutator(exclusions)
     _write_canonical_json(
         repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS["exclusions"],
         exclusions,
@@ -1736,6 +1775,203 @@ def test_verifies_first_class_inventory_checkpoint_from_immutable_bytes(
     assert result["attestation_sha256"] == _attestation_hash(result)
 
 
+def _make_first_inventory_entry_ineligible(
+    inventory: dict[str, object], reasons: list[str]
+) -> None:
+    first = inventory["entries"][0]
+    first["eligible"] = False
+    first["exclusion_reasons"] = reasons
+    inventory["eligible_count"] = 9
+    inventory["cohort_outcome"] = "COHORT_INCOMPLETE"
+
+
+def _set_incomplete_exclusions(
+    exclusions: dict[str, object], entries: list[dict[str, object]]
+) -> None:
+    exclusions["cohort_outcome"] = "COHORT_INCOMPLETE"
+    exclusions["entries"] = entries
+
+
+def test_inventory_checkpoint_rejects_missing_exclusion_row(tmp_path: Path) -> None:
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        inventory_mutator=lambda value: _make_first_inventory_entry_ineligible(
+            value, ["SOURCE_CORRUPTION"]
+        ),
+        exclusions_mutator=lambda value: _set_incomplete_exclusions(value, []),
+    )
+
+    with pytest.raises(CheckpointVerificationError, match="reconcile"):
+        _verify_inventory(fixture)
+
+
+def test_inventory_checkpoint_rejects_extra_exclusion_row(tmp_path: Path) -> None:
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        exclusions_mutator=lambda value: value.__setitem__(
+            "entries",
+            [{"trading_date": "2026-07-01", "reasons": ["SOURCE_CORRUPTION"]}],
+        ),
+    )
+
+    with pytest.raises(CheckpointVerificationError, match="reconcile"):
+        _verify_inventory(fixture)
+
+
+def test_inventory_checkpoint_rejects_changed_exclusion_row(tmp_path: Path) -> None:
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        inventory_mutator=lambda value: _make_first_inventory_entry_ineligible(
+            value, ["SOURCE_CORRUPTION"]
+        ),
+        exclusions_mutator=lambda value: _set_incomplete_exclusions(
+            value,
+            [
+                {
+                    "trading_date": "2026-07-01",
+                    "reasons": ["UNEXPECTED_MISSING_BARS"],
+                }
+            ],
+        ),
+    )
+
+    with pytest.raises(CheckpointVerificationError, match="reconcile"):
+        _verify_inventory(fixture)
+
+
+def test_inventory_checkpoint_rejects_exclusion_reason_order_mutation(
+    tmp_path: Path,
+) -> None:
+    reasons = ["SOURCE_CORRUPTION", "FEWER_THAN_250_NATIVE_BARS"]
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        inventory_mutator=lambda value: _make_first_inventory_entry_ineligible(
+            value, reasons
+        ),
+        exclusions_mutator=lambda value: _set_incomplete_exclusions(
+            value,
+            [{"trading_date": "2026-07-01", "reasons": reasons}],
+        ),
+    )
+
+    with pytest.raises(CheckpointVerificationError, match="reason order"):
+        _verify_inventory(fixture)
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    ["READY_FOR_SELECTION", "COHORT_INCOMPLETE"],
+    ids=["false-ready", "false-incomplete"],
+)
+def test_inventory_checkpoint_rejects_outcome_threshold_mutation(
+    tmp_path: Path, outcome: str
+) -> None:
+    if outcome == "READY_FOR_SELECTION":
+        fixture = _build_inventory_checkpoints(
+            tmp_path,
+            inventory_mutator=lambda value: (
+                _make_first_inventory_entry_ineligible(value, ["SOURCE_CORRUPTION"]),
+                value.__setitem__("cohort_outcome", outcome),
+            ),
+            exclusions_mutator=lambda value: value.__setitem__(
+                "entries",
+                [
+                    {
+                        "trading_date": "2026-07-01",
+                        "reasons": ["SOURCE_CORRUPTION"],
+                    }
+                ],
+            ),
+        )
+    else:
+        fixture = _build_inventory_checkpoints(
+            tmp_path,
+            inventory_mutator=lambda value: value.__setitem__(
+                "cohort_outcome", outcome
+            ),
+            exclusions_mutator=lambda value: value.__setitem__(
+                "cohort_outcome", outcome
+            ),
+        )
+
+    with pytest.raises(CheckpointVerificationError, match="outcome"):
+        _verify_inventory(fixture)
+
+
+def _bind_executing_inventory_modules_to_fixture(
+    fixture: InventoryCheckpointFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for relative in EXPECTED_INVENTORY_TOOLSET_COMPONENT_PATHS.values():
+        (fixture.repo / relative).write_bytes(
+            _git_blob(fixture.repo, fixture.toolset_checkpoint, relative)
+        )
+    (fixture.repo / TOOLSET_MANIFEST_PATH).write_bytes(
+        _git_blob(fixture.repo, fixture.toolset_checkpoint, TOOLSET_MANIFEST_PATH)
+    )
+    modules = {
+        "inventory_builder": mnq_5m_inventory,
+        "inventory_calendar_verifier": mnq_5m_inventory_calendar,
+        "inventory_evidence_finalizer": mnq_5m_inventory_evidence,
+        "inventory_common": mnq_5m_inventory_common,
+        "checkpoint_verifier": checkpoint_verify,
+    }
+    for role, module in modules.items():
+        monkeypatch.setattr(
+            module,
+            "__file__",
+            str(fixture.repo / EXPECTED_INVENTORY_TOOLSET_COMPONENT_PATHS[role]),
+        )
+
+
+def _verify_inventory_toolset_only(fixture: InventoryCheckpointFixture) -> dict[str, object]:
+    return checkpoint_verify.verify_inventory_toolset_checkpoint(
+        repository_path=fixture.repo,
+        bundle_root=fixture.repo,
+        toolset_manifest_path=TOOLSET_MANIFEST_PATH,
+        trusted_toolset_checkpoint=fixture.toolset_checkpoint,
+        expected_repository_identity=REPOSITORY_IDENTITY,
+        expected_pinned_production_commit=fixture.pinned_commit,
+    )
+
+
+def test_toolset_only_gate_verifies_exact_frozen_23_role_policy_toolset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _build_inventory_checkpoints(tmp_path)
+    _bind_executing_inventory_modules_to_fixture(fixture, monkeypatch)
+
+    result = _verify_inventory_toolset_only(fixture)
+
+    assert result["status"] == "VERIFIED"
+    assert result["producing_checkpoint"] == fixture.component_commit
+    assert result["trusted_toolset_checkpoint"] == fixture.toolset_checkpoint
+    assert result["component_count"] == 23
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        "inventory_builder",
+        "inventory_calendar_verifier",
+        "inventory_evidence_finalizer",
+        "inventory_common",
+        "source_inventory_schema",
+    ],
+)
+def test_toolset_only_gate_rejects_executing_policy_or_schema_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    role: str,
+) -> None:
+    fixture = _build_inventory_checkpoints(tmp_path)
+    _bind_executing_inventory_modules_to_fixture(fixture, monkeypatch)
+    path = fixture.repo / EXPECTED_INVENTORY_TOOLSET_COMPONENT_PATHS[role]
+    path.write_bytes(path.read_bytes() + b"\nreview mutation\n")
+
+    with pytest.raises(CheckpointVerificationError, match=role):
+        _verify_inventory_toolset_only(fixture)
+
+
 def test_verifies_selection_as_direct_child_of_inventory_checkpoint(
     tmp_path: Path,
 ) -> None:
@@ -1764,6 +2000,86 @@ def test_verifies_selection_as_direct_child_of_inventory_checkpoint(
     assert registry["checkpoint"] == fixture.selection_checkpoint
     assert registry["producing_checkpoint"] == fixture.inventory_checkpoint
     assert result["attestation_sha256"] == _attestation_hash(result)
+
+
+def test_real_task7_outputs_flow_through_component_toolset_inventory_selection_chain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _build_inventory_checkpoints(tmp_path)
+    inventory_attestation = _verify_inventory(fixture)
+    schema = json.loads(
+        selection_module.CHECKPOINT_ATTESTATION_SCHEMA.read_bytes()
+    )
+    pending: list[object] = [schema]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, dict):
+            properties = current.get("properties")
+            if isinstance(properties, dict):
+                pinned = properties.get("pinned_production_hierarchy_commit")
+                if isinstance(pinned, dict) and "const" in pinned:
+                    pinned["const"] = fixture.pinned_commit
+            pending.extend(current.values())
+        elif isinstance(current, list):
+            pending.extend(current)
+    synthetic_attestation_schema = tmp_path / "checkpoint_attestation_v2.schema.json"
+    synthetic_attestation_schema.write_text(json.dumps(schema), encoding="utf-8")
+    monkeypatch.setattr(
+        selection_module,
+        "CHECKPOINT_ATTESTATION_SCHEMA",
+        synthetic_attestation_schema,
+    )
+    inventory = json.loads(
+        fixture.inventory_artifacts["source_inventory"].read_bytes()
+    )
+    exclusions = json.loads(fixture.inventory_artifacts["exclusions"].read_bytes())
+    registry = generate_selection(
+        source_inventory=inventory,
+        exclusions=exclusions,
+        inventory_attestation=inventory_attestation,
+        trusted_inventory_checkpoint=fixture.inventory_checkpoint,
+        producing_checkpoint=fixture.inventory_checkpoint,
+    )
+
+    _git(fixture.repo, "checkout", "--detach", fixture.inventory_checkpoint)
+    _write_canonical_json(
+        fixture.repo / V2_SELECTION_REGISTRY_PATH,
+        registry,
+    )
+    fixture.selection_checkpoint = _commit(
+        fixture.repo, "Freeze generated inventory selection"
+    )
+    fixture.registry.write_bytes(
+        _git_blob(
+            fixture.repo,
+            fixture.selection_checkpoint,
+            V2_SELECTION_REGISTRY_PATH,
+        )
+    )
+
+    result = _verify_selection(fixture)
+
+    assert _git(
+        fixture.repo,
+        "rev-parse",
+        f"{fixture.toolset_checkpoint}^",
+    ).stdout.strip() == fixture.component_commit
+    assert _git(
+        fixture.repo,
+        "rev-parse",
+        f"{fixture.inventory_checkpoint}^",
+    ).stdout.strip() == fixture.toolset_checkpoint
+    assert _git(
+        fixture.repo,
+        "rev-parse",
+        f"{fixture.selection_checkpoint}^",
+    ).stdout.strip() == fixture.inventory_checkpoint
+    assert inventory["producing_checkpoint"] == fixture.toolset_checkpoint
+    assert exclusions["producing_checkpoint"] == fixture.toolset_checkpoint
+    assert registry["producing_checkpoint"] == fixture.inventory_checkpoint
+    assert result["stage"] == "SELECTION"
+    assert result["status"] == "VERIFIED"
 
 
 def test_rejects_inventory_toolset_with_wrong_executing_verifier_hash(

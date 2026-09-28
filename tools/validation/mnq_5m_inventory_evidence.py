@@ -170,12 +170,39 @@ def _validate_cross_bindings(
         _fail("inventory scan/runtime Trading Hours mismatch")
     runtime_lifecycle = _mapping(runtime.get("lifecycle"), "runtime lifecycle")
     acquisition_lifecycle = _mapping(acquisition.get("lifecycle"), "acquisition lifecycle")
+    runtime_initialized = _parse_iso(
+        runtime_lifecycle.get("initialized_at"), "runtime initialized at"
+    )
+    runtime_realtime = _parse_iso(
+        runtime_lifecycle.get("realtime_observed_at"), "runtime realtime observed at"
+    )
+    runtime_armed = _parse_iso(runtime_lifecycle.get("armed_at"), "runtime armed at")
+    scan_completed = _parse_iso(scan.get("completed_at"), "scan completed at")
+    runtime_completed = _parse_iso(
+        runtime_lifecycle.get("completed_at"), "runtime completed at"
+    )
+    publication_completed = _parse_iso(
+        acquisition_lifecycle.get("inventory_scan_completed_at"),
+        "inventory scan completion marker",
+    )
     if (
-        runtime_lifecycle.get("initialized_at") != acquisition_lifecycle.get("post_request_initialized_at")
-        or runtime_lifecycle.get("realtime_observed_at") != acquisition_lifecycle.get("post_request_realtime_at")
-        or runtime_lifecycle.get("armed_at") != acquisition_lifecycle.get("inventory_scan_armed_at")
-        or runtime_lifecycle.get("completed_at") != acquisition_lifecycle.get("inventory_scan_completed_at")
-        or scan.get("completed_at") != runtime_lifecycle.get("completed_at")
+        runtime_initialized
+        != _parse_iso(
+            acquisition_lifecycle.get("post_request_initialized_at"),
+            "post-request initialized at",
+        )
+        or runtime_realtime
+        != _parse_iso(
+            acquisition_lifecycle.get("post_request_realtime_at"),
+            "post-request realtime at",
+        )
+        or runtime_armed
+        != _parse_iso(
+            acquisition_lifecycle.get("inventory_scan_armed_at"),
+            "inventory scan armed at",
+        )
+        or scan_completed != runtime_completed
+        or runtime_completed >= publication_completed
     ):
         _fail("inventory lifecycle cross-binding mismatch")
     trigger = _mapping(acquisition.get("historical_trigger"), "historical trigger")
@@ -508,10 +535,23 @@ def _validate_provider(
     )
     armed = _marker_times(all_lines, marker + " inventory scan armed", log_timezone)
     completed = _marker_times(all_lines, marker + " inventory scan complete", log_timezone)
+    pre_request_initializations = [
+        value for value in initialized if value <= declared["pre_request_realtime_at"]
+    ]
+    post_request_initializations = [
+        value
+        for value in initialized
+        if declared["request_observed_at"]
+        < value
+        <= declared["post_request_realtime_at"]
+    ]
     if (
         sorted(pre_post_realtime)
         != sorted([declared["pre_request_realtime_at"], declared["post_request_realtime_at"]])
-        or initialized != [declared["post_request_initialized_at"]]
+        or not pre_request_initializations
+        or post_request_initializations != [declared["post_request_initialized_at"]]
+        or len(pre_request_initializations) + len(post_request_initializations)
+        != len(initialized)
         or armed != [declared["inventory_scan_armed_at"]]
         or completed != [declared["inventory_scan_completed_at"]]
     ):

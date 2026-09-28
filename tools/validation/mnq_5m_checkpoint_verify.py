@@ -18,6 +18,13 @@ from typing import Any, Mapping
 
 from jsonschema import Draft202012Validator, FormatChecker
 
+try:
+    from tools.validation.mnq_5m_inventory_common import reconcile_inventory_entries
+except ModuleNotFoundError:  # pragma: no cover - direct-script import path
+    from mnq_5m_inventory_common import (  # type: ignore[no-redef]
+        reconcile_inventory_entries,
+    )
+
 
 VERIFIER_VERSION = "2.0"
 LEGACY_VERIFIER_VERSION = "1.0"
@@ -668,6 +675,117 @@ def _verify_inventory_toolset(
     )
 
 
+def verify_inventory_toolset_checkpoint(
+    *,
+    repository_path: str | Path,
+    bundle_root: str | Path,
+    toolset_manifest_path: str | Path,
+    trusted_toolset_checkpoint: str,
+    expected_repository_identity: str,
+    expected_pinned_production_commit: str,
+) -> dict[str, Any]:
+    """Verify the frozen inventory policy toolset before Task 7 executes."""
+
+    repository = Path(repository_path).resolve()
+    bundle = Path(bundle_root).resolve()
+    if not repository.is_dir() or not bundle.is_dir():
+        _fail("repository and bundle roots must exist")
+    _assert_no_grafts(repository)
+    trusted = _immutable_object_id(
+        trusted_toolset_checkpoint, "trusted toolset checkpoint"
+    )
+    pinned = _immutable_object_id(
+        expected_pinned_production_commit, "pinned production checkpoint"
+    )
+    actual_identity = _run_git(
+        repository, "config", "--get", "remote.origin.url"
+    ).stdout.strip()
+    if _normalized_identity(actual_identity) != _normalized_identity(
+        expected_repository_identity
+    ):
+        _fail("repository identity does not match the expected trader_v1 repository")
+    _commit_exists(repository, pinned, "pinned production checkpoint")
+    _commit_exists(repository, trusted, "trusted toolset checkpoint")
+    _assert_strict_ancestor(
+        repository,
+        pinned,
+        trusted,
+        "pinned production/toolset ancestry",
+    )
+
+    manifest_bundle = _contained_bundle_input(
+        bundle, toolset_manifest_path, "toolset manifest path"
+    )
+    snapshots: dict[Path, bytes] = {}
+    (
+        _manifest,
+        manifest_bytes,
+        manifest_producer,
+        artifacts,
+        component_records,
+        _schema_bytes,
+        executing_verifier_hash,
+    ) = _verify_inventory_toolset(
+        repository=repository,
+        bundle=bundle,
+        snapshots=snapshots,
+        manifest_bundle=manifest_bundle,
+        trusted_toolset_checkpoint=trusted,
+        expected_pinned_production_commit=pinned,
+    )
+
+    executing_modules = {
+        "inventory_builder": "tools.validation.mnq_5m_inventory",
+        "inventory_calendar_verifier": "tools.validation.mnq_5m_inventory_calendar",
+        "inventory_evidence_finalizer": "tools.validation.mnq_5m_inventory_evidence",
+        "inventory_common": "tools.validation.mnq_5m_inventory_common",
+        "checkpoint_verifier": __name__,
+    }
+    for role, module_name in executing_modules.items():
+        module = sys.modules.get(module_name)
+        module_path_value = getattr(module, "__file__", None) if module is not None else None
+        expected_path = (
+            repository / REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS[role]
+        ).resolve()
+        if not isinstance(module_path_value, str) or Path(module_path_value).resolve() != expected_path:
+            _fail(f"executing {role} path differs from frozen tool identity")
+        if _sha256(_snapshot_path(snapshots, expected_path, f"executing {role}")) != component_records[role]["sha256"]:
+            _fail(f"executing {role} differs from frozen tool identity")
+
+    executing_root = Path(__file__).resolve().parents[2]
+    for role in (
+        "toolset_manifest_schema",
+        "inventory_scan_schema",
+        "inventory_runtime_capture_schema",
+        "inventory_acquisition_evidence_schema",
+        "inventory_provenance_schema",
+        "source_inventory_schema",
+        "exclusion_ledger_schema",
+        "selection_registry_schema",
+        "checkpoint_attestation_schema",
+    ):
+        expected_path = (
+            repository / REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS[role]
+        ).resolve()
+        executing_path = (
+            executing_root / REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS[role]
+        ).resolve()
+        if executing_path != expected_path:
+            _fail(f"executing {role} path differs from frozen tool identity")
+        if _sha256(_snapshot_path(snapshots, executing_path, f"executing {role}")) != component_records[role]["sha256"]:
+            _fail(f"executing {role} differs from frozen tool identity")
+
+    return {
+        "status": "VERIFIED",
+        "trusted_toolset_checkpoint": trusted,
+        "producing_checkpoint": manifest_producer,
+        "manifest_sha256": _sha256(manifest_bytes),
+        "component_count": len(component_records),
+        "artifacts": artifacts,
+        "executing_verifier_sha256": executing_verifier_hash,
+    }
+
+
 def _verify_inventory_documents(
     *,
     repository: Path,
@@ -814,6 +932,10 @@ def _verify_inventory_documents(
         != source_inventory.get("cohort_outcome")
     ):
         _fail("inventory/exclusions identity mismatch")
+    try:
+        reconcile_inventory_entries(source_inventory, exclusions)
+    except ValueError as error:
+        _fail(str(error))
 
     for reference_name, role in (
         ("inventory_scan", "inventory_scan"),
