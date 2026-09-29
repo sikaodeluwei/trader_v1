@@ -40,6 +40,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
+        private readonly object armPollLifecycleLock = new object();
         private bool armed;
         private int armPollActive;
         private int armPollPending;
@@ -113,21 +114,30 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         private void StartArmPolling()
         {
-            if (armPollTimer != null)
-                return;
+            lock (armPollLifecycleLock)
+            {
+                if (armPollTimer != null)
+                    return;
 
-            Interlocked.Exchange(ref armPollActive, 1);
-            armPollTimer = new System.Threading.Timer(
-                PollForArm,
-                null,
-                0,
-                ArmPollIntervalMilliseconds);
+                System.Threading.Timer timer = new System.Threading.Timer(
+                    PollForArm,
+                    null,
+                    Timeout.Infinite,
+                    Timeout.Infinite);
+                armPollTimer = timer;
+                Interlocked.Exchange(ref armPollActive, 1);
+                timer.Change(0, ArmPollIntervalMilliseconds);
+            }
         }
 
         private void StopArmPolling()
         {
-            Interlocked.Exchange(ref armPollActive, 0);
-            System.Threading.Timer timer = Interlocked.Exchange(ref armPollTimer, null);
+            System.Threading.Timer timer;
+            lock (armPollLifecycleLock)
+            {
+                Interlocked.Exchange(ref armPollActive, 0);
+                timer = Interlocked.Exchange(ref armPollTimer, null);
+            }
             if (timer != null)
                 timer.Dispose();
             Interlocked.Exchange(ref armPollPending, 0);
@@ -166,7 +176,18 @@ namespace NinjaTrader.NinjaScript.Indicators
                 || Interlocked.CompareExchange(ref exportStarted, 1, 0) != 0)
                 return;
 
-            if (!TryArmAcquisition())
+            bool armAccepted;
+            try
+            {
+                armAccepted = TryArmAcquisition();
+            }
+            catch
+            {
+                Interlocked.Exchange(ref exportStarted, 0);
+                throw;
+            }
+
+            if (!armAccepted)
             {
                 Interlocked.Exchange(ref exportStarted, 0);
                 return;

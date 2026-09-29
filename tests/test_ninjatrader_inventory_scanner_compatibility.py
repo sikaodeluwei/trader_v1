@@ -237,8 +237,46 @@ def test_bar_and_periodic_paths_share_one_single_shot_export_path() -> None:
         r"Interlocked\.CompareExchange\(ref exportStarted, 1, 0\)\s*!=\s*0",
         export,
     )
-    no_arm = export[export.index("if (!TryArmAcquisition())") :]
+    no_arm = export[export.index("if (!armAccepted)") :]
     assert "Interlocked.Exchange(ref exportStarted, 0);" in no_arm
+
+
+def test_arm_validation_exception_releases_gate_for_a_corrected_later_arm() -> None:
+    """Catches an invalid arm permanently blocking a later valid arm export."""
+    export = _method_body(_scanner_source(), "TryExportArmedAcquisition")
+
+    assert export.count("TryArmAcquisition()") == 1
+    guarded_validation = re.search(
+        r"bool\s+armAccepted\s*;\s*"
+        r"try\s*\{\s*armAccepted\s*=\s*TryArmAcquisition\(\)\s*;\s*\}\s*"
+        r"catch\s*\{\s*"
+        r"Interlocked\.Exchange\(ref\s+exportStarted,\s*0\)\s*;\s*"
+        r"throw\s*;\s*\}",
+        export,
+    )
+    assert guarded_validation is not None
+    assert guarded_validation.end() < export.index("if (!armAccepted)")
+
+
+def test_arm_poll_timer_is_published_disabled_before_it_can_fire() -> None:
+    """Catches a zero-due timer escaping disposal before field publication."""
+    source = _scanner_source()
+    start = _method_body(source, "StartArmPolling")
+    stop = _method_body(source, "StopArmPolling")
+
+    assert "private readonly object armPollLifecycleLock = new object();" in source
+    assert "lock (armPollLifecycleLock)" in start
+    assert "lock (armPollLifecycleLock)" in stop
+    assert re.search(
+        r"new\s+System\.Threading\.Timer\(\s*"
+        r"PollForArm,\s*null,\s*Timeout\.Infinite,\s*Timeout\.Infinite\s*\)",
+        start,
+    )
+    assert start.index("armPollTimer = timer;") < start.index(
+        "timer.Change(0, ArmPollIntervalMilliseconds);"
+    )
+    assert "Interlocked.Exchange(ref armPollTimer, null)" in stop
+    assert "timer.Dispose();" in stop
 
 
 def test_arm_polling_is_disposed_after_export_and_on_termination() -> None:
