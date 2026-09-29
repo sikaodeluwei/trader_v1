@@ -197,11 +197,18 @@ namespace NinjaTrader.NinjaScript.Indicators
             if (applicationTimeZone == null)
                 throw new InvalidOperationException(
                     "NinjaTrader application timezone is unavailable.");
+            if (Bars.TradingHours == null || Bars.TradingHours.TimeZoneInfo == null)
+                throw new InvalidOperationException(
+                    "Trading Hours timezone is unavailable.");
+            TimeZoneInfo tradingHoursTimeZone = Bars.TradingHours.TimeZoneInfo;
 
             IList<object> activeConnections = CaptureActiveConnections();
             List<object> observations = new List<object>();
             foreach (DateTime civilDate in EnumerateCivilDates())
-                observations.Add(CaptureSessionObservation(civilDate, applicationTimeZone));
+                observations.Add(CaptureSessionObservation(
+                    civilDate,
+                    applicationTimeZone,
+                    tradingHoursTimeZone));
 
             DateTimeOffset scanCompletedAtPc = DateTimeOffset.Now;
             object inventoryScan = BuildInventoryScan(
@@ -320,7 +327,10 @@ namespace NinjaTrader.NinjaScript.Indicators
             return result;
         }
 
-        private object CaptureSessionObservation(DateTime civilDate, TimeZoneInfo applicationTimeZone)
+        private object CaptureSessionObservation(
+            DateTime civilDate,
+            TimeZoneInfo applicationTimeZone,
+            TimeZoneInfo tradingHoursTimeZone)
         {
             TradingHours appliedTradingHours = Bars.TradingHours;
             ScheduleMetadata scheduleMetadata = ResolveScheduleMetadata(
@@ -338,7 +348,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                     segments.Add(CaptureSegment(
                         iterator.ActualSessionBegin,
                         iterator.ActualSessionEnd,
-                        applicationTimeZone));
+                        applicationTimeZone,
+                        tradingHoursTimeZone));
                 }
                 if (exchangeTradingDate > civilDate.Date)
                     break;
@@ -864,7 +875,11 @@ namespace NinjaTrader.NinjaScript.Indicators
             File.Move(temporaryPath, finalPath);
         }
 
-        private static SessionSegment CaptureSegment(DateTime pcBegin, DateTime pcEnd, TimeZoneInfo applicationTimeZone)
+        private static SessionSegment CaptureSegment(
+            DateTime pcBegin,
+            DateTime pcEnd,
+            TimeZoneInfo applicationTimeZone,
+            TimeZoneInfo tradingHoursTimeZone)
         {
             DateTimeOffset pcBeginOffset = AttachOffset(pcBegin, TimeZoneInfo.Local);
             DateTimeOffset pcEndOffset = AttachOffset(pcEnd, TimeZoneInfo.Local);
@@ -874,12 +889,18 @@ namespace NinjaTrader.NinjaScript.Indicators
             DateTimeOffset applicationEndOffset = TimeZoneInfo.ConvertTime(
                 pcEndOffset,
                 applicationTimeZone);
+            DateTimeOffset tradingHoursBeginOffset = TimeZoneInfo.ConvertTime(
+                pcBeginOffset,
+                tradingHoursTimeZone);
+            DateTimeOffset tradingHoursEndOffset = TimeZoneInfo.ConvertTime(
+                pcEndOffset,
+                tradingHoursTimeZone);
             return new SessionSegment
             {
                 ApplicationBegin = applicationBeginOffset.DateTime,
                 ApplicationEnd = applicationEndOffset.DateTime,
-                ApplicationBeginOffset = applicationBeginOffset,
-                ApplicationEndOffset = applicationEndOffset,
+                ApplicationBeginOffset = tradingHoursBeginOffset,
+                ApplicationEndOffset = tradingHoursEndOffset,
                 PcBeginOffset = pcBeginOffset,
                 PcEndOffset = pcEndOffset
             };

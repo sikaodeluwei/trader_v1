@@ -338,6 +338,54 @@ def test_session_observation_uses_exchange_date_and_exact_schedule_evidence() ->
     assert '"SESSION"' in body
 
 
+def test_session_evidence_uses_trading_hours_timezone_separate_from_application_timezone() -> None:
+    """Catches serializing session endpoints in the configured application timezone."""
+    source = _scanner_source()
+    export = _method_body(source, "TryExportArmedAcquisition")
+    observation = _method_body(source, "CaptureSessionObservation")
+    segment = _method_body(source, "CaptureSegment")
+
+    assert "Core.Globals.GeneralOptions.TimeZoneInfo" in export
+    assert "TimeZoneInfo tradingHoursTimeZone = Bars.TradingHours.TimeZoneInfo;" in export
+    assert re.search(
+        r"CaptureSessionObservation\(\s*civilDate,\s*applicationTimeZone,\s*"
+        r"tradingHoursTimeZone\s*\)",
+        export,
+    )
+    assert re.search(
+        r"CaptureSessionObservation\(\s*DateTime civilDate,\s*"
+        r"TimeZoneInfo applicationTimeZone,\s*TimeZoneInfo tradingHoursTimeZone\s*\)",
+        source,
+    )
+    assert "CaptureSegment(" in observation
+    assert "tradingHoursTimeZone" in observation
+    assert re.search(
+        r"CaptureSegment\(\s*DateTime pcBegin,\s*DateTime pcEnd,\s*"
+        r"TimeZoneInfo applicationTimeZone,\s*TimeZoneInfo tradingHoursTimeZone\s*\)",
+        source,
+    )
+    assert re.search(
+        r"TimeZoneInfo\.ConvertTime\(\s*pcBeginOffset,\s*applicationTimeZone\s*\)",
+        segment,
+    )
+    assert re.search(
+        r"TimeZoneInfo\.ConvertTime\(\s*pcEndOffset,\s*applicationTimeZone\s*\)",
+        segment,
+    )
+    assert re.search(
+        r"TimeZoneInfo\.ConvertTime\(\s*pcBeginOffset,\s*tradingHoursTimeZone\s*\)",
+        segment,
+    )
+    assert re.search(
+        r"TimeZoneInfo\.ConvertTime\(\s*pcEndOffset,\s*tradingHoursTimeZone\s*\)",
+        segment,
+    )
+    assert "ApplicationBegin = applicationBeginOffset.DateTime" in segment
+    assert "ApplicationEnd = applicationEndOffset.DateTime" in segment
+    assert "ApplicationBeginOffset = tradingHoursBeginOffset" in segment
+    assert "ApplicationEndOffset = tradingHoursEndOffset" in segment
+
+
 def test_session_observation_reads_full_and_partial_holiday_runtime_facts() -> None:
     """Catches fabricated null holiday/shortened-session schedule evidence."""
     source = _scanner_source()
