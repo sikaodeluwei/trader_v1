@@ -487,9 +487,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     High = Bars.GetHigh(index),
                     Low = Bars.GetLow(index),
                     Close = Bars.GetClose(index),
-                    Volume = Convert.ToDouble(
-                        Bars.GetVolume(index),
-                        CultureInfo.InvariantCulture)
+                    Volume = Bars.GetVolume(index)
                 });
             }
 
@@ -534,7 +532,8 @@ namespace NinjaTrader.NinjaScript.Indicators
                     invalidGeometryIndexes.Add(bar.SuppliedIndex);
                 if (IsFinite(bar.Volume) && bar.Volume < 0)
                     negativeVolumeIndexes.Add(bar.SuppliedIndex);
-                if (IsFinite(bar.Volume) && bar.Volume != Math.Truncate(bar.Volume))
+                if (IsFinite((double)bar.Volume)
+                    && bar.Volume != Math.Truncate((double)bar.Volume))
                     nonIntegralVolumeIndexes.Add(bar.SuppliedIndex);
                 if (bar.HasFiniteOhlcv)
                     bar.CanonicalRow = CanonicalizeBar(bar);
@@ -1055,7 +1054,7 @@ namespace NinjaTrader.NinjaScript.Indicators
             public double High { get; set; }
             public double Low { get; set; }
             public double Close { get; set; }
-            public double Volume { get; set; }
+            public long Volume { get; set; }
             public string CanonicalRow { get; set; }
 
             public bool HasFiniteOhlcv
@@ -1081,7 +1080,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                         && Close >= Low
                         && Close <= High
                         && Volume >= 0
-                        && Volume == Math.Truncate(Volume)
+                        && Volume == Math.Truncate((double)Volume)
                         && CanonicalRow != null;
                 }
             }

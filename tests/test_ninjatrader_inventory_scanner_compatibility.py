@@ -548,6 +548,57 @@ def test_native_bar_inspection_records_complete_supplied_order_quality() -> None
         assert key in body
 
 
+def test_native_volume_stays_integral_through_scanner_bar_facts() -> None:
+    """Catches precision loss before a native volume reaches canonicalization."""
+    source = _scanner_source()
+    body = _method_body(source, "InspectSessionBars")
+
+    assert re.search(r"Volume\s*=\s*Bars\.GetVolume\(index\)\s*\}", body)
+    assert "Convert.ToDouble" not in body
+    assert re.search(r"public\s+long\s+Volume\s*\{\s*get;\s*set;\s*\}", source)
+
+
+def test_large_native_volume_text_is_identical_between_scanner_and_exporter() -> None:
+    """Catches scanner/exporter byte drift above the IEEE-754 exact range."""
+    scanner = _scanner_source()
+    exporter = (
+        PROJECT_ROOT
+        / "tools"
+        / "validation"
+        / "ninjatrader"
+        / "ExportMnq5mCohortSource.cs"
+    ).read_text(encoding="utf-8")
+    inspect = _method_body(scanner, "InspectSessionBars")
+    canonicalize = _method_body(scanner, "CanonicalizeBar")
+    large_volume = 9007199254740993
+    expected_row = (
+        "20260622 170500;1;2;0.5;1.5;" + str(large_volume)
+    )
+
+    assert "Convert.ToDouble" not in inspect
+    assert re.search(r"public\s+long\s+Volume\s*\{", scanner)
+    assert "bar.Volume.ToString(CultureInfo.InvariantCulture)" in canonicalize
+    assert (
+        "Volume[barsAgo].ToString(CultureInfo.InvariantCulture)"
+        in exporter
+    )
+    assert expected_row.rsplit(";", 1)[-1] == str(large_volume)
+
+
+def test_large_native_volume_keeps_the_complete_canonical_row_hash() -> None:
+    """Catches a changed volume token changing the full canonical identity."""
+    source = _scanner_source()
+    canonicalize = _method_body(source, "CanonicalizeBar")
+    row = "20260622 170500;1;2;0.5;1.5;9007199254740993"
+    canonical = (row + "\n").encode("utf-8")
+
+    assert re.search(r"public\s+long\s+Volume\s*\{", source)
+    assert "bar.Volume.ToString(CultureInfo.InvariantCulture)" in canonicalize
+    assert hashlib.sha256(canonical).hexdigest() == (
+        "04923b8674dea3b27219260f8594cf2def47e800e90744d5b176d1d28e8e8a88"
+    )
+
+
 def test_canonicalization_and_hashing_match_the_selected_case_bytes() -> None:
     """Catches culture, newline, BOM, ordering, or final-newline drift."""
     source = _scanner_source()
