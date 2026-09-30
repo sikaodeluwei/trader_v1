@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import subprocess
@@ -101,6 +102,58 @@ def test_exporter_emits_only_neutral_v12_lifecycle_markers() -> None:
     assert '" export armed event_time="' in source
     assert "awaiting operator arm after Reload All Historical Data" not in source
     assert '" export armed after reload event_time="' not in source
+
+
+def test_windows_crlf_source_bytes_differ_from_literal_lf_canonical_bytes() -> None:
+    rows = [
+        "20260622 170500;1;2;0.5;1.5;10",
+        "20260622 171000;1.5;2.5;1;2;11",
+    ]
+    canonical_lf = ("\n".join(rows) + "\n").encode("utf-8")
+    windows_crlf = ("\r\n".join(rows) + "\r\n").encode("utf-8")
+
+    assert b"\r" not in canonical_lf
+    assert b"\r\n" in windows_crlf
+    assert hashlib.sha256(canonical_lf).hexdigest() != hashlib.sha256(
+        windows_crlf
+    ).hexdigest()
+
+
+def test_exporter_writes_bars_with_literal_lf_not_environment_newline() -> None:
+    source = EXPORTER.read_text(encoding="utf-8")
+
+    assert 'File.WriteAllText(sourceTemporary, string.Join("\\n", rows) + "\\n", Utf8NoBom);' in source
+    assert (
+        'File.WriteAllText(sourceTemporary, string.Join(Environment.NewLine, rows)'
+        not in source
+    )
+
+
+def test_exporter_rows_hash_as_scanner_canonical_lf_bytes() -> None:
+    source = EXPORTER.read_text(encoding="utf-8")
+    rows = [
+        "20260622 170500;1;2;0.5;1.5;10",
+        "20260622 171000;1.5;2.5;1;2;11",
+    ]
+    scanner_canonical = ("\n".join(rows) + "\n").encode("utf-8")
+
+    assert 'string.Join("\\n", rows) + "\\n"' in source
+    assert hashlib.sha256(scanner_canonical).hexdigest() == (
+        "b7b0410624b07ecddb6a524fb54f898ad999db2f2c3884e06f49faff89ec5dca"
+    )
+
+
+def test_exporter_source_bytes_keep_final_lf_and_utf8_without_bom() -> None:
+    source = EXPORTER.read_text(encoding="utf-8")
+
+    assert "new UTF8Encoding(false)" in source
+    assert 'string.Join("\\n", rows) + "\\n"' in source
+    assert 'new JavaScriptSerializer().Serialize(runtimeCapture) + Environment.NewLine' in source
+
+    rows = ["20260622 170500;1;2;0.5;1.5;10"]
+    canonical = ("\n".join(rows) + "\n").encode("utf-8")
+    assert canonical.endswith(b"\n")
+    assert not canonical.startswith(b"\xef\xbb\xbf")
 
 
 @pytest.mark.skipif(

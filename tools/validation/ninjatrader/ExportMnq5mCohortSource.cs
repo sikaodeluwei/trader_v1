@@ -215,7 +215,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                     Close[barsAgo].ToString("R", CultureInfo.InvariantCulture),
                     Volume[barsAgo].ToString(CultureInfo.InvariantCulture)));
             }
-            File.WriteAllText(sourceTemporary, string.Join(Environment.NewLine, rows) + Environment.NewLine, Utf8NoBom);
+            File.WriteAllText(sourceTemporary, string.Join("\n", rows) + "\n", Utf8NoBom);
             File.Move(sourceTemporary, sourcePath);
 
             string userData = Core.Globals.UserDataDir;
