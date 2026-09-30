@@ -192,10 +192,11 @@ def _strict_timestamps(
     *,
     values_key: str,
     count_key: str,
+    require_unique: bool = True,
 ) -> int:
     values = _sequence(quality.get(values_key), values_key)
     count = _integer(quality.get(count_key), count_key)
-    if count != len(values) or len(set(values)) != len(values):
+    if count != len(values) or (require_unique and len(set(values)) != len(values)):
         _fail(f"{count_key} does not reconcile with {values_key}")
     for value in values:
         if not isinstance(value, str) or BAR_TIMESTAMP_RE.fullmatch(value) is None:
@@ -264,6 +265,7 @@ def _quality_reasons(quality: Mapping[str, object]) -> tuple[list[str], int, str
         quality,
         values_key="unexpected_timestamps",
         count_key="unexpected_timestamp_count",
+        require_unique=False,
     )
 
     increasing = quality.get("supplied_order_strictly_increasing")

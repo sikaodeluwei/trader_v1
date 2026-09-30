@@ -562,6 +562,80 @@ def test_absolute_supplied_order_defect_indexes_are_accepted_and_mapped(
     )
 
 
+def test_duplicate_offgrid_observations_are_preserved_and_exclude_only_their_date() -> None:
+    quality = _quality(
+        observed_valid_count_from_session_start=275,
+        supplied_order_strictly_increasing=False,
+        duplicate_timestamp_indexes=[275],
+        duplicate_timestamp_count=1,
+        unexpected_timestamps=["20260622 160500", "20260622 160500"],
+        unexpected_timestamp_count=2,
+    )
+    original_quality = copy.deepcopy(quality)
+
+    result = _build([quality, _quality()])
+
+    entries = result.source_inventory["entries"]
+    assert entries[0]["eligible"] is False
+    assert entries[0]["exclusion_reasons"] == [
+        "DUPLICATE_OR_NON_MONOTONIC_TIMESTAMPS",
+        "TRADING_HOURS_INCONSISTENCY",
+    ]
+    assert entries[1]["eligible"] is True
+    assert quality == original_quality
+    assert quality["duplicate_timestamp_indexes"] == [275]
+    assert quality["duplicate_timestamp_count"] == 1
+    assert quality["unexpected_timestamps"] == [
+        "20260622 160500",
+        "20260622 160500",
+    ]
+    assert quality["unexpected_timestamp_count"] == 2
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (
+            lambda quality: quality.update(
+                unexpected_timestamps=["not-a-bar-timestamp"],
+                unexpected_timestamp_count=1,
+            ),
+            "invalid unexpected_timestamps",
+        ),
+        (
+            lambda quality: quality.update(
+                unexpected_timestamps=["20260622 160500", "20260622 160500"],
+                unexpected_timestamp_count=1,
+            ),
+            "unexpected_timestamp_count does not reconcile",
+        ),
+        (
+            lambda quality: quality.pop("unexpected_timestamps"),
+            "unknown or missing inventory quality fact",
+        ),
+    ],
+)
+def test_invalid_offgrid_evidence_still_aborts_inventory_build_globally(
+    mutation: Callable[[dict[str, object]], object],
+    message: str,
+) -> None:
+    quality = _quality()
+    mutation(quality)
+
+    with pytest.raises(InventoryValidationError, match=message):
+        _build([quality, _quality()])
+
+
+def test_missing_expected_open_timestamp_uniqueness_contract_is_unchanged() -> None:
+    quality = _quality(
+        missing_expected_open_timestamps=["20260622 144500", "20260622 144500"],
+        missing_expected_open_timestamp_count=2,
+    )
+
+    with pytest.raises(InventoryValidationError, match="missing_expected_open_timestamp_count"):
+        _build([quality])
+
+
 def test_expected_open_absence_is_missing_but_scheduled_break_is_not() -> None:
     missing = _quality(
         observed_valid_count_from_session_start=260,
