@@ -295,7 +295,9 @@ namespace NinjaTrader.NinjaScript.Indicators
                     timezone_id = appliedTradingHours.TimeZoneInfo.Id,
                     definition_sha256 = Sha256(tradingHoursCopy),
                     holiday_configuration_captured = true,
-                    session_calendar = CaptureSessionCalendar(tradingDate, applicationTimeZone)
+                    session_calendar = CaptureSessionCalendar(
+                        tradingDate,
+                        appliedTradingHours.TimeZoneInfo)
                 },
                 active_connections = connectionsAtArm,
                 connection_snapshot_phase = "immediately after operator arm and before export",
@@ -376,7 +378,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         private IList<object> CaptureSessionCalendar(
             DateTime tradingDate,
-            TimeZoneInfo applicationTimeZone)
+            TimeZoneInfo tradingHoursTimeZone)
         {
             List<object> segments = new List<object>();
             SessionIterator iterator = new SessionIterator(Bars);
@@ -387,20 +389,24 @@ namespace NinjaTrader.NinjaScript.Indicators
                 DateTime actualTradingDay = iterator.ActualTradingDayExchange.Date;
                 if (actualTradingDay == tradingDate.Date)
                 {
-                    DateTime beginApplication = TimeZoneInfo.ConvertTime(
+                    DateTimeOffset beginPc = AttachOffset(
                         iterator.ActualSessionBegin,
-                        TimeZoneInfo.Local,
-                        applicationTimeZone);
-                    DateTime endApplication = TimeZoneInfo.ConvertTime(
+                        TimeZoneInfo.Local);
+                    DateTimeOffset endPc = AttachOffset(
                         iterator.ActualSessionEnd,
-                        TimeZoneInfo.Local,
-                        applicationTimeZone);
+                        TimeZoneInfo.Local);
+                    DateTimeOffset beginTradingHours = TimeZoneInfo.ConvertTime(
+                        beginPc,
+                        tradingHoursTimeZone);
+                    DateTimeOffset endTradingHours = TimeZoneInfo.ConvertTime(
+                        endPc,
+                        tradingHoursTimeZone);
                     segments.Add(new
                     {
-                        begin_application = beginApplication.ToString("yyyyMMdd HHmmss", CultureInfo.InvariantCulture),
-                        end_application = endApplication.ToString("yyyyMMdd HHmmss", CultureInfo.InvariantCulture),
-                        begin_pc = iterator.ActualSessionBegin.ToString("yyyyMMdd HHmmss", CultureInfo.InvariantCulture),
-                        end_pc = iterator.ActualSessionEnd.ToString("yyyyMMdd HHmmss", CultureInfo.InvariantCulture)
+                        begin_application = beginTradingHours.ToString("o", CultureInfo.InvariantCulture),
+                        end_application = endTradingHours.ToString("o", CultureInfo.InvariantCulture),
+                        begin_pc = beginPc.ToString("o", CultureInfo.InvariantCulture),
+                        end_pc = endPc.ToString("o", CultureInfo.InvariantCulture)
                     });
                 }
                 if (actualTradingDay > tradingDate.Date)
@@ -421,6 +427,12 @@ namespace NinjaTrader.NinjaScript.Indicators
                     effective_schedule_source = "SessionIterator using Bars.TradingHours"
                 }
             };
+        }
+
+        private static DateTimeOffset AttachOffset(DateTime value, TimeZoneInfo timeZone)
+        {
+            DateTime unspecified = DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+            return new DateTimeOffset(unspecified, timeZone.GetUtcOffset(unspecified));
         }
 
         private IList<object> CaptureActiveConnections()

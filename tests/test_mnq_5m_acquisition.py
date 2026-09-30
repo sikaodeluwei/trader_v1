@@ -1286,6 +1286,77 @@ def test_valid_bundle_captures_provenance_and_accepts_zero_volume(
     assert source.read_bytes() == original_source
 
 
+def _use_offset_aware_trading_hours_session(runtime: Path, evidence: Path) -> None:
+    def mutate(value: dict[str, object]) -> None:
+        segments = value["trading_hours"]["session_calendar"][0]["segments"]
+        segments[0] = {
+            "begin_application": "2026-06-21T11:00:00.0000000-05:00",
+            "end_application": "2026-06-21T21:00:00.0000000-05:00",
+            "begin_pc": "2026-06-22T00:00:00.0000000+08:00",
+            "end_pc": "2026-06-22T10:00:00.0000000+08:00",
+        }
+        segments[1] = {
+            "begin_application": "2026-06-21T21:30:00.0000000-05:00",
+            "end_application": "2026-06-22T08:30:00.0000000-05:00",
+            "begin_pc": "2026-06-22T10:30:00.0000000+08:00",
+            "end_pc": "2026-06-22T21:30:00.0000000+08:00",
+        }
+
+    _rewrite_json(runtime, mutate)
+    _refresh_runtime_hash(runtime, evidence)
+
+
+def test_accepts_trading_hours_session_in_authoritative_timezone_when_application_differs(
+    tmp_path: Path,
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _use_offset_aware_trading_hours_session(runtime, evidence)
+
+    result = finalize_provenance(
+        source_path=source,
+        runtime_capture_path=runtime,
+        acquisition_evidence_path=evidence,
+        exporter_path=exporter,
+    )
+
+    segment = result["trading_hours"]["session_calendar"][0]["segments"][0]
+    assert segment["begin_application"] == "2026-06-21T11:00:00.0000000-05:00"
+    assert segment["begin_pc"] == "2026-06-22T00:00:00.0000000+08:00"
+
+
+@pytest.mark.parametrize(
+    "bad_begin",
+    (
+        "2026-06-21T11:00:00.0000000-06:00",
+        "2026-06-21T10:00:00.0000000-06:00",
+    ),
+    ids=("different-instant", "wrong-zone-representation"),
+)
+def test_rejects_trading_hours_session_timestamp_or_offset_mismatch(
+    tmp_path: Path, bad_begin: str
+) -> None:
+    source, runtime, evidence, exporter = _build_bundle(tmp_path)
+    _use_offset_aware_trading_hours_session(runtime, evidence)
+    _rewrite_json(
+        runtime,
+        lambda value: value["trading_hours"]["session_calendar"][0]["segments"][0].__setitem__(
+            "begin_application", bad_begin
+        ),
+    )
+    _refresh_runtime_hash(runtime, evidence)
+
+    with pytest.raises(
+        AcquisitionValidationError,
+        match="Trading Hours session segment timestamp or offset mismatch",
+    ):
+        finalize_provenance(
+            source_path=source,
+            runtime_capture_path=runtime,
+            acquisition_evidence_path=evidence,
+            exporter_path=exporter,
+        )
+
+
 def test_accepts_confirmed_runtime_name_without_normalizing_it(tmp_path: Path) -> None:
     source, runtime, evidence, exporter = _build_bundle(tmp_path)
     _rewrite_json(

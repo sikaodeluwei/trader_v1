@@ -18,6 +18,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping
 from xml.etree import ElementTree
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
     from tools.validation.mnq_5m_checkpoint_verify import (
@@ -327,8 +328,10 @@ def _parse_offset(value: object, label: str) -> timedelta:
 
 def _validate_timezone(
     runtime: Mapping[str, Any], timestamps: list[datetime]
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    timezone = _mapping(runtime.get("application_timezone"), "application timezone")
+) -> tuple[dict[str, Any], dict[str, Any], list[datetime]]:
+    application_timezone = _mapping(
+        runtime.get("application_timezone"), "application timezone"
+    )
     required = (
         "id",
         "display_name",
@@ -338,23 +341,29 @@ def _validate_timezone(
         "supports_dst",
         "source_timestamp_offsets",
     )
-    if any(key not in timezone for key in required):
+    if any(key not in application_timezone for key in required):
         _fail("missing or invalid application timezone metadata")
     for key in required[:5]:
-        _text(timezone[key], f"application timezone {key}")
-    _parse_offset(timezone["base_utc_offset"], "application timezone base UTC offset")
-    if not isinstance(timezone["supports_dst"], bool):
+        _text(application_timezone[key], f"application timezone {key}")
+    _parse_offset(
+        application_timezone["base_utc_offset"],
+        "application timezone base UTC offset",
+    )
+    if not isinstance(application_timezone["supports_dst"], bool):
         _fail("missing or invalid application timezone supports_dst")
-    offsets = timezone["source_timestamp_offsets"]
+    offsets = application_timezone["source_timestamp_offsets"]
     if not isinstance(offsets, list) or not offsets:
         _fail("missing or invalid application timezone source offsets")
     timestamp_indexes = {timestamp: index for index, timestamp in enumerate(timestamps)}
+    source_instants: list[datetime] = []
     next_index = 0
     for offset in offsets:
         entry = _mapping(offset, "application timezone source offset")
         for key in ("first_timestamp", "last_timestamp", "utc_offset"):
             _text(entry.get(key), f"application timezone source offset {key}")
-        _parse_offset(entry["utc_offset"], "application timezone source UTC offset")
+        utc_offset = _parse_offset(
+            entry["utc_offset"], "application timezone source UTC offset"
+        )
         try:
             first = datetime.strptime(entry["first_timestamp"], SOURCE_TIMESTAMP_FORMAT)
             last = datetime.strptime(entry["last_timestamp"], SOURCE_TIMESTAMP_FORMAT)
@@ -366,6 +375,10 @@ def _validate_timezone(
             ) from error
         if first_index != next_index or last_index < first_index:
             _fail("application timezone offset coverage is not contiguous and unique")
+        source_instants.extend(
+            timestamp.replace(tzinfo=timezone(utc_offset))
+            for timestamp in timestamps[first_index : last_index + 1]
+        )
         next_index = last_index + 1
     if next_index != len(timestamps):
         _fail("application timezone offset coverage does not match the source")
@@ -394,7 +407,7 @@ def _validate_timezone(
         )
         if event_timestamp.utcoffset() != declared_offset:
             _fail("PC/log timezone offset does not match its captured event timestamp")
-    return dict(timezone), dict(pc_timezone)
+    return dict(application_timezone), dict(pc_timezone), source_instants
 
 
 def _parse_source_timestamp(text: str, row_number: int) -> datetime:
@@ -404,6 +417,30 @@ def _parse_source_timestamp(text: str, row_number: int) -> datetime:
         raise AcquisitionValidationError(
             f"row {row_number}: malformed timestamp"
         ) from error
+
+
+def _parse_session_timestamp(text: str, label: str) -> datetime:
+    if re.fullmatch(r"\d{8} \d{6}", text):
+        try:
+            return datetime.strptime(text, SOURCE_TIMESTAMP_FORMAT)
+        except ValueError as error:
+            raise AcquisitionValidationError(f"invalid {label}") from error
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as error:
+        raise AcquisitionValidationError(f"invalid {label}") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        _fail(f"{label} must be timezone-aware")
+    return parsed
+
+
+def _is_authoritative_trading_hours_representation(
+    value: datetime, trading_hours_timezone: ZoneInfo
+) -> bool:
+    expected = value.astimezone(trading_hours_timezone)
+    return value.utcoffset() == expected.utcoffset() and value.replace(
+        tzinfo=None
+    ) == expected.replace(tzinfo=None)
 
 
 def _parse_decimal(text: str, row_number: int, field: str) -> Decimal:
@@ -469,6 +506,7 @@ def _validate_trading_hours(
     evidence_hashes: Mapping[str, str],
     trading_date: date,
     timestamps: list[datetime],
+    source_instants: list[datetime],
 ) -> dict[str, Any]:
     hours = _mapping(runtime.get("trading_hours"), "Trading Hours")
     name = _text(hours.get("name"), "Trading Hours name")
@@ -491,28 +529,82 @@ def _validate_trading_hours(
     if not isinstance(segments, list) or not segments:
         _fail("missing Trading Hours session segments")
 
-    expected: list[datetime] = []
+    expected_source_timestamps: list[datetime] = []
+    expected_instants: list[datetime] = []
     previous_end: datetime | None = None
+    aware_mode: bool | None = None
+    trading_hours_timezone: ZoneInfo | None = None
     for segment in segments:
         item = _mapping(segment, "Trading Hours session segment")
-        begin = _parse_source_timestamp(
-            _text(item.get("begin_application"), "Trading Hours segment begin"), 0
+        begin_text = _text(
+            item.get("begin_application"), "Trading Hours segment begin"
         )
-        end = _parse_source_timestamp(
-            _text(item.get("end_application"), "Trading Hours segment end"), 0
+        end_text = _text(item.get("end_application"), "Trading Hours segment end")
+        begin_pc_text = _text(
+            item.get("begin_pc"), "Trading Hours segment PC-local begin"
         )
-        _text(item.get("begin_pc"), "Trading Hours segment PC-local begin")
-        _text(item.get("end_pc"), "Trading Hours segment PC-local end")
+        end_pc_text = _text(item.get("end_pc"), "Trading Hours segment PC-local end")
+        begin = _parse_session_timestamp(begin_text, "Trading Hours segment begin")
+        end = _parse_session_timestamp(end_text, "Trading Hours segment end")
+        segment_aware = begin.tzinfo is not None
+        if segment_aware != (end.tzinfo is not None):
+            _fail("Trading Hours session segment timestamp formats are inconsistent")
+        if aware_mode is None:
+            aware_mode = segment_aware
+        elif aware_mode != segment_aware:
+            _fail("Trading Hours session segment timestamp formats are inconsistent")
+
+        if segment_aware:
+            if name != "CME US Index Futures ETH" or timezone_id != "Central Standard Time":
+                _fail("Trading Hours identity is not approved")
+            if trading_hours_timezone is None:
+                try:
+                    trading_hours_timezone = ZoneInfo("America/Chicago")
+                except ZoneInfoNotFoundError as error:
+                    raise AcquisitionValidationError(
+                        "Trading Hours timezone unavailable"
+                    ) from error
+            begin_pc = _parse_iso_timestamp(
+                begin_pc_text, "Trading Hours segment PC-local begin"
+            )
+            end_pc = _parse_iso_timestamp(
+                end_pc_text, "Trading Hours segment PC-local end"
+            )
+            if (
+                not _is_authoritative_trading_hours_representation(
+                    begin, trading_hours_timezone
+                )
+                or not _is_authoritative_trading_hours_representation(
+                    end, trading_hours_timezone
+                )
+                or begin.astimezone(timezone.utc) != begin_pc.astimezone(timezone.utc)
+                or end.astimezone(timezone.utc) != end_pc.astimezone(timezone.utc)
+            ):
+                _fail("Trading Hours session segment timestamp or offset mismatch")
+        else:
+            _parse_source_timestamp(begin_pc_text, 0)
+            _parse_source_timestamp(end_pc_text, 0)
+
         if begin >= end or (previous_end is not None and begin < previous_end):
             _fail("Trading Hours session segments are not chronological")
         previous_end = end
-        current = begin + timedelta(minutes=5)
-        while current < end:
-            expected.append(current)
-            current += timedelta(minutes=5)
-        expected.append(end)
+        if segment_aware:
+            current = begin.astimezone(timezone.utc) + timedelta(minutes=5)
+            end_utc = end.astimezone(timezone.utc)
+            while current <= end_utc:
+                expected_instants.append(current)
+                current += timedelta(minutes=5)
+        else:
+            current = begin + timedelta(minutes=5)
+            while current <= end:
+                expected_source_timestamps.append(current)
+                current += timedelta(minutes=5)
 
-    if timestamps != expected[: len(timestamps)]:
+    if aware_mode:
+        matches = source_instants == expected_instants[: len(source_instants)]
+    else:
+        matches = timestamps == expected_source_timestamps[: len(timestamps)]
+    if not matches:
         _fail("unexpected timestamp spacing inside the captured Trading Hours session")
     return {
         "name": name,
@@ -1624,18 +1716,26 @@ def _session_bounds(
     ends: list[datetime] = []
     for segment in segments:
         item = _mapping(segment, "Trading Hours session segment")
-        starts.append(
-            _parse_source_timestamp(
-                _text(item.get("begin_application"), "Trading Hours segment begin"),
-                0,
-            )
+        begin_text = _text(
+            item.get("begin_application"), "Trading Hours segment begin"
         )
-        ends.append(
-            _parse_source_timestamp(
-                _text(item.get("end_application"), "Trading Hours segment end"),
-                0,
+        end_text = _text(item.get("end_application"), "Trading Hours segment end")
+        begin = _parse_session_timestamp(begin_text, "Trading Hours segment begin")
+        end = _parse_session_timestamp(end_text, "Trading Hours segment end")
+        if begin.tzinfo is None:
+            starts.append(begin)
+            ends.append(end)
+        else:
+            starts.append(
+                _parse_iso_timestamp(
+                    item.get("begin_pc"), "Trading Hours segment PC-local begin"
+                ).replace(tzinfo=None)
             )
-        )
+            ends.append(
+                _parse_iso_timestamp(
+                    item.get("end_pc"), "Trading Hours segment PC-local end"
+                ).replace(tzinfo=None)
+            )
     return min(starts), max(ends)
 
 
@@ -2134,11 +2234,13 @@ def finalize_provenance(
     contract = _validate_contract(runtime)
     bar_series = _validate_bar_series(runtime)
     timestamps, lines = _read_source(source)
-    application_timezone, pc_timezone = _validate_timezone(runtime, timestamps)
+    application_timezone, pc_timezone, source_instants = _validate_timezone(
+        runtime, timestamps
+    )
     if runtime["bar_series"]["exported_bar_count"] != len(lines):
         _fail("runtime exported bar count does not match the source")
     trading_hours = _validate_trading_hours(
-        runtime, evidence_hashes, trading_date, timestamps
+        runtime, evidence_hashes, trading_date, timestamps, source_instants
     )
     provider = _validate_provider_proof(
         runtime, evidence, evidence_contents, pc_timezone, trading_date

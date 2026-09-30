@@ -156,6 +156,98 @@ def test_exporter_source_bytes_keep_final_lf_and_utf8_without_bom() -> None:
     assert not canonical.startswith(b"\xef\xbb\xbf")
 
 
+def test_exporter_session_calendar_uses_trading_hours_timezone_with_offsets() -> None:
+    """Catches leaking the configurable application timezone into session evidence."""
+    source = EXPORTER.read_text(encoding="utf-8")
+
+    assert (
+        "session_calendar = CaptureSessionCalendar(\n"
+        "                        tradingDate,\n"
+        "                        appliedTradingHours.TimeZoneInfo)"
+    ) in source
+    assert re.search(
+        r"CaptureSessionCalendar\(\s*DateTime tradingDate,\s*"
+        r"TimeZoneInfo tradingHoursTimeZone\s*\)",
+        source,
+    )
+    assert re.search(
+        r"DateTimeOffset beginTradingHours = TimeZoneInfo\.ConvertTime\(\s*"
+        r"beginPc,\s*tradingHoursTimeZone\s*\)",
+        source,
+    )
+    assert re.search(
+        r"DateTimeOffset endTradingHours = TimeZoneInfo\.ConvertTime\(\s*"
+        r"endPc,\s*tradingHoursTimeZone\s*\)",
+        source,
+    )
+    assert 'begin_application = beginTradingHours.ToString("o", CultureInfo.InvariantCulture)' in source
+    assert 'end_application = endTradingHours.ToString("o", CultureInfo.InvariantCulture)' in source
+    assert 'begin_pc = beginPc.ToString("o", CultureInfo.InvariantCulture)' in source
+    assert 'end_pc = endPc.ToString("o", CultureInfo.InvariantCulture)' in source
+
+
+@pytest.mark.skipif(
+    not CSC.is_file(),
+    reason="the installed .NET Framework compiler is unavailable",
+)
+def test_trading_hours_offset_representation_preserves_summer_and_winter_instants(
+    tmp_path: Path,
+) -> None:
+    """The approved Central timezone representation must retain DST and the instant."""
+    program = tmp_path / "TradingHoursOffsetContract.cs"
+    executable = tmp_path / "TradingHoursOffsetContract.exe"
+    program.write_text(
+        r'''
+using System;
+using System.Globalization;
+
+public static class TradingHoursOffsetContract
+{
+    public static void Main()
+    {
+        TimeZoneInfo singapore = TimeZoneInfo.FindSystemTimeZoneById("Singapore Standard Time");
+        TimeZoneInfo central = TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time");
+        DateTimeOffset summerPc = new DateTimeOffset(2026, 7, 1, 6, 0, 0, TimeSpan.FromHours(8));
+        DateTimeOffset winterPc = new DateTimeOffset(2026, 1, 5, 7, 0, 0, TimeSpan.FromHours(8));
+        DateTimeOffset summer = TimeZoneInfo.ConvertTime(summerPc, central);
+        DateTimeOffset winter = TimeZoneInfo.ConvertTime(winterPc, central);
+        Console.WriteLine(summer.ToString("o", CultureInfo.InvariantCulture));
+        Console.WriteLine(winter.ToString("o", CultureInfo.InvariantCulture));
+        Console.WriteLine(summer.UtcDateTime == summerPc.UtcDateTime);
+        Console.WriteLine(winter.UtcDateTime == winterPc.UtcDateTime);
+    }
+}
+'''.lstrip(),
+        encoding="utf-8",
+        newline="",
+    )
+
+    compiled = subprocess.run(
+        [str(CSC), "/nologo", "/codepage:65001", f"/out:{executable}", str(program)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+
+    lines = subprocess.run(
+        [str(executable)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        check=True,
+    ).stdout.splitlines()
+    assert lines == [
+        "2026-06-30T17:00:00.0000000-05:00",
+        "2026-01-04T17:00:00.0000000-06:00",
+        "True",
+        "True",
+    ]
+
+
 @pytest.mark.skipif(
     not (CSC.is_file() and SYSTEM_WEB_EXTENSIONS.is_file()),
     reason="the installed .NET Framework NinjaScript compiler is unavailable",
@@ -264,10 +356,10 @@ public static class SerializeRuntimeCapture
                         {
                             new
                             {
-                                begin_application = "20260630 170000",
-                                end_application = "20260701 160000",
-                                begin_pc = "20260701 060000",
-                                end_pc = "20260702 050000"
+                                begin_application = "2026-06-30T17:00:00.0000000-05:00",
+                                end_application = "2026-07-01T16:00:00.0000000-05:00",
+                                begin_pc = "2026-07-01T06:00:00.0000000+08:00",
+                                end_pc = "2026-07-02T05:00:00.0000000+08:00"
                             }
                         },
                         holiday_name = (string)null,
@@ -397,7 +489,10 @@ public static class SerializeRuntimeCapture
     ] is None
     assert runtime_capture["trading_hours"]["session_calendar"][0]["segments"][
         0
-    ]["begin_application"] == "20260630 170000"
+    ]["begin_application"] == "2026-06-30T17:00:00.0000000-05:00"
+    assert runtime_capture["trading_hours"]["session_calendar"][0]["segments"][
+        0
+    ]["begin_pc"] == "2026-07-01T06:00:00.0000000+08:00"
     assert runtime_capture["active_connections"][0]["instrument_types"] == [
         "Future"
     ]
