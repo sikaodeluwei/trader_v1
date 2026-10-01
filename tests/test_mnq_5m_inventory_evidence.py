@@ -12,7 +12,9 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 
+from tools.validation.mnq_5m_inventory import _thaw
 from tools.validation.mnq_5m_inventory_evidence import (
     InventoryValidationError,
     LoadedInventoryEvidence,
@@ -824,7 +826,35 @@ def test_accepts_unique_automatic_config_route(bundle: dict[str, object]) -> Non
     )
     _rewrite_external(bundle, "config", text)
     result = _finalize(bundle)
-    assert result.provider_acquisition["configuration_binding"]["mode"] == "UNIQUE_AUTO_ROUTE"
+    assert result.provider_acquisition["configuration_binding"] == {
+        "mode": "UNIQUE_AUTO_ROUTE",
+        "preferred_future_connection": "Unknown",
+        "preferred_realtime_future_connection": "Unknown",
+        "saved_connection_matches": 1,
+    }
+    schema = json.loads((SCHEMA_DIR / "inventory_provenance.schema.json").read_text(encoding="utf-8"))
+    Draft202012Validator({
+        "$ref": "#/$defs/provider_acquisition",
+        "$defs": schema["$defs"],
+    }).validate(_thaw(result.provider_acquisition))
+
+
+@pytest.mark.parametrize("saved_matches", [0, 2])
+def test_rejects_ambiguous_automatic_config_route(
+    bundle: dict[str, object], saved_matches: int
+) -> None:
+    text = Path(bundle["config"]).read_text(encoding="utf-8")
+    text = text.replace(
+        "<PreferredFutureConnection>My NinjaTrader</PreferredFutureConnection>",
+        "<PreferredFutureConnection>Unknown</PreferredFutureConnection>",
+    ).replace(
+        "<PreferredRealtimeFutureConnection>My NinjaTrader</PreferredRealtimeFutureConnection>",
+        "<PreferredRealtimeFutureConnection>Unknown</PreferredRealtimeFutureConnection>",
+    )
+    connection = "<Connection><Name>My NinjaTrader</Name><Provider>Provider31</Provider></Connection>"
+    _rewrite_external(bundle, "config", text.replace(connection, connection * saved_matches))
+    with pytest.raises(InventoryValidationError, match="preferred historical connection"):
+        _finalize(bundle)
 
 
 def test_rejects_external_evidence_path_substitution(bundle: dict[str, object]) -> None:

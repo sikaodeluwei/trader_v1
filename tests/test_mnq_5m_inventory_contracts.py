@@ -955,6 +955,58 @@ def test_inventory_provenance_is_proven_only_and_has_no_selected_case_binding() 
     assert list(validator.iter_errors(missing_provider_link))
 
 
+@pytest.mark.parametrize(
+    ("mode", "preference"),
+    [
+        ("EXPLICIT_PREFERENCE", "My NinjaTrader"),
+        ("UNIQUE_AUTO_ROUTE", "Unknown"),
+    ],
+)
+def test_inventory_provenance_accepts_proven_provider_binding_tuples(
+    mode: str, preference: str
+) -> None:
+    document = _valid_inventory_provenance()
+    document["provider_acquisition"]["configuration_binding"] = {
+        "mode": mode,
+        "preferred_future_connection": preference,
+        "preferred_realtime_future_connection": preference,
+        "saved_connection_matches": 1,
+    }
+    Draft202012Validator(_load_inventory_evidence("provenance")).validate(document)
+
+
+@pytest.mark.parametrize(
+    ("mode", "future", "realtime", "saved_matches"),
+    [
+        ("UNRECOGNIZED", "My NinjaTrader", "My NinjaTrader", 1),
+        ("UNRECOGNIZED", "Unknown", "Unknown", 1),
+        ("EXPLICIT_PREFERENCE", "Unknown", "Unknown", 1),
+        ("UNIQUE_AUTO_ROUTE", "My NinjaTrader", "My NinjaTrader", 1),
+        ("EXPLICIT_PREFERENCE", "Unknown", "My NinjaTrader", 1),
+        ("EXPLICIT_PREFERENCE", "My NinjaTrader", "Unknown", 1),
+        ("UNIQUE_AUTO_ROUTE", "Unknown", "My NinjaTrader", 1),
+        ("UNIQUE_AUTO_ROUTE", "My NinjaTrader", "Unknown", 1),
+        ("EXPLICIT_PREFERENCE", "My NinjaTrader", "My NinjaTrader", 0),
+        ("EXPLICIT_PREFERENCE", "My NinjaTrader", "My NinjaTrader", 2),
+        ("UNIQUE_AUTO_ROUTE", "Unknown", "Unknown", 0),
+        ("UNIQUE_AUTO_ROUTE", "Unknown", "Unknown", 2),
+    ],
+)
+def test_inventory_provenance_rejects_unproven_provider_binding_tuples(
+    mode: str, future: str, realtime: str, saved_matches: int
+) -> None:
+    document = _valid_inventory_provenance()
+    document["provider_acquisition"]["configuration_binding"] = {
+        "mode": mode,
+        "preferred_future_connection": future,
+        "preferred_realtime_future_connection": realtime,
+        "saved_connection_matches": saved_matches,
+    }
+    assert list(
+        Draft202012Validator(_load_inventory_evidence("provenance")).iter_errors(document)
+    )
+
+
 def test_inventory_contract_identities_and_immutable_transformations_are_enforced() -> None:
     fixtures = {
         "scan": _valid_inventory_scan(),

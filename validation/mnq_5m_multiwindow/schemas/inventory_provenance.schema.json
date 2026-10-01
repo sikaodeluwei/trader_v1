@@ -168,11 +168,27 @@
       "additionalProperties": false,
       "required": ["mode", "preferred_future_connection", "preferred_realtime_future_connection", "saved_connection_matches"],
       "properties": {
-        "mode": { "const": "EXPLICIT_PREFERENCE" },
-        "preferred_future_connection": { "const": "My NinjaTrader" },
-        "preferred_realtime_future_connection": { "const": "My NinjaTrader" },
+        "mode": { "type": "string" },
+        "preferred_future_connection": { "type": "string" },
+        "preferred_realtime_future_connection": { "type": "string" },
         "saved_connection_matches": { "const": 1 }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "mode": { "const": "EXPLICIT_PREFERENCE" },
+            "preferred_future_connection": { "const": "My NinjaTrader" },
+            "preferred_realtime_future_connection": { "const": "My NinjaTrader" }
+          }
+        },
+        {
+          "properties": {
+            "mode": { "const": "UNIQUE_AUTO_ROUTE" },
+            "preferred_future_connection": { "const": "Unknown" },
+            "preferred_realtime_future_connection": { "const": "Unknown" }
+          }
+        }
+      ]
     },
     "provider_lifecycle": {
       "type": "object",
