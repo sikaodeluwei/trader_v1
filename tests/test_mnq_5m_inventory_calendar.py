@@ -14,6 +14,9 @@ from tools.validation.mnq_5m_inventory_calendar import (
     verify_inventory_calendar,
 )
 from tools.validation.mnq_5m_inventory_evidence import InventoryValidationError
+from tools.validation.mnq_5m_inventory_evidence import ValidatedInventoryEvidence
+from tools.validation.mnq_5m_inventory import build_inventory
+from types import MappingProxyType
 
 
 POLICY_START = date(2026, 6, 22)
@@ -329,6 +332,125 @@ def test_verifies_complete_calendar_and_exact_public_interfaces() -> None:
     )
 
 
+@pytest.mark.parametrize("kind", ["holiday", "segment", "exchange_date"])
+def test_valid_date_scoped_calendar_disagreement_excludes_only_that_candidate(kind: str) -> None:
+    scan = _scan()
+    target = "2026-06-22" if kind == "segment" else "2026-07-03"
+    schedule = _schedule_evidence(_observation(scan, target))
+    if kind == "holiday":
+        schedule["holiday_name"] = "Different Holiday"
+    elif kind == "exchange_date":
+        _observation(scan, target)["exchange_trading_date"] = "2026-07-06"
+    else:
+        segment = schedule["expected_open_segments"][0]
+        segment["end_application"] = "2026-06-22T15:55:00-05:00"
+        segment["end_pc"] = "2026-06-23T04:55:00+08:00"
+        schedule["application_session_end"] = segment["end_application"]
+        schedule["pc_log_session_end"] = segment["end_pc"]
+    calendar = verify_inventory_calendar(scan, BASE_TEMPLATE)
+    evidence = ValidatedInventoryEvidence(
+        loaded=None,  # type: ignore[arg-type]
+        provider_acquisition=MappingProxyType({}),
+        qualifying_request=MappingProxyType({}),
+        artifact_hashes=MappingProxyType({"inventory_scan": "a" * 64}),
+        external_evidence=(),
+        earliest_session_begin=calendar.earliest_session_begin,
+        latest_session_end=calendar.latest_session_end,
+    )
+
+    result = build_inventory(
+        evidence=evidence,
+        calendar=calendar,
+        inventory_provenance_sha256="b" * 64,
+        inventory_scan_sha256="a" * 64,
+        producing_checkpoint="c" * 40,
+    )
+
+    entries = {entry["trading_date"]: entry for entry in result.source_inventory["entries"]}
+    assert result.source_inventory["candidate_count"] == 24
+    assert result.source_inventory["eligible_count"] == 23
+    assert entries[target]["eligible"] is False
+    assert entries[target]["exclusion_reasons"] == ["TRADING_HOURS_INCONSISTENCY"]
+    assert entries["2026-07-02"]["eligible"] is True
+    if kind == "segment":
+        assert entries[target]["session_end_application"] == "20260622 155500"
+
+
+def test_expected_session_reported_closed_has_unknown_facts_and_is_excluded() -> None:
+    scan = _scan()
+    closed = _observation(scan, "2026-06-27")
+    disputed = _observation(scan, "2026-07-03")
+    disputed["classification"] = "NO_SESSION"
+    disputed["exchange_trading_date"] = None
+    disputed["schedule_evidence"] = deepcopy(closed["schedule_evidence"])
+    disputed["quality"] = None
+    calendar = verify_inventory_calendar(scan, BASE_TEMPLATE)
+    evidence = ValidatedInventoryEvidence(
+        loaded=None,  # type: ignore[arg-type]
+        provider_acquisition=MappingProxyType({}),
+        qualifying_request=MappingProxyType({}),
+        artifact_hashes=MappingProxyType({"inventory_scan": "a" * 64}),
+        external_evidence=(),
+        earliest_session_begin=calendar.earliest_session_begin,
+        latest_session_end=calendar.latest_session_end,
+    )
+    result = build_inventory(
+        evidence=evidence,
+        calendar=calendar,
+        inventory_provenance_sha256="b" * 64,
+        inventory_scan_sha256="a" * 64,
+        producing_checkpoint="c" * 40,
+    )
+
+    entry = next(
+        item for item in result.source_inventory["entries"]
+        if item["trading_date"] == "2026-07-03"
+    )
+    assert result.source_inventory["candidate_count"] == 24
+    assert entry["eligible"] is False
+    assert entry["exclusion_reasons"] == ["TRADING_HOURS_INCONSISTENCY"]
+    assert entry["session_begin_application"] is None
+    assert entry["session_end_application"] is None
+    assert entry["observed_native_bar_count"] is None
+    assert entry["first_250_source_sha256"] is None
+    assert entry["complete_session_source_sha256"] is None
+
+
+def test_scanner_only_session_is_bound_as_noncandidate_disagreement() -> None:
+    scan = _scan()
+    saturday = _observation(scan, "2026-06-27")
+    invented = _segment(
+        datetime(2026, 6, 26, 17, 0, tzinfo=APPLICATION_ZONE),
+        datetime(2026, 6, 27, 16, 0, tzinfo=APPLICATION_ZONE),
+    )
+    saturday["classification"] = "SESSION"
+    saturday["exchange_trading_date"] = "2026-06-27"
+    schedule = _schedule_evidence(saturday)
+    schedule["expected_open_segments"] = [invented]
+    schedule["application_session_begin"] = invented["begin_application"]
+    schedule["application_session_end"] = invented["end_application"]
+    schedule["pc_log_session_begin"] = invented["begin_pc"]
+    schedule["pc_log_session_end"] = invented["end_pc"]
+    quality = _quality()
+    quality["first_observed_timestamp"] = "20260626 170500"
+    quality["two_hundred_fiftieth_native_timestamp"] = "20260627 135000"
+    quality["last_observed_session_timestamp"] = "20260627 160000"
+    saturday["quality"] = quality
+
+    calendar = verify_inventory_calendar(scan, BASE_TEMPLATE)
+
+    assert len(calendar.sessions) == 24
+    assert date(2026, 6, 27) not in {session.trading_date for session in calendar.sessions}
+    assert calendar.date_disagreements == (
+        {
+            "civil_date": "2026-06-27",
+            "reason": "TRADING_HOURS_INCONSISTENCY",
+            "scanner_classification": "SESSION",
+            "template_classification": "NO_SESSION",
+        },
+    )
+
+
 def test_accepts_schema_valid_segment_mapping_member_order() -> None:
     scan = _scan()
     schedule = _schedule_evidence(_observation(scan, "2026-06-22"))
@@ -412,7 +534,7 @@ def test_rejects_duplicate_or_conflicting_exchange_trading_dates(kind: str) -> N
         verify_inventory_calendar(scan, BASE_TEMPLATE)
 
 
-@pytest.mark.parametrize("field", ["classification", "segment", "holiday", "trading_date"])
+@pytest.mark.parametrize("field", ["classification", "segment", "trading_date"])
 def test_rejects_scanner_template_calendar_mismatches(field: str) -> None:
     scan = _scan()
     if field == "classification":
@@ -420,8 +542,6 @@ def test_rejects_scanner_template_calendar_mismatches(field: str) -> None:
     elif field == "segment":
         schedule = _schedule_evidence(_observation(scan, "2026-06-22"))
         schedule["expected_open_segments"][0]["end_application"] = "2026-06-22T15:55:00-05:00"
-    elif field == "holiday":
-        _schedule_evidence(_observation(scan, "2026-07-03"))["holiday_name"] = "Wrong Holiday"
     else:
         _observation(scan, "2026-06-22")["exchange_trading_date"] = "2026-06-23"
 
@@ -482,8 +602,9 @@ def test_pc_values_cannot_invent_an_absent_session() -> None:
     schedule["pc_log_session_end"] = invented["end_pc"]
     saturday["quality"] = _quality()
 
-    with pytest.raises(InventoryValidationError):
-        verify_inventory_calendar(scan, BASE_TEMPLATE)
+    calendar = verify_inventory_calendar(scan, BASE_TEMPLATE)
+    assert date(2026, 6, 27) not in {session.trading_date for session in calendar.sessions}
+    assert calendar.date_disagreements[0]["reason"] == "TRADING_HOURS_INCONSISTENCY"
 
 
 @pytest.mark.parametrize(

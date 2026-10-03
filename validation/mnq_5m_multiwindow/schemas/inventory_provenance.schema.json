@@ -253,7 +253,22 @@
         "earliest_session_begin": { "type": "string", "format": "date-time" },
         "latest_session_end": { "type": "string", "format": "date-time" },
         "trading_hours_template_sha256": { "$ref": "#/$defs/sha256" },
-        "calendar_binding_sha256": { "$ref": "#/$defs/sha256" }
+        "calendar_binding_sha256": { "$ref": "#/$defs/sha256" },
+        "date_disagreements": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["civil_date", "reason", "scanner_classification", "template_classification"],
+            "properties": {
+              "civil_date": { "type": "string", "format": "date" },
+              "reason": { "const": "TRADING_HOURS_INCONSISTENCY" },
+              "scanner_classification": { "enum": ["SESSION", "NO_SESSION"] },
+              "template_classification": { "enum": ["SESSION", "NO_SESSION"] }
+            }
+          }
+        }
       }
     },
     "artifact_hashes": {

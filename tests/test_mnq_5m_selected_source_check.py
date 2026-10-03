@@ -280,7 +280,7 @@ def test_selected_source_wrapper_accepts_real_task9_immutable_git_verification(
     source_hash = _sha256(source)
     fixture = helpers._build_inventory_checkpoints(
         tmp_path / "task9",
-        inventory_mutator=lambda inventory: inventory["entries"][0].__setitem__(
+        calendar_scan_mutator=lambda scan: scan["observations"][0]["quality"].__setitem__(
             "first_250_source_sha256", source_hash
         ),
     )
@@ -297,7 +297,7 @@ def test_selected_source_wrapper_accepts_real_task9_immutable_git_verification(
     ):
         result = verify_selected_source_hash(
             source_path=source,
-            case_id="mnq-202609-5m-td2026-07-01-w01",
+            case_id="mnq-202609-5m-td2026-06-22-w01",
             repository_path=fixture.repo,
             inventory_checkpoint_bundle_root=fixture.bundle,
             trusted_toolset_checkpoint=fixture.toolset_checkpoint,
@@ -306,5 +306,7 @@ def test_selected_source_wrapper_accepts_real_task9_immutable_git_verification(
             expected_repository_identity=helpers.REPOSITORY_IDENTITY,
         )
 
+    assert result.case_id == "mnq-202609-5m-td2026-06-22-w01"
+    assert result.trading_date == "2026-06-22"
     assert result.expected_sha256 == source_hash
     assert result.observed_sha256 == source_hash

@@ -470,12 +470,34 @@ def _inventory_scanner_transformations() -> dict[str, bool]:
     }
 
 
-def _inventory_schedule(*, has_session: bool) -> dict[str, object]:
+def _valid_inventory_template() -> bytes:
+    weekdays = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
+    previous = ("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday")
+    sessions = "".join(
+        "<Session>"
+        f"<BeginDay>{prior}</BeginDay><BeginTime>1700</BeginTime>"
+        f"<EndDay>{day}</EndDay><EndTime>1600</EndTime>"
+        f"<TradingDay>{day}</TradingDay>"
+        "</Session>"
+        for prior, day in zip(previous, weekdays)
+    )
+    return (
+        "<NinjaTrader><TradingHours>"
+        "<HolidaysSerializable /><PartialHolidaysSerializable />"
+        "<Version>1</Version><Name>CME US Index Futures ETH</Name>"
+        f"<Sessions>{sessions}</Sessions>"
+        "<TimeZone>Central Standard Time</TimeZone>"
+        "</TradingHours></NinjaTrader>"
+    ).encode("utf-8")
+
+
+def _inventory_schedule(civil_date: date, *, has_session: bool) -> dict[str, object]:
+    previous = civil_date - timedelta(days=1)
     segment = {
-        "begin_application": "2026-06-21T17:00:00-05:00",
-        "end_application": "2026-06-22T16:00:00-05:00",
-        "begin_pc": "2026-06-22T06:00:00+08:00",
-        "end_pc": "2026-06-23T05:00:00+08:00",
+        "begin_application": f"{previous.isoformat()}T17:00:00-05:00",
+        "end_application": f"{civil_date.isoformat()}T16:00:00-05:00",
+        "begin_pc": (datetime.combine(previous, datetime.min.time(), timezone(timedelta(hours=-5))).replace(hour=17).astimezone(timezone(timedelta(hours=8))).isoformat()),
+        "end_pc": (datetime.combine(civil_date, datetime.min.time(), timezone(timedelta(hours=-5))).replace(hour=16).astimezone(timezone(timedelta(hours=8))).isoformat()),
     }
     return {
         "holiday_name": None,
@@ -494,13 +516,14 @@ def _inventory_schedule(*, has_session: bool) -> dict[str, object]:
     }
 
 
-def _inventory_quality() -> dict[str, object]:
+def _inventory_quality(trading_date: date = date(2026, 6, 22)) -> dict[str, object]:
+    previous = trading_date - timedelta(days=1)
     return {
         "observed_native_five_minute_bar_count": 276,
         "observed_valid_count_from_session_start": 276,
-        "first_observed_timestamp": "20260621 170500",
-        "two_hundred_fiftieth_native_timestamp": "20260622 135000",
-        "last_observed_session_timestamp": "20260622 160000",
+        "first_observed_timestamp": previous.strftime("%Y%m%d") + " 170500",
+        "two_hundred_fiftieth_native_timestamp": trading_date.strftime("%Y%m%d") + " 135000",
+        "last_observed_session_timestamp": trading_date.strftime("%Y%m%d") + " 160000",
         "supplied_order_strictly_increasing": True,
         "duplicate_timestamp_indexes": [],
         "duplicate_timestamp_count": 0,
@@ -527,32 +550,17 @@ def _inventory_quality() -> dict[str, object]:
 
 
 def _valid_inventory_scan_document() -> dict[str, object]:
-    observations = [
-        {
-            "civil_date": f"2026-06-{day:02d}",
-            "classification": "NO_SESSION",
-            "exchange_trading_date": None,
-            "schedule_evidence": _inventory_schedule(has_session=False),
-            "quality": None,
-        }
-        for day in range(22, 31)
-    ] + [
-        {
-            "civil_date": f"2026-07-{day:02d}",
-            "classification": "NO_SESSION",
-            "exchange_trading_date": None,
-            "schedule_evidence": _inventory_schedule(has_session=False),
-            "quality": None,
-        }
-        for day in range(1, 25)
-    ]
-    observations[0] = {
-        "civil_date": "2026-06-22",
-        "classification": "SESSION",
-        "exchange_trading_date": "2026-06-22",
-        "schedule_evidence": _inventory_schedule(has_session=True),
-        "quality": _inventory_quality(),
-    }
+    observations = []
+    for offset in range(33):
+        civil_date = date(2026, 6, 22) + timedelta(days=offset)
+        has_session = civil_date.weekday() < 5
+        observations.append({
+            "civil_date": civil_date.isoformat(),
+            "classification": "SESSION" if has_session else "NO_SESSION",
+            "exchange_trading_date": civil_date.isoformat() if has_session else None,
+            "schedule_evidence": _inventory_schedule(civil_date, has_session=has_session),
+            "quality": _inventory_quality(civil_date) if has_session else None,
+        })
     return {
         "schema_version": "1.0",
         "acquisition_id": INVENTORY_ACQUISITION_ID,
@@ -740,12 +748,13 @@ def _valid_inventory_provenance_document(
     runtime_sha256: str,
     acquisition_sha256: str,
     template_sha256: str,
+    calendar: VerifiedInventoryCalendar,
     evidence_records: list[dict[str, object]],
 ) -> dict[str, object]:
     evidence_hashes = {
         item["role"]: item["sha256"] for item in evidence_records
     }
-    return {
+    provenance = {
         "schema_version": "1.0",
         "status": "PROVEN",
         "acquisition_id": INVENTORY_ACQUISITION_ID,
@@ -806,11 +815,11 @@ def _valid_inventory_provenance_document(
             "civil_date_start": "2026-06-22",
             "civil_date_end": "2026-07-24",
             "civil_date_count": 33,
-            "session_count": 24,
-            "earliest_session_begin": "2026-06-21T17:00:00-05:00",
-            "latest_session_end": "2026-07-24T16:00:00-05:00",
+            "session_count": len(calendar.sessions),
+            "earliest_session_begin": calendar.earliest_session_begin.isoformat(),
+            "latest_session_end": calendar.latest_session_end.isoformat(),
             "trading_hours_template_sha256": template_sha256,
-            "calendar_binding_sha256": "9" * 64,
+            "calendar_binding_sha256": calendar.calendar_binding_sha256,
         },
         "artifact_hashes": {
             "inventory_scan": scan_sha256,
@@ -845,6 +854,11 @@ def _valid_inventory_provenance_document(
             "pinned_production_hierarchy_commit": pinned_commit,
         },
     }
+    if calendar.date_disagreements:
+        provenance["calendar_binding"]["date_disagreements"] = [
+            dict(witness) for witness in calendar.date_disagreements
+        ]
+    return provenance
 
 
 def _task7_inventory_outputs(
@@ -852,49 +866,8 @@ def _task7_inventory_outputs(
     toolset_checkpoint: str,
     inventory_scan_sha256: str,
     inventory_provenance_sha256: str,
+    calendar: VerifiedInventoryCalendar,
 ) -> tuple[dict[str, object], dict[str, object]]:
-    sessions: list[VerifiedSession] = []
-    for number in range(1, 11):
-        trading_date = date(2026, 7, number)
-        begin = datetime.combine(
-            trading_date - timedelta(days=1),
-            datetime.min.time(),
-            timezone(timedelta(hours=-5)),
-        ).replace(hour=17)
-        end = datetime.combine(
-            trading_date,
-            datetime.min.time(),
-            timezone(timedelta(hours=-5)),
-        ).replace(hour=16)
-        segment = SessionSegment(
-            begin_application=begin,
-            end_application=end,
-            begin_pc=begin.astimezone(timezone.utc),
-            end_pc=end.astimezone(timezone.utc),
-        )
-        sessions.append(
-            VerifiedSession(
-                civil_date=trading_date,
-                trading_date=trading_date,
-                holiday_name=None,
-                partial_session=False,
-                segments=(segment,),
-                observation=MappingProxyType(
-                    {
-                        "classification": "SESSION",
-                        "exchange_trading_date": trading_date.isoformat(),
-                        "quality": _inventory_quality(),
-                    }
-                ),
-            )
-        )
-    calendar = VerifiedInventoryCalendar(
-        sessions=tuple(sessions),
-        earliest_session_begin=sessions[0].segments[0].begin_application,
-        latest_session_end=sessions[-1].segments[-1].end_application,
-        template_sha256="8" * 64,
-        calendar_binding_sha256="9" * 64,
-    )
     evidence = ValidatedInventoryEvidence(
         loaded=None,  # type: ignore[arg-type]
         provider_acquisition=MappingProxyType({}),
@@ -922,6 +895,7 @@ def _build_inventory_checkpoints(
     fake_verifier: bool = False,
     manifest_mutator=None,
     artifact_mutators=None,
+    calendar_scan_mutator=None,
     provenance_mutator=None,
     inventory_mutator=None,
     exclusions_mutator=None,
@@ -991,11 +965,17 @@ def _build_inventory_checkpoints(
     external_evidence["ninjatrader_log"].write_bytes(b"provider log\n")
     external_evidence["ninjatrader_trace"].write_bytes(b"request trace\n")
     (repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS["trading_hours_template"]).write_bytes(
-        b"<TradingHours name=\"CME US Index Futures ETH\" />\n"
+        _valid_inventory_template()
     )
 
     artifact_mutators = artifact_mutators or {}
     scan = _valid_inventory_scan_document()
+    if calendar_scan_mutator is not None:
+        calendar_scan_mutator(scan)
+    calendar = mnq_5m_inventory_calendar.verify_inventory_calendar(
+        scan,
+        _valid_inventory_template(),
+    )
     if "inventory_scan" in artifact_mutators:
         artifact_mutators["inventory_scan"](scan)
     scan_path = repo / INVENTORY_ARTIFACT_REPOSITORY_PATHS["inventory_scan"]
@@ -1053,6 +1033,7 @@ def _build_inventory_checkpoints(
         runtime_sha256=internal_hashes["inventory_runtime_capture"],
         acquisition_sha256=internal_hashes["inventory_acquisition_evidence"],
         template_sha256=internal_hashes["trading_hours_template"],
+        calendar=calendar,
         evidence_records=evidence_records,
     )
     if "inventory_provenance" in artifact_mutators:
@@ -1066,6 +1047,7 @@ def _build_inventory_checkpoints(
         toolset_checkpoint=toolset_checkpoint,
         inventory_scan_sha256=internal_hashes["inventory_scan"],
         inventory_provenance_sha256=_sha256(provenance_path),
+        calendar=calendar,
     )
     policy = inventory["contract_policy"]
     if inventory_mutator is not None:
@@ -1082,6 +1064,9 @@ def _build_inventory_checkpoints(
     )
     inventory_checkpoint = _commit(repo, "Freeze inventory artifacts")
 
+    eligible_dates = [
+        entry["trading_date"] for entry in inventory["entries"] if entry["eligible"]
+    ]
     registry: dict[str, object] = {
         "schema_version": "2.0",
         "status": "FROZEN_FOR_SOURCE_ACQUISITION",
@@ -1118,12 +1103,15 @@ def _build_inventory_checkpoints(
         },
         "selections": [
             {
-                "case_id": f"mnq-202609-5m-td2026-07-{number:02d}-w{number:02d}",
-                "trading_date": f"2026-07-{number:02d}",
+                "case_id": (
+                    f"mnq-202609-5m-td{eligible_dates[(number - 1) * len(eligible_dates) // 10]}"
+                    f"-w{number:02d}"
+                ),
+                "trading_date": eligible_dates[(number - 1) * len(eligible_dates) // 10],
                 "stratum_number": number,
-                "stratum_start_index": number - 1,
-                "stratum_end_index": number - 1,
-                "selected_eligible_index": number - 1,
+                "stratum_start_index": (number - 1) * len(eligible_dates) // 10,
+                "stratum_end_index": number * len(eligible_dates) // 10 - 1,
+                "selected_eligible_index": (number - 1) * len(eligible_dates) // 10,
                 "window_policy": "FIRST_250_NATIVE_5M_SESSION_BARS",
             }
             for number in range(1, 11)
@@ -1775,13 +1763,118 @@ def test_verifies_first_class_inventory_checkpoint_from_immutable_bytes(
     assert result["attestation_sha256"] == _attestation_hash(result)
 
 
+def test_noncandidate_calendar_disagreement_is_bound_without_a_phantom_entry(
+    tmp_path: Path,
+) -> None:
+    def add_scanner_only_session(scan: dict[str, object]) -> None:
+        saturday = next(
+            observation for observation in scan["observations"]
+            if observation["civil_date"] == "2026-06-27"
+        )
+        saturday["classification"] = "SESSION"
+        saturday["exchange_trading_date"] = "2026-06-27"
+        saturday["schedule_evidence"] = _inventory_schedule(
+            date(2026, 6, 27), has_session=True
+        )
+        saturday["quality"] = _inventory_quality(date(2026, 6, 27))
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        calendar_scan_mutator=add_scanner_only_session,
+    )
+    result = _verify_inventory(fixture)
+    provenance = json.loads(
+        fixture.inventory_artifacts["inventory_provenance"].read_bytes()
+    )
+    inventory = json.loads(fixture.inventory_artifacts["source_inventory"].read_bytes())
+
+    assert result["status"] == "VERIFIED"
+    assert inventory["candidate_count"] == 25
+    assert "2026-06-27" not in {entry["trading_date"] for entry in inventory["entries"]}
+    assert provenance["calendar_binding"]["date_disagreements"] == [{
+        "civil_date": "2026-06-27",
+        "reason": "TRADING_HOURS_INCONSISTENCY",
+        "scanner_classification": "SESSION",
+        "template_classification": "NO_SESSION",
+    }]
+
+
+def test_closed_scan_on_actual_date_verifies_as_excluded_unknown_candidate(
+    tmp_path: Path,
+) -> None:
+    def close_actual_session(scan: dict[str, object]) -> None:
+        friday = next(
+            observation for observation in scan["observations"]
+            if observation["civil_date"] == "2026-07-03"
+        )
+        friday["classification"] = "NO_SESSION"
+        friday["exchange_trading_date"] = None
+        friday["schedule_evidence"] = _inventory_schedule(
+            date(2026, 7, 3), has_session=False
+        )
+        friday["quality"] = None
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        calendar_scan_mutator=close_actual_session,
+    )
+    result = _verify_inventory(fixture)
+    inventory = json.loads(fixture.inventory_artifacts["source_inventory"].read_bytes())
+    entry = next(
+        item for item in inventory["entries"]
+        if item["trading_date"] == "2026-07-03"
+    )
+
+    assert result["status"] == "VERIFIED"
+    assert inventory["candidate_count"] == 25
+    assert inventory["eligible_count"] == 24
+    assert entry["eligible"] is False
+    assert entry["exclusion_reasons"] == ["TRADING_HOURS_INCONSISTENCY"]
+    assert entry["observed_native_bar_count"] is None
+
+
+def test_inventory_checkpoint_rejects_contradictory_bound_bar_count(tmp_path: Path) -> None:
+    def contradict_inventory(inventory: dict[str, object]) -> None:
+        inventory["entries"][0]["observed_native_bar_count"] = 277
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        inventory_mutator=contradict_inventory,
+    )
+
+    with pytest.raises(CheckpointVerificationError, match="candidate"):
+        _verify_inventory(fixture)
+
+
+@pytest.mark.parametrize(
+    "role,module",
+    [
+        ("inventory_builder", mnq_5m_inventory),
+        ("inventory_calendar_verifier", mnq_5m_inventory_calendar),
+    ],
+)
+def test_candidate_replay_rejects_noncanonical_executing_module(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    role: str,
+    module: object,
+) -> None:
+    fixture = _build_inventory_checkpoints(tmp_path)
+    alternative = tmp_path / f"modified-{role}.py"
+    alternative.write_bytes(Path(module.__file__).read_bytes() + b"\n# modified\n")
+    monkeypatch.setattr(module, "__file__", str(alternative))
+
+    with pytest.raises(CheckpointVerificationError, match=f"executing {role}"):
+        _verify_inventory(fixture)
+
+
 def _make_first_inventory_entry_ineligible(
     inventory: dict[str, object], reasons: list[str]
 ) -> None:
     first = inventory["entries"][0]
     first["eligible"] = False
     first["exclusion_reasons"] = reasons
-    inventory["eligible_count"] = 9
+    inventory["eligible_count"] = inventory["eligible_count"] - 1
     inventory["cohort_outcome"] = "COHORT_INCOMPLETE"
 
 
@@ -1810,7 +1903,7 @@ def test_inventory_checkpoint_rejects_extra_exclusion_row(tmp_path: Path) -> Non
         tmp_path,
         exclusions_mutator=lambda value: value.__setitem__(
             "entries",
-            [{"trading_date": "2026-07-01", "reasons": ["SOURCE_CORRUPTION"]}],
+            [{"trading_date": "2026-06-22", "reasons": ["SOURCE_CORRUPTION"]}],
         ),
     )
 
@@ -1828,7 +1921,7 @@ def test_inventory_checkpoint_rejects_changed_exclusion_row(tmp_path: Path) -> N
             value,
             [
                 {
-                    "trading_date": "2026-07-01",
+                    "trading_date": "2026-06-22",
                     "reasons": ["UNEXPECTED_MISSING_BARS"],
                 }
             ],
@@ -1850,7 +1943,7 @@ def test_inventory_checkpoint_rejects_exclusion_reason_order_mutation(
         ),
         exclusions_mutator=lambda value: _set_incomplete_exclusions(
             value,
-            [{"trading_date": "2026-07-01", "reasons": reasons}],
+            [{"trading_date": "2026-06-22", "reasons": reasons}],
         ),
     )
 
@@ -1867,21 +1960,27 @@ def test_inventory_checkpoint_rejects_outcome_threshold_mutation(
     tmp_path: Path, outcome: str
 ) -> None:
     if outcome == "READY_FOR_SELECTION":
+        excluded_dates: list[str] = []
+
+        def below_threshold(inventory: dict[str, object]) -> None:
+            entries = inventory["entries"]
+            for entry in entries[:-9]:
+                entry["eligible"] = False
+                entry["exclusion_reasons"] = ["SOURCE_CORRUPTION"]
+                excluded_dates.append(entry["trading_date"])
+            inventory["eligible_count"] = 9
+            inventory["cohort_outcome"] = outcome
+
+        def exclude_same_dates(exclusions: dict[str, object]) -> None:
+            exclusions["entries"] = [
+                {"trading_date": trading_date, "reasons": ["SOURCE_CORRUPTION"]}
+                for trading_date in excluded_dates
+            ]
+
         fixture = _build_inventory_checkpoints(
             tmp_path,
-            inventory_mutator=lambda value: (
-                _make_first_inventory_entry_ineligible(value, ["SOURCE_CORRUPTION"]),
-                value.__setitem__("cohort_outcome", outcome),
-            ),
-            exclusions_mutator=lambda value: value.__setitem__(
-                "entries",
-                [
-                    {
-                        "trading_date": "2026-07-01",
-                        "reasons": ["SOURCE_CORRUPTION"],
-                    }
-                ],
-            ),
+            inventory_mutator=below_threshold,
+            exclusions_mutator=exclude_same_dates,
         )
     else:
         fixture = _build_inventory_checkpoints(

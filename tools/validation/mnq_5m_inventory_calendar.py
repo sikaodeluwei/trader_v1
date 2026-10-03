@@ -49,6 +49,8 @@ class VerifiedSession:
     partial_session: bool | None
     segments: tuple[SessionSegment, ...]
     observation: Mapping[str, object]
+    calendar_disagreement: bool = False
+    template_segments: tuple[tuple[datetime, datetime], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,7 @@ class VerifiedInventoryCalendar:
     latest_session_end: datetime
     template_sha256: str
     calendar_binding_sha256: str
+    date_disagreements: tuple[Mapping[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -427,9 +430,10 @@ def _freeze(value: object) -> object:
 
 def _verify_segment(
     value: object,
-    expected: tuple[datetime, datetime],
+    expected: tuple[datetime, datetime] | None,
     label: str,
-) -> tuple[SessionSegment, dict[str, str]]:
+    template_timezone: ZoneInfo,
+) -> tuple[SessionSegment, dict[str, str], bool]:
     segment = _mapping(value, label)
     required = ("begin_application", "end_application", "begin_pc", "end_pc")
     if len(segment) != len(required) or any(key not in segment for key in required):
@@ -441,20 +445,39 @@ def _verify_segment(
     end_application = _aware_datetime(raw["end_application"], f"{label} end_application")
     begin_pc = _aware_datetime(raw["begin_pc"], f"{label} begin_pc")
     end_pc = _aware_datetime(raw["end_pc"], f"{label} end_pc")
-    expected_begin, expected_end = expected
     if (
         begin_application >= end_application
-        or not _same_application_representation(begin_application, expected_begin)
-        or not _same_application_representation(end_application, expected_end)
-        or not _same_instant(begin_pc, expected_begin)
-        or not _same_instant(end_pc, expected_end)
         or not _same_instant(begin_application, begin_pc)
         or not _same_instant(end_application, end_pc)
     ):
-        _fail(f"{label} timestamp or offset mismatch")
+        _fail(f"{label} invalid timestamp, offset, or PC corroboration")
+    for observed in (begin_application, end_application):
+        template_local = observed.astimezone(template_timezone)
+        if (
+            observed.replace(tzinfo=None) != template_local.replace(tzinfo=None)
+            or observed.utcoffset() != template_local.utcoffset()
+        ):
+            _fail(f"{label} invalid application timezone")
+    if expected is None:
+        disagreement = True
+        verified_begin, verified_end = begin_application, end_application
+    else:
+        expected_begin, expected_end = expected
+        disagreement = not (
+            _same_application_representation(begin_application, expected_begin)
+            and _same_application_representation(end_application, expected_end)
+        )
+        verified_begin = begin_application if disagreement else expected_begin
+        verified_end = end_application if disagreement else expected_end
     return (
-        SessionSegment(expected_begin, expected_end, begin_pc, end_pc),
+        SessionSegment(
+            verified_begin,
+            verified_end,
+            begin_pc,
+            end_pc,
+        ),
         {key: str(raw[key]) for key in required},
+        disagreement,
     )
 
 
@@ -501,35 +524,76 @@ def _verify_breaks(
 def _verify_observation(
     value: object,
     expected: _ExpectedDate,
-) -> tuple[VerifiedSession | None, dict[str, object], set[timedelta], set[timedelta]]:
+    template_timezone: ZoneInfo,
+) -> tuple[
+    VerifiedSession | None,
+    dict[str, object],
+    set[timedelta],
+    set[timedelta],
+    dict[str, str] | None,
+]:
     observation = _mapping(value, f"observation {expected.civil_date.isoformat()}")
     if observation.get("civil_date") != expected.civil_date.isoformat():
         _fail("civil-date coverage mismatch")
     has_session = bool(expected.segments)
     expected_classification = "SESSION" if has_session else "NO_SESSION"
-    if observation.get("classification") != expected_classification:
-        _fail("scanner/template session classification mismatch")
+    observed_classification = observation.get("classification")
+    if observed_classification not in ("SESSION", "NO_SESSION"):
+        _fail("invalid scanner session classification")
+    observed_has_session = observed_classification == "SESSION"
     expected_trading_date = expected.civil_date.isoformat() if has_session else None
-    if observation.get("exchange_trading_date") != expected_trading_date:
-        _fail("scanner/template exchange trading-date mismatch")
+    observed_trading_date = observation.get("exchange_trading_date")
+    if observed_has_session:
+        if not isinstance(observed_trading_date, str):
+            _fail("invalid scanner exchange trading date")
+        try:
+            parsed_trading_date = date.fromisoformat(observed_trading_date)
+        except ValueError as error:
+            raise InventoryValidationError("invalid scanner exchange trading date") from error
+        if (
+            parsed_trading_date < POLICY_START
+            or parsed_trading_date > POLICY_END
+            or observed_trading_date != parsed_trading_date.isoformat()
+        ):
+            _fail("scanner exchange trading date is outside policy or noncanonical")
+    elif observed_trading_date is not None:
+        _fail("NO_SESSION observation claims an exchange trading date")
     schedule = _mapping(observation.get("schedule_evidence"), "schedule_evidence")
-    if schedule.get("holiday_name") != expected.holiday_name:
-        _fail("scanner/template holiday mismatch")
-    if schedule.get("partial_session") is not expected.partial_session:
-        _fail("scanner/template partial-session mismatch")
+    holiday_name = schedule.get("holiday_name")
+    partial_session = schedule.get("partial_session")
+    if holiday_name is not None and not isinstance(holiday_name, str):
+        _fail("invalid scanner holiday name")
+    if not isinstance(partial_session, bool):
+        _fail("invalid scanner partial-session state")
+    disagreement = (
+        observed_classification != expected_classification
+        or observed_trading_date != expected_trading_date
+        or holiday_name != expected.holiday_name
+        or partial_session is not expected.partial_session
+    )
     if schedule.get("effective_schedule_source") != SCHEDULE_SOURCE:
         _fail("scanner schedule source mismatch")
 
     supplied_segments = _sequence(schedule.get("expected_open_segments"), "expected_open_segments")
+    if not observed_has_session and supplied_segments:
+        _fail("NO_SESSION observation has a segment")
+    if observed_has_session and not supplied_segments:
+        _fail("SESSION observation has no segment")
     if len(supplied_segments) != len(expected.segments):
-        _fail("scanner/template segment-count mismatch")
+        disagreement = True
     segments: list[SessionSegment] = []
     raw_segments: list[dict[str, str]] = []
     application_offsets: set[timedelta] = set()
     pc_offsets: set[timedelta] = set()
     previous_end: datetime | None = None
-    for index, (supplied, expected_segment) in enumerate(zip(supplied_segments, expected.segments)):
-        segment, raw = _verify_segment(supplied, expected_segment, f"segment[{index}]")
+    for index, supplied in enumerate(supplied_segments):
+        expected_segment = (
+            expected.segments[index] if index < len(expected.segments) else None
+        )
+        segment, raw, segment_disagreement = _verify_segment(
+            supplied, expected_segment, f"segment[{index}]", template_timezone
+        )
+        disagreement |= segment_disagreement
         if previous_end is not None and segment.begin_application < previous_end:
             _fail("scanner segments are not chronological")
         previous_end = segment.end_application
@@ -550,8 +614,10 @@ def _verify_observation(
     for field, expected_value in expected_summary.items():
         if schedule.get(field) != expected_value:
             _fail(f"scanner {field} mismatch")
-    if not has_session and observation.get("quality") is not None:
+    if not observed_has_session and observation.get("quality") is not None:
         _fail("NO_SESSION observation contains session quality")
+    if observed_has_session:
+        _mapping(observation.get("quality"), "SESSION observation quality")
 
     binding = {
         "civil_date": expected.civil_date.isoformat(),
@@ -563,8 +629,19 @@ def _verify_observation(
         "scheduled_breaks": list(breaks),
         **expected_summary,
     }
+    witness: dict[str, str] | None = None
+    if disagreement:
+        witness = {
+            "civil_date": expected.civil_date.isoformat(),
+            "reason": "TRADING_HOURS_INCONSISTENCY",
+            "scanner_classification": observed_classification,
+            "template_classification": expected_classification,
+        }
+        binding["scanner_classification"] = observed_classification
+        binding["scanner_exchange_trading_date"] = observed_trading_date
+        binding["date_scoped_disagreement"] = True
     if not has_session:
-        return None, binding, application_offsets, pc_offsets
+        return None, binding, application_offsets, pc_offsets, witness
     frozen_observation = _freeze(observation)
     assert isinstance(frozen_observation, Mapping)
     return (
@@ -575,10 +652,13 @@ def _verify_observation(
             expected.partial_session,
             tuple(segments),
             frozen_observation,
+            disagreement,
+            expected.segments,
         ),
         binding,
         application_offsets,
         pc_offsets,
+        witness,
     )
 
 
@@ -622,19 +702,36 @@ def verify_inventory_calendar(
 
     sessions: list[VerifiedSession] = []
     bindings: list[dict[str, object]] = []
+    date_disagreements: list[dict[str, str]] = []
     application_offsets: set[timedelta] = set()
     pc_offsets: set[timedelta] = set()
     trading_dates: set[date] = set()
+    scanner_trading_dates: set[date] = set()
+    previous_scanner_trading_date: date | None = None
     earliest: datetime | None = None
     latest: datetime | None = None
     previous_session_end: datetime | None = None
     for observation, civil_date in zip(observations, policy_dates):
         expected = _calendar_for_date(civil_date, template)
-        verified, binding, observed_application_offsets, observed_pc_offsets = _verify_observation(
+        verified, binding, observed_application_offsets, observed_pc_offsets, witness = _verify_observation(
             observation,
             expected,
+            template.timezone,
         )
         bindings.append(binding)
+        if witness is not None:
+            date_disagreements.append(witness)
+        raw_date = _mapping(observation, "scanner observation").get("exchange_trading_date")
+        if isinstance(raw_date, str):
+            scanner_date = date.fromisoformat(raw_date)
+            if (
+                scanner_date in scanner_trading_dates
+                or previous_scanner_trading_date is not None
+                and scanner_date <= previous_scanner_trading_date
+            ):
+                _fail("duplicate or non-chronological scanner exchange trading date")
+            scanner_trading_dates.add(scanner_date)
+            previous_scanner_trading_date = scanner_date
         application_offsets.update(observed_application_offsets)
         pc_offsets.update(observed_pc_offsets)
         if verified is None:
@@ -645,17 +742,21 @@ def verify_inventory_calendar(
             _fail("conflicting exchange trading-date order")
         if (
             previous_session_end is not None
+            and verified.segments
             and verified.segments[0].begin_application < previous_session_end
         ):
             _fail("verified sessions overlap or are not chronological")
         trading_dates.add(verified.trading_date)
         sessions.append(verified)
-        previous_session_end = verified.segments[-1].end_application
-        for segment in verified.segments:
-            if earliest is None or segment.begin_application < earliest:
-                earliest = segment.begin_application
-            if latest is None or segment.end_application > latest:
-                latest = segment.end_application
+        previous_session_end = (
+            verified.segments[-1].end_application
+            if verified.segments else expected.segments[-1][1]
+        )
+        for begin, end in expected.segments:
+            if earliest is None or begin < earliest:
+                earliest = begin
+            if latest is None or end > latest:
+                latest = end
 
     if not sessions or earliest is None or latest is None:
         _fail("verified calendar contains no actual session")
@@ -674,4 +775,5 @@ def verify_inventory_calendar(
         latest,
         sha256_bytes(trading_hours_template),
         canonical_payload_sha256(binding_payload, hash_field=""),
+        tuple(date_disagreements),
     )

@@ -1064,6 +1064,67 @@ def _verify_inventory_documents(
     acquisition = documents["inventory_acquisition_evidence"]
     if acquisition.get("expected_toolset_checkpoint") != trusted_toolset_checkpoint:
         _fail("inventory acquisition evidence toolset checkpoint mismatch")
+
+    try:
+        from tools.validation.mnq_5m_inventory import _session_entry
+        from tools.validation.mnq_5m_inventory_calendar import verify_inventory_calendar
+        from tools.validation.mnq_5m_inventory_evidence import InventoryValidationError
+    except ModuleNotFoundError as error:  # pragma: no cover - direct-script invocation
+        if error.name != "tools":
+            raise
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        from tools.validation.mnq_5m_inventory import _session_entry
+        from tools.validation.mnq_5m_inventory_calendar import verify_inventory_calendar
+        from tools.validation.mnq_5m_inventory_evidence import InventoryValidationError
+
+    for role, module_name in (
+        ("inventory_builder", "tools.validation.mnq_5m_inventory"),
+        (
+            "inventory_calendar_verifier",
+            "tools.validation.mnq_5m_inventory_calendar",
+        ),
+    ):
+        module = sys.modules.get(module_name)
+        module_path_value = getattr(module, "__file__", None) if module is not None else None
+        expected_path = (
+            Path(__file__).resolve().parents[2]
+            / REQUIRED_INVENTORY_TOOLSET_COMPONENT_PATHS[role]
+        ).resolve()
+        if not isinstance(module_path_value, str) or Path(module_path_value).resolve() != expected_path:
+            _fail(f"executing {role} path differs from frozen tool identity")
+        if _sha256(_snapshot_path(snapshots, expected_path, f"executing {role}")) != component_records[role]["sha256"]:
+            _fail(f"executing {role} differs from frozen tool identity")
+
+    try:
+        calendar = verify_inventory_calendar(
+            documents["inventory_scan"], artifact_bytes["trading_hours_template"]
+        )
+        expected_entries = [_session_entry(session) for session in calendar.sessions]
+    except InventoryValidationError as error:
+        _fail(f"inventory candidate calendar/quality binding invalid: {error}")
+    calendar_binding = _mapping(
+        provenance.get("calendar_binding"), "inventory provenance calendar binding"
+    )
+    expected_calendar_binding = {
+        "status": "VERIFIED",
+        "trading_hours_name": "CME US Index Futures ETH",
+        "civil_date_start": "2026-06-22",
+        "civil_date_end": "2026-07-24",
+        "civil_date_count": 33,
+        "session_count": len(calendar.sessions),
+        "earliest_session_begin": calendar.earliest_session_begin.isoformat(),
+        "latest_session_end": calendar.latest_session_end.isoformat(),
+        "trading_hours_template_sha256": calendar.template_sha256,
+        "calendar_binding_sha256": calendar.calendar_binding_sha256,
+    }
+    if calendar.date_disagreements:
+        expected_calendar_binding["date_disagreements"] = [
+            dict(witness) for witness in calendar.date_disagreements
+        ]
+    if dict(calendar_binding) != expected_calendar_binding:
+        _fail("inventory provenance calendar binding contradicts verified calendar")
+    if list(entries) != expected_entries:
+        _fail("source inventory candidate facts contradict bound scan/calendar")
     return records, documents, artifact_bytes
 
 

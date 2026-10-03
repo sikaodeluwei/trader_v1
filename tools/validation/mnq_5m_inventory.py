@@ -339,9 +339,25 @@ def _quality_reasons(quality: Mapping[str, object]) -> tuple[list[str], int, str
 
 def _session_entry(session: VerifiedSession) -> dict[str, object]:
     observation = _mapping(session.observation, "verified session observation")
+    if observation.get("classification") == "NO_SESSION":
+        if not session.calendar_disagreement or session.segments or observation.get("quality") is not None:
+            _fail("invalid closed scanner observation for actual candidate")
+        return {
+            "trading_date": session.trading_date.isoformat(),
+            "eligible": False,
+            "exclusion_reasons": ["TRADING_HOURS_INCONSISTENCY"],
+            "session_begin_application": None,
+            "session_end_application": None,
+            "observed_native_bar_count": None,
+            "first_250_source_sha256": None,
+            "complete_session_source_sha256": None,
+        }
     if (
         observation.get("classification") != "SESSION"
-        or observation.get("exchange_trading_date") != session.trading_date.isoformat()
+        or (
+            observation.get("exchange_trading_date") != session.trading_date.isoformat()
+            and not session.calendar_disagreement
+        )
         or not session.segments
     ):
         _fail("verified session identity mismatch")
@@ -359,6 +375,10 @@ def _session_entry(session: VerifiedSession) -> dict[str, object]:
         previous_end = segment.end_application
     quality = _mapping(observation.get("quality"), "verified session quality")
     reasons, observed_count, first_hash, complete_hash = _quality_reasons(quality)
+    if session.calendar_disagreement:
+        applicable = set(reasons)
+        applicable.add("TRADING_HOURS_INCONSISTENCY")
+        reasons = [reason for reason in EXCLUSION_REASON_ORDER if reason in applicable]
     return {
         "trading_date": session.trading_date.isoformat(),
         "eligible": not reasons,
@@ -415,11 +435,22 @@ def build_inventory(
         entry = _session_entry(session)
         entries.append(entry)
         previous_date = session.trading_date
-        previous_end = session.segments[-1].end_application
+        previous_end = (
+            session.segments[-1].end_application
+            if session.segments else session.template_segments[-1][1]
+        )
 
     if (
-        calendar.earliest_session_begin != calendar.sessions[0].segments[0].begin_application
-        or calendar.latest_session_end != calendar.sessions[-1].segments[-1].end_application
+        calendar.earliest_session_begin != (
+            calendar.sessions[0].template_segments[0][0]
+            if calendar.sessions[0].template_segments
+            else calendar.sessions[0].segments[0].begin_application
+        )
+        or calendar.latest_session_end != (
+            calendar.sessions[-1].template_segments[-1][1]
+            if calendar.sessions[-1].template_segments
+            else calendar.sessions[-1].segments[-1].end_application
+        )
     ):
         _fail("verified calendar bounds do not reconcile with sessions")
 
@@ -634,6 +665,10 @@ def _build_inventory_provenance(
             "pinned_production_hierarchy_commit": PINNED_HIERARCHY_COMMIT,
         },
     }
+    if calendar.date_disagreements:
+        provenance["calendar_binding"]["date_disagreements"] = [
+            dict(witness) for witness in calendar.date_disagreements
+        ]
     binding = _mapping(provenance["toolset_binding"], "toolset binding")
     if (
         binding.get("producing_checkpoint") != producing
