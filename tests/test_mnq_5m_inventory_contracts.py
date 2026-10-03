@@ -641,6 +641,57 @@ def test_source_inventory_hash_nullability_tracks_serializability_and_defects() 
     assert list(validator.iter_errors(impossible_missing_first_hash))
 
 
+@pytest.mark.parametrize("incomplete", [False, True], ids=["eligible", "excluded"])
+@pytest.mark.parametrize(
+    "null_bounds",
+    [
+        ("session_begin_application",),
+        ("session_end_application",),
+        ("session_begin_application", "session_end_application"),
+    ],
+    ids=["begin-null", "end-null", "both-null"],
+)
+def test_source_inventory_rejects_partial_null_session_bounds(
+    incomplete: bool, null_bounds: tuple[str, ...]
+) -> None:
+    document = _valid_inventory(incomplete=incomplete)
+    entry = document["entries"][0]
+    for field in null_bounds:
+        entry[field] = None
+
+    assert list(Draft202012Validator(_load("inventory")).iter_errors(document))
+
+
+def test_source_inventory_rejects_known_count_with_unknown_bounds_and_hashes() -> None:
+    document = _valid_inventory(incomplete=True)
+    document["entries"][0].update({
+        "session_begin_application": None,
+        "session_end_application": None,
+        "observed_native_bar_count": 0,
+        "first_250_source_sha256": None,
+        "complete_session_source_sha256": None,
+        "exclusion_reasons": ["TRADING_HOURS_INCONSISTENCY"],
+    })
+
+    assert list(Draft202012Validator(_load("inventory")).iter_errors(document))
+
+
+@pytest.mark.parametrize("representation", ["known-eligible", "known-excluded", "unknown-excluded"])
+def test_source_inventory_accepts_complete_candidate_representations(representation: str) -> None:
+    document = _valid_inventory(incomplete=representation != "known-eligible")
+    if representation == "unknown-excluded":
+        document["entries"][0].update({
+            "session_begin_application": None,
+            "session_end_application": None,
+            "observed_native_bar_count": None,
+            "first_250_source_sha256": None,
+            "complete_session_source_sha256": None,
+            "exclusion_reasons": ["TRADING_HOURS_INCONSISTENCY"],
+        })
+
+    assert not list(Draft202012Validator(_load("inventory")).iter_errors(document))
+
+
 def test_toolset_and_provenance_keep_selected_source_stage_status() -> None:
     toolset = _load("toolset")
     provenance = _load("provenance")
