@@ -892,6 +892,7 @@ def _task7_inventory_outputs(
 def _build_inventory_checkpoints(
     tmp_path: Path,
     *,
+    production_pin: bool = False,
     fake_verifier: bool = False,
     manifest_mutator=None,
     artifact_mutators=None,
@@ -909,8 +910,13 @@ def _build_inventory_checkpoints(
     _git(repo, "init")
     _git(repo, "remote", "add", "origin", REPOSITORY_IDENTITY)
 
-    (repo / "PINNED").write_bytes(b"production hierarchy\n")
-    pinned_commit = _commit(repo, "Pinned production hierarchy")
+    if production_pin:
+        pinned_commit = checkpoint_verify.DEFAULT_PINNED_PRODUCTION_COMMIT
+        _git(repo, "fetch", str(Path(__file__).resolve().parents[1]), pinned_commit)
+        _git(repo, "checkout", "--detach", pinned_commit)
+    else:
+        (repo / "PINNED").write_bytes(b"production hierarchy\n")
+        pinned_commit = _commit(repo, "Pinned production hierarchy")
 
     _copy_inventory_component_sources(repo, fake_verifier=fake_verifier)
     component_commit = _commit(repo, "Freeze inventory tool components")
@@ -1761,6 +1767,71 @@ def test_verifies_first_class_inventory_checkpoint_from_immutable_bytes(
         "executing_sha256"
     ]
     assert result["attestation_sha256"] == _attestation_hash(result)
+
+
+def _verify_public_inventory(fixture: InventoryCheckpointFixture) -> dict[str, object]:
+    return checkpoint_verify.verify_inventory_checkpoint(
+        repository_path=fixture.repo,
+        bundle_root=fixture.bundle,
+        toolset_manifest_path=fixture.manifest,
+        inventory_artifact_paths=fixture.inventory_artifacts,
+        trusted_toolset_checkpoint=fixture.toolset_checkpoint,
+        trusted_inventory_checkpoint=fixture.inventory_checkpoint,
+        expected_repository_identity=REPOSITORY_IDENTITY,
+    )
+
+
+def test_public_inventory_rejects_contradictory_runtime_scan_hash(
+    tmp_path: Path,
+) -> None:
+    def contradict_scan_hash(runtime: dict[str, object]) -> None:
+        runtime["artifact_hashes"]["inventory_scan"]["sha256"] = "0" * 64
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        production_pin=True,
+        artifact_mutators={"inventory_runtime_capture": contradict_scan_hash},
+    )
+
+    with pytest.raises(CheckpointVerificationError, match="runtime.*inventory_scan"):
+        _verify_public_inventory(fixture)
+
+
+@pytest.mark.parametrize("role", ["trading_hours_template", "ninjatrader_config", "scanner"])
+def test_public_inventory_rejects_adjacent_runtime_hash_contradictions(
+    tmp_path: Path, role: str
+) -> None:
+    def contradict_runtime_hash(runtime: dict[str, object]) -> None:
+        if role == "scanner":
+            runtime["scanner_identity"]["scanner_sha256"] = "0" * 64
+        else:
+            runtime["artifact_hashes"][role]["sha256"] = "0" * 64
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        production_pin=True,
+        artifact_mutators={"inventory_runtime_capture": contradict_runtime_hash},
+    )
+
+    with pytest.raises(CheckpointVerificationError, match=f"runtime.*{role}"):
+        _verify_public_inventory(fixture)
+
+
+@pytest.mark.parametrize("deferred_scanner_hash", [False, True])
+def test_public_inventory_verifies_matching_runtime_hashes(
+    tmp_path: Path, deferred_scanner_hash: bool
+) -> None:
+    def defer_scanner_hash(runtime: dict[str, object]) -> None:
+        if deferred_scanner_hash:
+            runtime["scanner_identity"]["scanner_sha256"] = None
+
+    fixture = _build_inventory_checkpoints(
+        tmp_path,
+        production_pin=True,
+        artifact_mutators={"inventory_runtime_capture": defer_scanner_hash},
+    )
+
+    assert _verify_public_inventory(fixture)["status"] == "VERIFIED"
 
 
 def test_noncandidate_calendar_disagreement_is_bound_without_a_phantom_entry(

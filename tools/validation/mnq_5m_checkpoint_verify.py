@@ -969,6 +969,8 @@ def _verify_inventory_documents(
     }
     if set(hashes) != expected_hash_keys:
         _fail("inventory provenance artifact hashes are incomplete")
+    runtime = documents["inventory_runtime_capture"]
+    runtime_hashes = _mapping(runtime.get("artifact_hashes"), "runtime artifact hashes")
     for role in (
         "inventory_scan",
         "inventory_runtime_capture",
@@ -977,11 +979,19 @@ def _verify_inventory_documents(
     ):
         if hashes.get(role) != _sha256(artifact_bytes[role]):
             _fail(f"inventory provenance {role} hash mismatch")
+        if role in {"inventory_scan", "trading_hours_template"}:
+            embedded = _mapping(runtime_hashes.get(role), f"runtime {role} hash")
+            if embedded.get("sha256") != _sha256(artifact_bytes[role]):
+                _fail(f"inventory runtime {role} hash mismatch")
     if hashes.get("toolset_manifest") != _sha256(manifest_bytes):
         _fail("inventory provenance toolset manifest hash mismatch")
     scanner = component_records.get("inventory_scanner")
     if scanner is None or hashes.get("scanner") != scanner.get("sha256"):
         _fail("inventory provenance scanner hash mismatch")
+    scanner_identity = _mapping(runtime.get("scanner_identity"), "runtime scanner identity")
+    embedded_scanner_hash = scanner_identity.get("scanner_sha256")
+    if embedded_scanner_hash is not None and embedded_scanner_hash != scanner.get("sha256"):
+        _fail("inventory runtime scanner hash mismatch")
 
     evidence = _sequence(
         provenance.get("external_evidence"), "inventory external evidence"
@@ -1014,6 +1024,10 @@ def _verify_inventory_documents(
             or hashes.get(role) != _sha256(evidence_bytes)
         ):
             _fail(f"external evidence {role} hash/length mismatch")
+        if role == "ninjatrader_config":
+            embedded = _mapping(runtime_hashes.get(role), f"runtime {role} hash")
+            if embedded.get("sha256") != _sha256(evidence_bytes):
+                _fail(f"inventory runtime {role} hash mismatch")
         if (
             role == "trading_hours_template"
             and evidence_bytes != artifact_bytes["trading_hours_template"]
