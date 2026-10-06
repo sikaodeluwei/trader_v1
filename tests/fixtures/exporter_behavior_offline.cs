@@ -192,12 +192,18 @@ public static class ExporterBehavior
         e.ChangeState(NinjaTrader.NinjaScript.State.Historical);
         e.ChangeState(NinjaTrader.NinjaScript.State.Realtime);
     }
-    private static ExportMnq5mCohortSource TwoLifecyclePairs()
+    private static ExportMnq5mCohortSource TwoLifecyclePairs(bool blockDispatch)
     {
         var beforeRequest = Create("before_request");
         Initialize(beforeRequest);
         beforeRequest.ChangeState(NinjaTrader.NinjaScript.State.Terminated);
         var afterRequest = Create("after_request");
+        // Publish both dispatch barriers before Realtime can start its timer.
+        if (blockDispatch)
+        {
+            afterRequest.DispatchEntered = new ManualResetEvent(false);
+            afterRequest.ResumeDispatch = new ManualResetEvent(false);
+        }
         Initialize(afterRequest);
         Assert(instances.Sum(i => i.Logs.Count(x => x.Contains("exporter initialized event_time="))) == 2, "both initialized markers reached");
         Assert(instances.Sum(i => i.Logs.Count(x => x.Contains("realtime lifecycle observed event_time="))) == 2, "both Realtime markers reached");
@@ -243,7 +249,7 @@ public static class ExporterBehavior
             File.WriteAllText(Path.Combine(NinjaTrader.Core.Globals.UserDataDir, "Config.xml"), "<OFFLINE_TEST_ONLY />");
             Console.WriteLine("OFFLINE_TEST_ONLY; real exporter normal paths; inert manually drained custom-event queue; NOT NinjaTrader runtime validation");
             string scenario = args[0];
-            var e = TwoLifecyclePairs();
+            var e = TwoLifecyclePairs(scenario == "termination_dispatch");
             if (scenario == "stale")
             {
                 e.ChangeState(NinjaTrader.NinjaScript.State.Terminated);
@@ -271,10 +277,6 @@ public static class ExporterBehavior
             }
             else if (scenario == "termination_dispatch")
             {
-                // Drain the initial missing-arm poll before blocking the next dispatch.
-                e.Drain();
-                e.DispatchEntered = new ManualResetEvent(false);
-                e.ResumeDispatch = new ManualResetEvent(false);
                 Assert(e.DispatchEntered.WaitOne(2000), "raw poll reaches dispatcher boundary");
                 e.ChangeState(NinjaTrader.NinjaScript.State.Terminated);
                 Arm(e, e.AcquisitionId); e.ResumeDispatch.Set(); Pump(e, 600);
