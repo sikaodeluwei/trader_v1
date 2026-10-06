@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 using NinjaTrader.Cbi;
 using NinjaTrader.Data;
@@ -23,6 +24,15 @@ namespace NinjaTrader.NinjaScript.Indicators
         private const int ApprovedExpiryYear = 2026;
         private const int RequiredBars = 250;
         private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
+
+        private const int ArmPollIntervalMilliseconds = 250;
+        private readonly object acquisitionLock = new object();
+        private Timer armPollTimer;
+        private bool armPollActive;
+        private bool armPollPending;
+        private bool acquisitionAttempted;
+        private bool terminated;
+        private long realtimeBarCallbacks;
 
         private bool exported;
         private bool armed;
@@ -66,31 +76,132 @@ namespace NinjaTrader.NinjaScript.Indicators
             }
             else if (State == State.DataLoaded)
             {
-                ValidateRuntimeSeries();
-                sessionIterator = new SessionIterator(Bars);
-                initializedAtPc = DateTimeOffset.Now;
-                Log(
-                    "acquisition=" + AcquisitionId + " exporter initialized event_time="
-                    + initializedAtPc.ToString("o", CultureInfo.InvariantCulture),
-                    LogLevel.Information);
+                lock (acquisitionLock)
+                {
+                    ValidateRuntimeSeries();
+                    sessionIterator = new SessionIterator(Bars);
+                    initializedAtPc = DateTimeOffset.Now;
+                    Interlocked.Exchange(ref realtimeBarCallbacks, 0);
+                    Log(
+                        "acquisition=" + AcquisitionId + " exporter initialized event_time="
+                        + initializedAtPc.ToString("o", CultureInfo.InvariantCulture),
+                        LogLevel.Information);
+                }
             }
             else if (State == State.Realtime)
-                Log(
-                    "acquisition=" + AcquisitionId
-                    + " realtime lifecycle observed event_time="
-                    + DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture),
-                    LogLevel.Information);
+            {
+                lock (acquisitionLock)
+                {
+                    Log(
+                        "acquisition=" + AcquisitionId
+                        + " realtime lifecycle observed event_time="
+                        + DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture),
+                        LogLevel.Information);
+                    StartArmPolling();
+                }
+            }
+            else if (State == State.Historical || State == State.Terminated)
+            {
+                lock (acquisitionLock)
+                {
+                    if (State == State.Terminated)
+                        terminated = true;
+                    StopArmPolling();
+                }
+            }
         }
 
         protected override void OnBarUpdate()
         {
-            // Historical calculation is deliberately inert. The operator waits for
-            // the controlled historical-request cycle to return to Realtime and only
-            // then creates or updates the acquisition-specific arm file.
-            if (exported || State != State.Realtime || CurrentBar < Count - 2)
+            if (State == State.Realtime)
+                Interlocked.Increment(ref realtimeBarCallbacks);
+            lock (acquisitionLock)
+                TryExportArmedAcquisition(false);
+        }
+
+        // All lifecycle, acquisition and timer ownership changes share the same
+        // lock. Dispose is nonblocking and never runs concurrently with publication.
+        private void StartArmPolling()
+        {
+            if (terminated || acquisitionAttempted || armPollTimer != null)
                 return;
-            if (!TryArmAcquisition())
+            Timer timer = new Timer(PollForArm, null, Timeout.Infinite, Timeout.Infinite);
+            armPollTimer = timer;
+            armPollActive = true;
+            timer.Change(0, ArmPollIntervalMilliseconds);
+        }
+
+        private void StopArmPolling()
+        {
+            armPollActive = false;
+            Timer timer = armPollTimer;
+            armPollTimer = null;
+            if (timer != null)
+                timer.Dispose();
+            // A dispatched event owns pending until it drains, even across a
+            // Historical/Realtime transition. Stopping cannot create a second slot.
+        }
+
+        private void PollForArm(object state)
+        {
+            // Thread-pool callbacks do no script/series access or filesystem work.
+            lock (acquisitionLock)
+            {
+                if (!armPollActive || armPollPending)
+                    return;
+                armPollPending = true;
+            }
+            try
+            {
+                TriggerCustomEvent(ProcessArmPoll, null);
+            }
+            catch
+            {
+                // A dispatcher refusal must not strand the unaccepted polling
+                // slot or escape an unhandled exception on the thread pool.
+                lock (acquisitionLock)
+                    armPollPending = false;
+            }
+        }
+
+        private void ProcessArmPoll(object state)
+        {
+            lock (acquisitionLock)
+            {
+                try
+                {
+                    if (armPollActive)
+                        TryExportArmedAcquisition(true);
+                }
+                finally
+                {
+                    armPollPending = false;
+                }
+            }
+        }
+
+        private void TryExportArmedAcquisition(bool fromArmPoll)
+        {
+            // Historical calculation remains inert. The operator waits for the
+            // controlled request cycle to return to Realtime before creating arm.
+            if (terminated || acquisitionAttempted || exported
+                || State != State.Realtime || CurrentBar < Count - 2)
                 return;
+            try
+            {
+                if (!TryArmAcquisition())
+                    return;
+            }
+            finally
+            {
+                // Arm read/validation exceptions propagate with no accepted gate.
+                // Once accepted, even failed/partial publication is never retried.
+                if (armed)
+                {
+                    acquisitionAttempted = true;
+                    StopArmPolling();
+                }
+            }
 
             DateTime tradingDate;
             if (!DateTime.TryParseExact(
@@ -124,6 +235,13 @@ namespace NinjaTrader.NinjaScript.Indicators
             IList<object> connectionsAtArm = CaptureActiveConnections();
             ExportBundle(tradingDate.Date, selected, connectionsAtArm);
             exported = true;
+            if (fromArmPoll)
+                Log(
+                    "acquisition=" + AcquisitionId
+                    + " arm poll export completed realtime_bar_callbacks_since_initialized="
+                    + Interlocked.Read(ref realtimeBarCallbacks).ToString(CultureInfo.InvariantCulture)
+                    + " event_time=" + DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture),
+                    LogLevel.Information);
         }
 
         private bool TryArmAcquisition()

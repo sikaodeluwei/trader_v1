@@ -60,6 +60,7 @@ def test_exporter_has_no_undeclared_json_dependency() -> None:
         "System.Linq",
         "System.Security.Cryptography",
         "System.Text",
+        "System.Threading",
         "System.Web.Script.Serialization",
         "NinjaTrader.Cbi",
         "NinjaTrader.Data",
