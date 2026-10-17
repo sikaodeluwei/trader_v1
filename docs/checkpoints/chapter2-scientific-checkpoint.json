@@ -1,0 +1,118 @@
+{
+  "schema": "CHAPTER2_PUBLIC_CHECKPOINT_SUMMARY_V1",
+  "publication_scope": "Code/protocols/synthetic tests and aggregate scientific evidence only; not a dataset redistribution or complete private checkpoint.",
+  "original_local_checkpoint": "4d57af458d83b6db7bc8c5fe5f6d543fe6899701",
+  "production_implementation_base": "04a73e1401d44688660b211d9db6918113482856",
+  "cohort_id": "mnq-202609-5m-v2",
+  "oracle_identity": "mnq-202609-5m-v2-independent-oracles-v1",
+  "production_identity": "mnq-202609-5m-v2-blind-production-v1",
+  "scientific_result": "COHORT_PASS",
+  "matched_comparison_groups": 812,
+  "hierarchy_groups": 170,
+  "selected_field_groups": 642,
+  "windows": 10,
+  "contexts": 107,
+  "requested_bms": 41,
+  "requested_sms": 45,
+  "mismatches": 0,
+  "controls_passed": 103,
+  "independent_review": {
+    "Critical": 0,
+    "Important": 0,
+    "Minor": 0
+  },
+  "source_manifest_sha256": "ce048e298e2eb0eb5f82cec2cb34ac14f5db277997b3399e27f910d4581dc6ac",
+  "oracle_manifest_sha256": "1d3c7c8b8fccaabdce849910e00af2b5fb922f2c9d0f293651fe029e9dec0260",
+  "context_manifest_sha256": "d5f2804022796d0d87c0996fb4a27c6ee5c8eced174143f4110ceed0df7140b7",
+  "production_manifest_sha256": "4d9b2812173b6dd03a1e0a93ebd623f892a16550cd23d6b71c703639848c38c6",
+  "scientific_report_package_manifest_sha256": "4219e8e456eb4b427e3dfd67fa1a1a4c9fbccc13d85f7c257c0531164f6564d3",
+  "scientific_report_sha256": "8a9b01fbd49222a284fa79643c611baf05dd7f005fb4ab24d84ec72d6f387d91",
+  "machine_comparison_sha256": "123347844102bd4d3c5091f61e2030696389cbc96ecaf4199ab2b62ddd039ff6",
+  "independent_review_sha256": "7b4cc10109f4d8f22b5078869740eea920bf3d8e7012781dea814d373910669f",
+  "upstream_origin": "UNVERIFIED",
+  "windows_identity_metadata": [
+    {
+      "window_id": "w01",
+      "case_id": "mnq-202609-5m-v2-w01",
+      "trading_date": "2026-06-22",
+      "row_count": 250,
+      "source_sha256": "f33ba298076a0aea80850a7ea14b83ffe8c678ed391ee1bd30ba937313beeb73"
+    },
+    {
+      "window_id": "w02",
+      "case_id": "mnq-202609-5m-v2-w02",
+      "trading_date": "2026-06-24",
+      "row_count": 250,
+      "source_sha256": "71f981594885c668cedcd6369c2e72f5f44f89405605f4a3ad0bb4872edf7fc5"
+    },
+    {
+      "window_id": "w03",
+      "case_id": "mnq-202609-5m-v2-w03",
+      "trading_date": "2026-06-26",
+      "row_count": 250,
+      "source_sha256": "18b9dda6612c5cb06fb4c892717f6d3fc44bf639a754be591f312017b3f52131"
+    },
+    {
+      "window_id": "w04",
+      "case_id": "mnq-202609-5m-v2-w04",
+      "trading_date": "2026-06-30",
+      "row_count": 250,
+      "source_sha256": "5df0f0d3664f6ecf7c77a5796cadce2b05518bd7b4e558c6977ac69c32bdf5ce"
+    },
+    {
+      "window_id": "w05",
+      "case_id": "mnq-202609-5m-v2-w05",
+      "trading_date": "2026-07-06",
+      "row_count": 250,
+      "source_sha256": "fe8d526752a3163cb6dc97208c6695f7c4c169aedc8aa7700b8374e4cee4286f"
+    },
+    {
+      "window_id": "w06",
+      "case_id": "mnq-202609-5m-v2-w06",
+      "trading_date": "2026-07-08",
+      "row_count": 250,
+      "source_sha256": "4ef077baaf2fe26b9abb523e91efb2ccf9ce103090b490ed966907e57d14a956"
+    },
+    {
+      "window_id": "w07",
+      "case_id": "mnq-202609-5m-v2-w07",
+      "trading_date": "2026-07-10",
+      "row_count": 250,
+      "source_sha256": "d6850328d6f30704c572a0be1b0b05c047ffe947db5698d370926824162ef142"
+    },
+    {
+      "window_id": "w08",
+      "case_id": "mnq-202609-5m-v2-w08",
+      "trading_date": "2026-07-15",
+      "row_count": 250,
+      "source_sha256": "01bb7d48fe6f4f93c84837b2c4a01b448cc68723efcdffe8db78415b3215d908"
+    },
+    {
+      "window_id": "w09",
+      "case_id": "mnq-202609-5m-v2-w09",
+      "trading_date": "2026-07-17",
+      "row_count": 250,
+      "source_sha256": "d19046217bc6d1741a8cb724c3f3dd3e151d588128c3105c1b42f07b294da07d"
+    },
+    {
+      "window_id": "w10",
+      "case_id": "mnq-202609-5m-v2-w10",
+      "trading_date": "2026-07-21",
+      "row_count": 250,
+      "source_sha256": "b08ccb338cf9c422db9502137fc57ea9904dbf55a7e8bb790ac798707c1044b7"
+    }
+  ],
+  "excluded": [
+    "Raw historical exports/candles and source/cohort snapshots",
+    "Data-bearing oracle/production/controls/context payloads",
+    "Private paths/native logs/runtime evidence/backups/bundles",
+    "Original commit ancestry containing withheld artifacts",
+    "Historical engineering plans with local operational details"
+  ],
+  "limitations": [
+    "Full scientific reproduction requires separately retained authorized private artifacts; hashes are commitments, not data copies.",
+    "Fixed retrospective cohort and explicit contexts only; no live/incremental causal readiness claim.",
+    "No new license or market-data redistribution permission is granted.",
+    "This independent publication root is not the original local scientific commit and does not rewrite earlier remote branches."
+  ]
+}

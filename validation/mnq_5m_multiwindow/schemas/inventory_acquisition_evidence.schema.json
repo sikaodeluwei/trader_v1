@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sikaodeluwei/trader_v1/validation/mnq_5m_multiwindow/schemas/inventory_acquisition_evidence.schema.json",
+  "title": "MNQ five-minute inventory acquisition evidence input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "acquisition_id",
+    "cohort_id",
+    "intended_provider",
+    "intended_connection_name",
+    "historical_trigger",
+    "lifecycle",
+    "evidence_files",
+    "expected_toolset_checkpoint",
+    "transformations"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "acquisition_id": { "$ref": "#/$defs/acquisition_id" },
+    "cohort_id": { "const": "mnq-202609-5m-v1" },
+    "intended_provider": { "$ref": "#/$defs/intended_provider" },
+    "intended_connection_name": { "const": "My NinjaTrader" },
+    "historical_trigger": { "$ref": "#/$defs/historical_trigger" },
+    "lifecycle": { "$ref": "#/$defs/lifecycle" },
+    "evidence_files": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/evidence_file" },
+      "allOf": [
+        {
+          "contains": {
+            "properties": { "role": { "const": "ninjatrader_config" } },
+            "required": ["role"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": { "role": { "const": "ninjatrader_log" } },
+            "required": ["role"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": { "role": { "const": "ninjatrader_trace" } },
+            "required": ["role"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "expected_toolset_checkpoint": { "$ref": "#/$defs/commit" },
+    "transformations": { "$ref": "#/$defs/transformations" }
+  },
+  "$defs": {
+    "acquisition_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "intended_provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_profile_id", "runtime_provider_id", "trace_adapter", "historical_service"],
+      "properties": {
+        "provider_profile_id": { "const": "NINJATRADER_TRADOVATE_PROVIDER31_HDS_V1" },
+        "runtime_provider_id": { "const": "Provider31" },
+        "trace_adapter": { "const": "Tradovate.Adapter" },
+        "historical_service": { "const": "NinjaTrader HDS" }
+      }
+    },
+    "historical_trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_role",
+        "instrument",
+        "provider_request_period",
+        "observed_at",
+        "requested_start",
+        "requested_end",
+        "qualifying_request_count"
+      ],
+      "properties": {
+        "source_role": { "const": "ninjatrader_trace" },
+        "instrument": { "const": "MNQ SEP26" },
+        "provider_request_period": { "const": "1 Minute" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "requested_start": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+        },
+        "requested_end": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$"
+        },
+        "qualifying_request_count": { "const": 1 }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter_connection_initiated_at",
+        "connection_ready_at",
+        "pre_request_realtime_at",
+        "request_observed_at",
+        "post_request_initialized_at",
+        "post_request_realtime_at",
+        "inventory_scan_armed_at",
+        "inventory_scan_completed_at"
+      ],
+      "properties": {
+        "adapter_connection_initiated_at": { "type": "string", "format": "date-time" },
+        "connection_ready_at": { "type": "string", "format": "date-time" },
+        "pre_request_realtime_at": { "type": "string", "format": "date-time" },
+        "request_observed_at": { "type": "string", "format": "date-time" },
+        "post_request_initialized_at": { "type": "string", "format": "date-time" },
+        "post_request_realtime_at": { "type": "string", "format": "date-time" },
+        "inventory_scan_armed_at": { "type": "string", "format": "date-time" },
+        "inventory_scan_completed_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "evidence_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "sha256", "byte_length"],
+      "properties": {
+        "role": {
+          "enum": ["ninjatrader_config", "ninjatrader_log", "ninjatrader_trace", "trading_hours_template"]
+        },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byte_length": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "transformations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sorted", "filled", "interpolated", "resampled", "timezone_converted", "back_adjusted"],
+      "properties": {
+        "sorted": { "const": false },
+        "filled": { "const": false },
+        "interpolated": { "const": false },
+        "resampled": { "const": false },
+        "timezone_converted": { "const": false },
+        "back_adjusted": { "const": false }
+      }
+    }
+  }
+}

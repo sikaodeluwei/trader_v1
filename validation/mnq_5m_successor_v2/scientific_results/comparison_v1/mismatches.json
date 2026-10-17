@@ -1,0 +1,12 @@
+{
+  "classification_counts": {
+    "COMPARATOR_DEFECT": 0,
+    "ORACLE_DEFECT": 0,
+    "PROJECT_DEFECT": 0,
+    "SOURCE_PROVENANCE_DEFECT": 0,
+    "SPECIFICATION_AMBIGUITY": 0,
+    "UNRESOLVED": 0
+  },
+  "mismatches": [],
+  "schema": "CHAPTER2_MISMATCH_RECORDS_V1"
+}

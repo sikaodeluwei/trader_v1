@@ -1,0 +1,811 @@
+{
+  "schema": "PUBLICATION_FILE_INVENTORY_V1",
+  "source_local_checkpoint": "4d57af458d83b6db7bc8c5fe5f6d543fe6899701",
+  "history": "One independent root commit; no restricted history included",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "byte_length": 9,
+      "sha256": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992"
+    },
+    {
+      "path": ".gitignore",
+      "byte_length": 270,
+      "sha256": "c565e6715857c3b179c18eef672ae4758287468eb6718512021502e4892f5da5"
+    },
+    {
+      "path": "docs/checkpoints/chapter2-scientific-checkpoint.json",
+      "byte_length": 4984,
+      "sha256": "df0f637b01f11a687f90855fac792e0e33ee9d5ffcba7a617d2210901a4a4b0b"
+    },
+    {
+      "path": "docs/PROJECT_OVERVIEW.md",
+      "byte_length": 10452,
+      "sha256": "252ab053d997ac3a688f2c2c679bc80e8583ca65c07bd126a700eeadd620fe69"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-28-market-structure-foundation-design.md",
+      "byte_length": 14976,
+      "sha256": "cfb8824ebf67e88a3a199c530a2f386663d78f7d113fc88a1824563b18109d91"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-29-bms-pullback-structure-design.md",
+      "byte_length": 21156,
+      "sha256": "2f22ed71d3503b8c96e5ae82e530afbb56fd27775e3613909dd11cf93debb120"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-30-cycle-and-level-framework-design.md",
+      "byte_length": 17785,
+      "sha256": "a60cac3294e9cdf4b6769c060c75d365a5f630d8b37ac0785fcf75234c67e6f4"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-30-short-term-structure-design.md",
+      "byte_length": 31396,
+      "sha256": "cc1d692a84f86746be988b7997ffec40db7f64098e8f2119b234937c625310ee"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-30-sms-reversal-structure-design.md",
+      "byte_length": 24692,
+      "sha256": "8ce56250b355a25bfa9384548ad5581ec6af7ff73adb8f28a8e40ce1c43b77f2"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-02-medium-term-structure-design.md",
+      "byte_length": 38135,
+      "sha256": "3ae02d3ba1d870adec82def3e4aa5fe67092ff16380ff8f467f4844adee8eff9"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-03-long-term-structure-design.md",
+      "byte_length": 33807,
+      "sha256": "0551674fa10b640bfb30a3d737de5e82a202ba640d935f2ce2f007abb3670c37"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-03-offline-market-structure-validation-design.md",
+      "byte_length": 39080,
+      "sha256": "dec7b268340ab356684bd6208538d672bee4505eab6a1a9404dda525b02fcc3c"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-10-short-term-pair-alignment-clarification-design.md",
+      "byte_length": 12808,
+      "sha256": "c30f99a2415a22ef6fa14653cd04cab42e36205c93972139916cb79ceb7433fd"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-13-mnq-5m-multiwindow-validation-design.md",
+      "byte_length": 29305,
+      "sha256": "d4e37bb292f36216376ae1fc06d3d8d5e26039342d1b4238fe0bd4b19b150947"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-16-mnq-5m-official-inventory-scanner-design.md",
+      "byte_length": 44705,
+      "sha256": "d687d7ab855f82eb4a0bd9e39b0c2ea61416923716fc1e29cc95dbb960a6b3d8"
+    },
+    {
+      "path": "README.md",
+      "byte_length": 2934,
+      "sha256": "c139e8d8e225d2e77153936294923804794fefcb111fb5a6c04896611f99261a"
+    },
+    {
+      "path": "requirements-validation.txt",
+      "byte_length": 19,
+      "sha256": "44ff0dc2f1e40311b8239e83146749ab9d9cee2a650e699f5464755d552ee20d"
+    },
+    {
+      "path": "run_real_mnq_blind_test.py",
+      "byte_length": 7052,
+      "sha256": "fcb5305832c399edae7a670fa0fc41b27e49703416a313f50890b4e0cab91880"
+    },
+    {
+      "path": "tests/fixtures/exporter_behavior_offline.cs",
+      "byte_length": 23220,
+      "sha256": "9fdc67f72a9656f4a137504d82e41985ac637913099d7667d8f9704ae46dfc14"
+    },
+    {
+      "path": "tests/test_analysis.py",
+      "byte_length": 4906,
+      "sha256": "4f711744370f892a3396fc38cd693ec9e3d075e78a7fcb05f881cd901833baba"
+    },
+    {
+      "path": "tests/test_blind_validation_workflow.py",
+      "byte_length": 9005,
+      "sha256": "762e66f7d884daf17af6514da8667ef21576bdab426785747e9137c1f36817eb"
+    },
+    {
+      "path": "tests/test_candles.py",
+      "byte_length": 3848,
+      "sha256": "3fd8afb7369172d1a927c56d08889d48594c0d47d15b6c60db4230eec3bc8467"
+    },
+    {
+      "path": "tests/test_controls.py",
+      "byte_length": 2493,
+      "sha256": "58d5a74677ff6a635db175fc37e4daf6422e680179b7a8ebceaeb1a51e5172c9"
+    },
+    {
+      "path": "tests/test_course_market_structure_scenarios.py",
+      "byte_length": 10032,
+      "sha256": "c4ed4539c859b9bbbeee622f4de63e5b36c5fc71359e509b125007be88f1db7e"
+    },
+    {
+      "path": "tests/test_csv_loader.py",
+      "byte_length": 6078,
+      "sha256": "c85b293ac65cbf5193b22b34f64ff7fdd0f7c249e1079f5369ec035d0ecc5e07"
+    },
+    {
+      "path": "tests/test_dataset.py",
+      "byte_length": 3567,
+      "sha256": "94f3a989e16d6dfc03db3ad2ea06a5aa4c8ef1400fcdf5254efc919c262a52b7"
+    },
+    {
+      "path": "tests/test_extreme_evidence.py",
+      "byte_length": 5900,
+      "sha256": "8f39b5d2d2d3b0c88c465e77b39cc9891a867b76b890963c5f8fcd0f4b0565f6"
+    },
+    {
+      "path": "tests/test_extremes.py",
+      "byte_length": 2473,
+      "sha256": "72359e837d5b76ef68064038606801796dedef1df8b58a9881f7fd8a9009b525"
+    },
+    {
+      "path": "tests/test_features.py",
+      "byte_length": 5033,
+      "sha256": "0365fddc6e291b272315a2b45df15ff15de687842720556c722210990420c0fd"
+    },
+    {
+      "path": "tests/test_isolated_point_deformations.py",
+      "byte_length": 8961,
+      "sha256": "a28f7378e2ee9d97ae31761bb0fd2798b3907377d296cacd4a4a82b962e21ced"
+    },
+    {
+      "path": "tests/test_isolated_points.py",
+      "byte_length": 8777,
+      "sha256": "e8268398e9ea015ffede0cc32e11110f2dc8fac18b9925deeff5526155f2145c"
+    },
+    {
+      "path": "tests/test_key_level_replacement.py",
+      "byte_length": 2752,
+      "sha256": "9adb1e0778365c637e62bc9afb7fa06d655ca569c912cdc38ec4bc779ded6172"
+    },
+    {
+      "path": "tests/test_key_levels.py",
+      "byte_length": 1623,
+      "sha256": "82cc29bf37786b7a399e324e1369043a14fcad4fbf7faf21a148ec5faf1d7580"
+    },
+    {
+      "path": "tests/test_long_term_structure.py",
+      "byte_length": 23663,
+      "sha256": "43e004928cd6028239f60ccff7e8fedaa897bcd4f6fed98689647645fea44e74"
+    },
+    {
+      "path": "tests/test_long_term_structure_integration.py",
+      "byte_length": 6556,
+      "sha256": "8033424b532f8694afc69676fa8a2cdedfa5a238501f03f1a11e7ce12b944782"
+    },
+    {
+      "path": "tests/test_market_data.py",
+      "byte_length": 4973,
+      "sha256": "fc4c244c0990c07da6b69c58c6a09ea8a405945b3e5c06a7b19a394aefeb9197"
+    },
+    {
+      "path": "tests/test_market_structure.py",
+      "byte_length": 10315,
+      "sha256": "5201b6d3423874e269fa515afc3a92df3f676b580c56d228830f4751de87cd06"
+    },
+    {
+      "path": "tests/test_medium_term_structure.py",
+      "byte_length": 22469,
+      "sha256": "5d3cc1e8d978d1ff8cabe437d97f17cc09adf14678d732a01a22238673c15159"
+    },
+    {
+      "path": "tests/test_medium_term_structure_integration.py",
+      "byte_length": 4832,
+      "sha256": "4406c25629b24455cf490ec8b690ef1434bf19ffc3d04b685bd73b3d03fe3a7b"
+    },
+    {
+      "path": "tests/test_mnq_5m_acquisition.py",
+      "byte_length": 135459,
+      "sha256": "5239ec3ff3379f6bb6afa34c0b7c872f0b202677c6296118e87ec92eb8504b15"
+    },
+    {
+      "path": "tests/test_mnq_5m_checkpoint_verify.py",
+      "byte_length": 99718,
+      "sha256": "c2e718b1ae4d126562f123e1f6e99127a9d65c047c49a4e059b836658b203ba8"
+    },
+    {
+      "path": "tests/test_mnq_5m_cohort_aggregate_v2.py",
+      "byte_length": 4561,
+      "sha256": "730ef1a46f7103eba7508027414e9e36a7026cb15b181a5368e3abb3cf30645f"
+    },
+    {
+      "path": "tests/test_mnq_5m_historical_intake_v2.py",
+      "byte_length": 19213,
+      "sha256": "b48fd754d64932f199023dd6bad3c0ae1aa8438ccbc3f57a84ac75065a77b118"
+    },
+    {
+      "path": "tests/test_mnq_5m_inventory.py",
+      "byte_length": 47737,
+      "sha256": "1fff2d4d960aa666c7a9feedc949fee5a8f71fd8014727532185aae502c49bfb"
+    },
+    {
+      "path": "tests/test_mnq_5m_inventory_calendar.py",
+      "byte_length": 30064,
+      "sha256": "39ac5174bd70675dbedd75d7cf768ee2a6a836f13e252063ff83adf588beabb9"
+    },
+    {
+      "path": "tests/test_mnq_5m_inventory_contracts.py",
+      "byte_length": 61161,
+      "sha256": "fbdc2fbc8eaa0d4a61a43245aa3faf3fbc1fe5c25b0572d8ba89cb59e0cc7e5a"
+    },
+    {
+      "path": "tests/test_mnq_5m_inventory_evidence.py",
+      "byte_length": 39379,
+      "sha256": "e1b737c1d967467da1fae3011dc87fde2a38c9f9d4f541adf0f3cc6eb5715b79"
+    },
+    {
+      "path": "tests/test_mnq_5m_scientific_project_v2.py",
+      "byte_length": 13758,
+      "sha256": "ac6f41c9ef06890aff2d2804ad9d9ba685ffc2de2375a51af9373e1747c3a3af"
+    },
+    {
+      "path": "tests/test_mnq_5m_scientific_v2.py",
+      "byte_length": 11042,
+      "sha256": "8c512221aab26b6abb804e91d4316cc478a57cbb1cfb0aaf52fe630032f34c43"
+    },
+    {
+      "path": "tests/test_mnq_5m_selected_source_check.py",
+      "byte_length": 11586,
+      "sha256": "c69ca02d3dfe2dbc45afbd95dfa42175b5f3d11b577ae305d23ec48c24591063"
+    },
+    {
+      "path": "tests/test_mnq_5m_selection.py",
+      "byte_length": 23599,
+      "sha256": "e4c7cda8f96bee75550356908412ab05de732281150660bdfd2489a8a44d8e2c"
+    },
+    {
+      "path": "tests/test_mnq_5m_source_freeze_v2.py",
+      "byte_length": 7844,
+      "sha256": "dcca63d491fec71f45ddebb6953024df580a9a2d794b17e011ed210ea22b40b1"
+    },
+    {
+      "path": "tests/test_movement_summaries.py",
+      "byte_length": 3980,
+      "sha256": "4e522fbbe89963b0cfe2f60610d341008837db4033d808985f441ce9dcd19404"
+    },
+    {
+      "path": "tests/test_movements.py",
+      "byte_length": 1911,
+      "sha256": "e43497c84797e528556b33c0404cc284e6eb78c5ae70763344d7d90e8b796a5b"
+    },
+    {
+      "path": "tests/test_ninjatrader_exporter_behavior.py",
+      "byte_length": 4872,
+      "sha256": "1e4f1984c4c49932f9f56351c437d0a020e2f2a00d5766d99aee08e90106e5b0"
+    },
+    {
+      "path": "tests/test_ninjatrader_exporter_compatibility.py",
+      "byte_length": 18852,
+      "sha256": "5f5b69669c8a78e77150491a41e1f6b58718f0fef624095e398d3d61c9f26f0e"
+    },
+    {
+      "path": "tests/test_ninjatrader_inventory_scanner_compatibility.py",
+      "byte_length": 41499,
+      "sha256": "a1b6d43a0622e2da2ad95b8ebb2bfac8e8b1f0a3af75a262c99f981c72ff8cd4"
+    },
+    {
+      "path": "tests/test_offline_analysis.py",
+      "byte_length": 4581,
+      "sha256": "ea5b0077d3c92545e9d2225c6ac3cced8d661537a272d0108f85b4245201b24a"
+    },
+    {
+      "path": "tests/test_offline_candle_analysis.py",
+      "byte_length": 5694,
+      "sha256": "2f1192984aea895172740f5a2aae8a1055c7327025677dc3dc0aaafc825a75f7"
+    },
+    {
+      "path": "tests/test_offline_hierarchy.py",
+      "byte_length": 10470,
+      "sha256": "de84b5e38615fdcd8ced609d0f1931fbcdad00f02b7968e7b9d6c98824a7f166"
+    },
+    {
+      "path": "tests/test_offline_isolated.py",
+      "byte_length": 3822,
+      "sha256": "bb109ddbb8d5f6d13e03a5e081009fbbeeba5894b26ddc5cac0cff471dc548b4"
+    },
+    {
+      "path": "tests/test_offline_market_structure_integration.py",
+      "byte_length": 32237,
+      "sha256": "e2f72ff5d624ca32f48f2d4b6c776c09bca000e0217d22108ddb59e4c461ce43"
+    },
+    {
+      "path": "tests/test_offline_models.py",
+      "byte_length": 13280,
+      "sha256": "0b251aea2cfdd24d5bcb67299c9a5dd689640fa313c3c2a49f272ddc89b6b63d"
+    },
+    {
+      "path": "tests/test_offline_segments.py",
+      "byte_length": 39127,
+      "sha256": "23cdb6c2a0b130284ca6dff00f86cdf5839240f0dcb926b3e7ad1beb926084ee"
+    },
+    {
+      "path": "tests/test_ohlc_csv_loader.py",
+      "byte_length": 10307,
+      "sha256": "a0bcfec3585e7a6eb7418b0aa40acb46a154049c65c3ac918f4cea3cd22519c4"
+    },
+    {
+      "path": "tests/test_pullback_structure.py",
+      "byte_length": 13916,
+      "sha256": "9e994b211b779acf54c1c5f81566726840464ea3162ba45fbcbca09017903752"
+    },
+    {
+      "path": "tests/test_pullback_structure_integration.py",
+      "byte_length": 3115,
+      "sha256": "93da2782a08d4cadbfe6b29977f23ef5e1b90c846296bfcbd53fad0d8fb877c5"
+    },
+    {
+      "path": "tests/test_repository_text_identity_policy.py",
+      "byte_length": 1069,
+      "sha256": "b20699cbbf5ca4e4e2653d53702b4be36197679b90fd956c937429cac02c01ac"
+    },
+    {
+      "path": "tests/test_short_term_structure.py",
+      "byte_length": 12122,
+      "sha256": "a4ecd9567682031cf38667a27e6e6d1729c6e7bc19977c2960ae0dcae449da98"
+    },
+    {
+      "path": "tests/test_short_term_structure_integration.py",
+      "byte_length": 3415,
+      "sha256": "c956a56b9bd77f8b4f652defba6a63184c376d75a00a554a400ab53a585e37fc"
+    },
+    {
+      "path": "tests/test_sms_structure.py",
+      "byte_length": 14368,
+      "sha256": "b53a67abfebbfddc5d2e57f18e885e409d840d76fb34461bf456bf503db481d9"
+    },
+    {
+      "path": "tests/test_sms_structure_integration.py",
+      "byte_length": 4659,
+      "sha256": "6f14e331f3102af122099ca2cc10a4e6a92e6d78dcabacbbd0a7323140c28fa9"
+    },
+    {
+      "path": "tests/test_validation_ground_truth.py",
+      "byte_length": 23759,
+      "sha256": "e362afd7d3085504f14dc9461ab66cbe369e8628bdc6afdaa15698bc9271fadc"
+    },
+    {
+      "path": "tests/test_validation_scoring.py",
+      "byte_length": 23648,
+      "sha256": "14f12c8cb12578ec0a7b0f91d01ef0e7431d096e8a6766541d257aa6a141685e"
+    },
+    {
+      "path": "tools/validation/mnq_5m_acquisition.py",
+      "byte_length": 96788,
+      "sha256": "7bf20e6c482e8ea59048cfe6cf0faa4c620583722b4a91eddb0e1dd452749503"
+    },
+    {
+      "path": "tools/validation/mnq_5m_checkpoint_verify.py",
+      "byte_length": 78576,
+      "sha256": "2545293a93cb88037d6ea2bdd071c4e2310fd3dc23c4b1b8ff4bf1155c69a86b"
+    },
+    {
+      "path": "tools/validation/mnq_5m_cohort_aggregate_v2.py",
+      "byte_length": 5160,
+      "sha256": "baadeb8b90e4f6c74650444bb0a70884a15b4d090fa7ae5ef482d8570acdcd54"
+    },
+    {
+      "path": "tools/validation/mnq_5m_exact_compare.py",
+      "byte_length": 53962,
+      "sha256": "d53ddf91fa7eddc249b9e836b3fd908bf43a468e9766a0dea4b686c496a1bada"
+    },
+    {
+      "path": "tools/validation/mnq_5m_historical_intake_v2.py",
+      "byte_length": 20991,
+      "sha256": "a8aa76cbc6576c2c57a6aaf2153245f8a50b5ab4ff6b0ff2c60586faea023849"
+    },
+    {
+      "path": "tools/validation/mnq_5m_inventory.py",
+      "byte_length": 36715,
+      "sha256": "9221680fa4c58cccbe37c6363dd7eb4298d28edd01b868e3867ff8c3ae4724dc"
+    },
+    {
+      "path": "tools/validation/mnq_5m_inventory_calendar.py",
+      "byte_length": 29523,
+      "sha256": "af131e7c0b66a83c865cf5cd5cee9aadc718b6891ef55a34f9cd0d1fde1a1737"
+    },
+    {
+      "path": "tools/validation/mnq_5m_inventory_common.py",
+      "byte_length": 7116,
+      "sha256": "6620ee6a3d31f77bcdd25b2bde3f82e6c067c06aafe7c0d943b6e87c3eecf08f"
+    },
+    {
+      "path": "tools/validation/mnq_5m_inventory_evidence.py",
+      "byte_length": 33064,
+      "sha256": "dcaa75e05e06496b2da2bde1057d94afca3b104a70ce5db3d66c391a11fbbf69"
+    },
+    {
+      "path": "tools/validation/mnq_5m_oracle_reproducer.py",
+      "byte_length": 14693,
+      "sha256": "1a2da8ebec5452c5529d39decb9c28e31d05e75bc3c0670209830d5496881137"
+    },
+    {
+      "path": "tools/validation/mnq_5m_scientific_project_v2.py",
+      "byte_length": 5305,
+      "sha256": "0e18b437f764e7934108499636cfd452951027423aed9f8de21933188413857e"
+    },
+    {
+      "path": "tools/validation/mnq_5m_scientific_v2.py",
+      "byte_length": 23853,
+      "sha256": "60acc58622a766189fa0bbf29e222be836c9d1ecf5f469d46157ceee41a7898c"
+    },
+    {
+      "path": "tools/validation/mnq_5m_selected_source_check.py",
+      "byte_length": 10811,
+      "sha256": "e8f6e67f1f182e9e8bda6a85257dedae7807bc382ead02951cf3703001b1c684"
+    },
+    {
+      "path": "tools/validation/mnq_5m_selection.py",
+      "byte_length": 15870,
+      "sha256": "0e24432cbbdc01c7c942e987786e253c3caada5663d8e4991ac445755764abef"
+    },
+    {
+      "path": "tools/validation/mnq_5m_source_freeze_v2.py",
+      "byte_length": 11463,
+      "sha256": "a60ce297bf4b6cb101fe37bd20a105a8718af4ab47253507bdba2a756df36ad9"
+    },
+    {
+      "path": "tools/validation/ninjatrader/ExportMnq5mCohortSource.cs",
+      "byte_length": 27220,
+      "sha256": "101bceccaeefac05de74a6e27fb359c608c462a9a745b619fc2efb593d33be68"
+    },
+    {
+      "path": "tools/validation/ninjatrader/ScanMnq5mSourceInventory.cs",
+      "byte_length": 47068,
+      "sha256": "02955c9e2f6255f4986dcf5bd951779554f0919b2b6abe212d4b6a5e76229f30"
+    },
+    {
+      "path": "tools/validation/oracle_only_v2/ANNOTATION_PLAN.md",
+      "byte_length": 5991,
+      "sha256": "485d49bb909892a7f35839159aa60277fdd3dadf05e01469152613dfe8ce0d25"
+    },
+    {
+      "path": "tools/validation/oracle_only_v2/independent_driver.py",
+      "byte_length": 27210,
+      "sha256": "064d2395773dbd8a05dfd3099715a06071866c4b905a8857bb04bbf02b5b0f9a"
+    },
+    {
+      "path": "tools/validation/oracle_only_v2/README.md",
+      "byte_length": 475,
+      "sha256": "e49cac98b9db44e7d8db330ad6fbc9c273d9c1e474e6de81606a2f294fd63740"
+    },
+    {
+      "path": "tools/validation/oracle_only_v2/selected-result-contract.md",
+      "byte_length": 4350,
+      "sha256": "cc784dbdd669d4aad762cc5f6a038d8728e81d7d4aa64e45f2453c8dffe0a027"
+    },
+    {
+      "path": "trading/__init__.py",
+      "byte_length": 54,
+      "sha256": "3e8889758dfc54e8bdb91d711f0fef6af1708170289bb6912a8de087ee01d2b6"
+    },
+    {
+      "path": "trading/analysis/__init__.py",
+      "byte_length": 75,
+      "sha256": "a49eb4056a599755cbc9d17cffe921adc1e0e9904a50fa7887b150845de3bc7d"
+    },
+    {
+      "path": "trading/analysis/candles.py",
+      "byte_length": 2548,
+      "sha256": "9a3a8c25a859a2f8c2a3b4910639b39e238f577ad0f262ec7d68423af4e8c762"
+    },
+    {
+      "path": "trading/analysis/hierarchy.py",
+      "byte_length": 1383,
+      "sha256": "5e743ee85ab5b0a88581ac02bf67ff62313c52a4799b5113286b210a5045cb06"
+    },
+    {
+      "path": "trading/analysis/isolated.py",
+      "byte_length": 1974,
+      "sha256": "301b1cb67251b16572595222d35d0633302ec73cef5e32f29e2bb74df6253a33"
+    },
+    {
+      "path": "trading/analysis/models.py",
+      "byte_length": 5556,
+      "sha256": "25ae31f67838ddbbbf8c8a47842c6198fe2527293190790e190c6b94d7881f15"
+    },
+    {
+      "path": "trading/analysis/offline.py",
+      "byte_length": 1470,
+      "sha256": "84b4b8ff043f44c8b6194cfc5819bbf3404e2b13f0730e35f6d58c03e05e2347"
+    },
+    {
+      "path": "trading/analysis/segments.py",
+      "byte_length": 10486,
+      "sha256": "7849780600601b369cd5d442864ee2c30da662b7aff6e04b180a794149d0c93c"
+    },
+    {
+      "path": "trading/data/__init__.py",
+      "byte_length": 55,
+      "sha256": "d43df2f534bd710c88572f092e48236a087d0d7836611129707c094dc1b40dc0"
+    },
+    {
+      "path": "trading/data/candles.py",
+      "byte_length": 4069,
+      "sha256": "8dbbba12fb07b6b842666aeb524721c6eeb3143ea8fca70f802341fa2f43efd6"
+    },
+    {
+      "path": "trading/data/csv_loader.py",
+      "byte_length": 2826,
+      "sha256": "1b2ea42436335d6bbd3609dd67c3102f5d63a83f394718a79b47cef42a43c084"
+    },
+    {
+      "path": "trading/data/events.py",
+      "byte_length": 604,
+      "sha256": "11b05a4d2db05197d310cbcee7cfe19ba571ebe3043372e417a430af47b98d57"
+    },
+    {
+      "path": "trading/data/ohlc_csv_loader.py",
+      "byte_length": 4336,
+      "sha256": "3247c8c81b81f190e0f2ef2c8e40013aa0cb76aeea1285b36538408c909d563d"
+    },
+    {
+      "path": "trading/definitions/__init__.py",
+      "byte_length": 35,
+      "sha256": "58646d3c93cdf270fbafa3b1964c03162569352ecbdac79ae2e08ddc8ec79ba7"
+    },
+    {
+      "path": "trading/definitions/analysis.py",
+      "byte_length": 2101,
+      "sha256": "646884c77a1f0149c530114328a70056b735cd5a3f70a8e22d65160be04f7b05"
+    },
+    {
+      "path": "trading/definitions/candles.py",
+      "byte_length": 7500,
+      "sha256": "efef7a8d07f35c5355d3b2d19d7f397be693c3709684a3be840971f6b764e6eb"
+    },
+    {
+      "path": "trading/definitions/dataset.py",
+      "byte_length": 3362,
+      "sha256": "000f5ebb0709902677beeb13370683afde5109a8f11fa9e78d5e587ef88af002"
+    },
+    {
+      "path": "trading/definitions/extremes.py",
+      "byte_length": 4588,
+      "sha256": "6675e0edbf2e48853bf3d74b060bd71149f4fe5b4e670c1b005dadf5f36b4df9"
+    },
+    {
+      "path": "trading/definitions/features.py",
+      "byte_length": 3113,
+      "sha256": "53c0a393956d6b0e79ce71f8a3647e0c5c88d27071b3961160bbf6fb4b4334bd"
+    },
+    {
+      "path": "trading/definitions/isolated_point_deformations.py",
+      "byte_length": 3971,
+      "sha256": "71256565eb8269c122177333e87811780e2b4449800127e8b09fcc7fd92e7e96"
+    },
+    {
+      "path": "trading/definitions/isolated_points.py",
+      "byte_length": 4322,
+      "sha256": "710ff82904b8bc30385df6f3e04bbcbf2de463c979454190f61579465a402ffc"
+    },
+    {
+      "path": "trading/definitions/key_levels.py",
+      "byte_length": 2042,
+      "sha256": "4af298e0cc764f6d36c61e0c0a8cc1d2e32b5d483e7a9058d0e93a8555d1715f"
+    },
+    {
+      "path": "trading/definitions/long_term_structure.py",
+      "byte_length": 10797,
+      "sha256": "acbe0df13cd05dfd1a68d1856ceb76a05af893441ece734b15b4466bbe163358"
+    },
+    {
+      "path": "trading/definitions/market_structure.py",
+      "byte_length": 5162,
+      "sha256": "63e66baf867a373f1bb3abcb24e08dbd4026cd09cb99f9c72d80ffe764706af4"
+    },
+    {
+      "path": "trading/definitions/medium_term_structure.py",
+      "byte_length": 10946,
+      "sha256": "4baaa3c3fb26157dbb5d8f3e3cc41a3585db0f6a9b8896491ea94f160e24fcdc"
+    },
+    {
+      "path": "trading/definitions/movements.py",
+      "byte_length": 4544,
+      "sha256": "8a5b20d27b861d3c786141631811f899302a03a766d7250e02dc39030aa643b7"
+    },
+    {
+      "path": "trading/definitions/pullback_structure.py",
+      "byte_length": 6299,
+      "sha256": "ba806a90194c54ef95e4d45a4d2d5a25dd23127e2b3f21d2b58455809fc2a6c0"
+    },
+    {
+      "path": "trading/definitions/short_term_structure.py",
+      "byte_length": 6346,
+      "sha256": "c2483df1f0a48dbee04680a7c1cdbc6b6eb26e09d4084712b4726b3a833f730f"
+    },
+    {
+      "path": "trading/definitions/sms_structure.py",
+      "byte_length": 5480,
+      "sha256": "a744278bf1241a4919e167f049bbfd8e3902f203c230a3db7cc15d11fc9fdb77"
+    },
+    {
+      "path": "trading/validation/__init__.py",
+      "byte_length": 67,
+      "sha256": "9ecb42d0201f7e1eba09d7592fc299d192c244e1ac3a8e5d85f38c6b7ed7129d"
+    },
+    {
+      "path": "trading/validation/ground_truth.py",
+      "byte_length": 38992,
+      "sha256": "c1256e83fca525e932d21069306c0edb91e39fb8c68b2126c4e030e2f45f2028"
+    },
+    {
+      "path": "trading/validation/scoring.py",
+      "byte_length": 22222,
+      "sha256": "ef239b8203a31dbbc3985674baff0a664d6613b36e063c06fb3732b0314571b6"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/checkpoint_attestation.schema.json",
+      "byte_length": 4002,
+      "sha256": "e7f3d4de4c9b4035b7d318a6e2cb02d563b834c67695da3570a153d4d4e8335d"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/checkpoint_attestation_v2.schema.json",
+      "byte_length": 3562,
+      "sha256": "d881ddf9f4e98c3ba07719940c3940e21326f9de9826020d3222dc76d312184b"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/exclusions.schema.json",
+      "byte_length": 1679,
+      "sha256": "6e66d0eb32aadbaf722dc36bdb2c826e64d0d7186353647a0793fb2f2fe0d776"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/exclusions_v2.schema.json",
+      "byte_length": 1928,
+      "sha256": "a3ccd3ff14897d905d088aebd01635671c8b5c996dec508d46bef7c542259d54"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/inventory_acquisition_evidence.schema.json",
+      "byte_length": 5654,
+      "sha256": "fe9ddeeaa2fbcf62e8c40d48df26a00cb851e639aaad4bb9256749c79cf2d0d0"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/inventory_provenance.schema.json",
+      "byte_length": 14052,
+      "sha256": "cbe1759cf9f09930dc9b6f2c5e3e16f2e4a21ce9b2197a841506621911514281"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/inventory_runtime_capture.schema.json",
+      "byte_length": 6388,
+      "sha256": "98fb15fcc1595fe0142de71d962c101972703bc66c5a19385afd665e4ea88e46"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/inventory_scan.schema.json",
+      "byte_length": 10333,
+      "sha256": "3360b6cf8b6f1698ef5225fb9a8121803c8047de6df686f315350cd80350bace"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/provenance.schema.json",
+      "byte_length": 18794,
+      "sha256": "35b795e60d41de11ff48fa575039c7d4f8c6284b3e37b27c0b16b9eee054cc2b"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/provenance_v1_3.schema.json",
+      "byte_length": 4410,
+      "sha256": "1c4424ea4985c4cf95a99bb9e3dc21994aa2ab33244f0f3fb1ed8d5c099ae927"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/selection_registry.schema.json",
+      "byte_length": 4118,
+      "sha256": "720fc56f5091b783efd8a2702daf606f4865aefd7e88a0ec33f903d009fd2bd5"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/selection_registry_v2.schema.json",
+      "byte_length": 3400,
+      "sha256": "997adbf25bdb52cf42f936c790bbbc32b4883097342f5a68f20543fc31741b52"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/source_inventory.schema.json",
+      "byte_length": 2503,
+      "sha256": "76665617a84f3250adbdafc4d80c509a0640ab39f5c397daaa17b69de1352f6e"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/source_inventory_v2.schema.json",
+      "byte_length": 5303,
+      "sha256": "dfa681250a2393d1b84c5a28200e73c0f8e0d34746150b5859ca80499b81d513"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/toolset_manifest.schema.json",
+      "byte_length": 3278,
+      "sha256": "047d8a2116b74939f0191aedcb696915ddc10f689f2ea1d19e9e793353e7456b"
+    },
+    {
+      "path": "validation/mnq_5m_multiwindow/schemas/toolset_manifest_v2.schema.json",
+      "byte_length": 8761,
+      "sha256": "e8999c8fcf3d8d9108fdfad2c9bd90652a712a24653fe3d888ac4c046ab99f01"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/cohort_config.json",
+      "byte_length": 1478,
+      "sha256": "19d59ef8457b65e111c4e30ee86646817e7e77deaaa42b7e49e6b5001113f792"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/export_metadata.template.json",
+      "byte_length": 684,
+      "sha256": "dfac25b99dfba2a2845befad3bf3267d1ed93debb6ab2f41ce7260e22a72e0fd"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/PROTOCOL.md",
+      "byte_length": 8532,
+      "sha256": "af30cd1e76d566dcc449d6f634b4b85077a766f7bacdb599737fd169107b2d23"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/provider_profile.json",
+      "byte_length": 582,
+      "sha256": "b2aa1675c08f9eb7b1639fae5a88ee8c159290e185474be3e76754b57ca6f9c6"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/requirements-test.txt",
+      "byte_length": 29,
+      "sha256": "236bf8e4ab5b29fbcd4f43be55f5ac16a312dce58b42edcd2cf599c4d4130a72"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific/CONTEXT_SELECTION_V1.md",
+      "byte_length": 7193,
+      "sha256": "d285d31e3312f624c3d1d3e180521754d8ef0ead7d958d2df6f1c2d471ee2257"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific/PROTOCOL_V1.md",
+      "byte_length": 9189,
+      "sha256": "bb4986e3da6faa99132c2ebd19054d380ee5119f84361a67914ca0859905af58"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific/toolset-manifest.json",
+      "byte_length": 10377,
+      "sha256": "419893b887c08e588f23240d59375c3dac279573e2616c0aeddd409a82bfb56e"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific_results/comparison_v1/acceptance.json",
+      "byte_length": 2443,
+      "sha256": "6ff02ff10bb949598dc10a567a5d6ad2ec3f7b9179f6e94d1819b1592de6e4dd"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific_results/comparison_v1/aggregate.json",
+      "byte_length": 6229,
+      "sha256": "680d12be6de1110463380b6491c8b178bea13cf1d0a768ab7e40855f9e4cb211"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific_results/comparison_v1/capability-counts.json",
+      "byte_length": 5220,
+      "sha256": "95830ee8b4e5b6cc84df413ab4ce4d7ffcd9cb1495a51a41a08f9a27c5927715"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific_results/comparison_v1/mismatches.json",
+      "byte_length": 267,
+      "sha256": "d8ca1bff42dcc525ad04da8c2a64b965816faf81d78eadfcce10eef0a2badd3f"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific_results/comparison_v1/REPORT.md",
+      "byte_length": 10102,
+      "sha256": "8a9b01fbd49222a284fa79643c611baf05dd7f005fb4ab24d84ec72d6f387d91"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/session_calendar.json",
+      "byte_length": 2351,
+      "sha256": "c33d24431fc262cfd26f2b614a7d4839bf742bae97c27c669b5d765a6718eaa4"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/SOURCE_FREEZE_V2_2.md",
+      "byte_length": 5973,
+      "sha256": "5bca07a8291eba936c531d6fbc246ff2be0c8a8c8f3cbb0ac7274442b171265e"
+    }
+  ],
+  "inventory_excludes_itself": true,
+  "original_approved_files_byte_identical": 154,
+  "all_original_scientific_toolset_dependency_files_preserved": 52,
+  "synthetic_smoke_tests": {
+    "passed": 280,
+    "failed": 0,
+    "scope": "Eight core course/marketstructure/offline integration modules; syntheticfixtures only, no frozen dataset replay"
+  },
+  "security_review": {
+    "secret_or_personal_path_findings": 0,
+    "largest_payload_bytes": 135459,
+    "raw_source_or_data_bearing_scientific_payloads_included": false
+  },
+  "restrictions": "No rawmarketdata/privatebackup/native runtimeevidence/originaldata-bearing ancestry; no new license granted."
+}

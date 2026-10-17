@@ -1,0 +1,18 @@
+{
+  "aggregation_is_resampling": true,
+  "aggregation_minutes": 5,
+  "contract": "MNQ-202609",
+  "data_type": "Last",
+  "exchange": "CME Globex",
+  "fill_sort_interpolate_round": false,
+  "instrument": "MNQ 09-26",
+  "interval_minutes": 1,
+  "profile_id": "NT_LOCAL_HISTORY_MINUTE_LAST_UTC_V2",
+  "provider": "UNVERIFIED",
+  "raw_format": "yyyyMMdd HHmmss;open;high;low;close;volume",
+  "schema_version": "2.0",
+  "source_origin": "NinjaTrader locally stored historical records",
+  "timestamp_semantics": "bar_close",
+  "timezone": "UTC",
+  "upstream_origin_status": "UNVERIFIED"
+}

@@ -1,0 +1,46 @@
+{
+  "bars_per_case": 250,
+  "calendar_file": "session_calendar.json",
+  "calendar_sha256": "c33d24431fc262cfd26f2b614a7d4839bf742bae97c27c669b5d765a6718eaa4",
+  "cohort_id": "mnq-202609-5m-v2",
+  "complete_selected_sessions_required": true,
+  "legacy_cases": [
+    {
+      "case_id": "mnq-202609-5m-td2026-06-22-w01",
+      "sha256": "0d35adcdc674acccbd80e0e584d0ea829664eb1aaf9344542138243e6ca8b560",
+      "trading_date": "2026-06-22"
+    },
+    {
+      "case_id": "mnq-202609-5m-td2026-06-24-w02",
+      "sha256": "c3fdcbaa4732cc2c2db14e34993cfbaa1174a0f84c7d30e55d6b38dafd17c392",
+      "trading_date": "2026-06-24"
+    },
+    {
+      "case_id": "mnq-202609-5m-td2026-06-26-w03",
+      "sha256": "8ccd77dd036c49dd49760aade5d02cf17a33c636a419285df9ddcf8dacdf89d2",
+      "trading_date": "2026-06-26"
+    },
+    {
+      "case_id": "mnq-202609-5m-td2026-06-30-w04",
+      "sha256": "1cfb30d3bd73e49b35b2f38c8e49fc2673538b34f5483611606c73e573039aef",
+      "trading_date": "2026-06-30"
+    }
+  ],
+  "legacy_timezone": "Asia/Singapore",
+  "production_hierarchy_commit": "04a73e1401d44688660b211d9db6918113482856",
+  "profile_file": "provider_profile.json",
+  "profile_sha256": "b2aa1675c08f9eb7b1639fae5a88ee8c159290e185474be3e76754b57ca6f9c6",
+  "schema_version": "2.0",
+  "selected_dates": [
+    "2026-06-22",
+    "2026-06-24",
+    "2026-06-26",
+    "2026-06-30",
+    "2026-07-06",
+    "2026-07-08",
+    "2026-07-10",
+    "2026-07-15",
+    "2026-07-17",
+    "2026-07-21"
+  ]
+}

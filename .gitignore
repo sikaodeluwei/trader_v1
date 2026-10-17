@@ -1,0 +1,15 @@
+__pycache__/
+.pytest_cache/
+.env
+.env.*
+*.bundle
+*.zip
+*.dll
+*.exe
+*.csv
+MNQ*.txt
+private-data/
+validation/mnq_5m_successor_v2/frozen/
+validation/mnq_5m_successor_v2/oracles/
+validation/mnq_5m_successor_v2/production/
+validation/mnq_5m_multiwindow/cases/

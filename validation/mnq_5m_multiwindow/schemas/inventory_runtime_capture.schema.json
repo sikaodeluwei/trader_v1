@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sikaodeluwei/trader_v1/validation/mnq_5m_multiwindow/schemas/inventory_runtime_capture.schema.json",
+  "title": "MNQ five-minute inventory runtime capture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "acquisition_id",
+    "cohort_id",
+    "instrument",
+    "ninjatrader_version",
+    "scanner_identity",
+    "bar_series",
+    "application_timezone",
+    "pc_timezone",
+    "trading_hours",
+    "active_connections",
+    "connection_snapshot_phase",
+    "lifecycle",
+    "artifact_hashes"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "acquisition_id": { "$ref": "#/$defs/acquisition_id" },
+    "cohort_id": { "const": "mnq-202609-5m-v1" },
+    "instrument": { "$ref": "#/$defs/instrument" },
+    "ninjatrader_version": { "type": "string", "minLength": 1 },
+    "scanner_identity": { "$ref": "#/$defs/scanner_identity" },
+    "bar_series": { "$ref": "#/$defs/bar_series" },
+    "application_timezone": { "$ref": "#/$defs/timezone" },
+    "pc_timezone": { "$ref": "#/$defs/timezone" },
+    "trading_hours": { "$ref": "#/$defs/trading_hours" },
+    "active_connections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/active_connection" }
+    },
+    "connection_snapshot_phase": {
+      "const": "immediately after operator arm and before inventory scan"
+    },
+    "lifecycle": { "$ref": "#/$defs/lifecycle" },
+    "artifact_hashes": { "$ref": "#/$defs/artifact_hashes" }
+  },
+  "$defs": {
+    "acquisition_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^\\S(?:.*\\S)?$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "instrument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract_label", "full_name", "master_name", "expiry_month", "expiry_year"],
+      "properties": {
+        "contract_label": { "const": "MNQ SEP26" },
+        "full_name": { "const": "MNQ SEP26" },
+        "master_name": { "const": "MNQ" },
+        "expiry_month": { "const": 9 },
+        "expiry_year": { "const": 2026 }
+      }
+    },
+    "scanner_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "scanner_sha256", "scanner_sha256_recording_authority"],
+      "properties": {
+        "name": { "const": "ScanMnq5mSourceInventory" },
+        "scanner_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "scanner_sha256_recording_authority": { "const": "operator/finalizer" }
+      }
+    },
+    "bar_series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value", "native", "calculate"],
+      "properties": {
+        "type": { "const": "Minute" },
+        "value": { "const": 5 },
+        "native": { "const": true },
+        "calculate": { "const": "OnBarClose" }
+      }
+    },
+    "timezone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "standard_name", "daylight_name", "base_utc_offset", "supports_dst"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "standard_name": { "type": "string", "minLength": 1 },
+        "daylight_name": { "type": "string", "minLength": 1 },
+        "base_utc_offset": { "type": "string", "pattern": "^[+-][0-9]{2}:[0-9]{2}$" },
+        "supports_dst": { "type": "boolean" }
+      }
+    },
+    "trading_hours": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "timezone_id"],
+      "properties": {
+        "name": { "const": "CME US Index Futures ETH" },
+        "timezone_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "active_connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "provider", "status", "price_status", "instrument_types"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "price_status": { "type": "string", "minLength": 1 },
+        "instrument_types": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initialized_at", "realtime_observed_at", "armed_at", "completed_at"],
+      "properties": {
+        "initialized_at": { "type": "string", "format": "date-time" },
+        "realtime_observed_at": { "type": "string", "format": "date-time" },
+        "armed_at": { "type": "string", "format": "date-time" },
+        "completed_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "hashed_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file_name", "sha256"],
+      "properties": {
+        "file_name": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "deferred_hash_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file_name", "sha256", "sha256_recording_authority"],
+      "properties": {
+        "file_name": { "const": "inventory_runtime_capture.json" },
+        "sha256": { "const": null },
+        "sha256_recording_authority": { "const": "operator/finalizer" }
+      }
+    },
+    "artifact_hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inventory_scan", "inventory_runtime_capture", "trading_hours_template", "ninjatrader_config"],
+      "properties": {
+        "inventory_scan": {
+          "$ref": "#/$defs/hashed_artifact",
+          "properties": { "file_name": { "const": "inventory_scan.json" } }
+        },
+        "inventory_runtime_capture": { "$ref": "#/$defs/deferred_hash_artifact" },
+        "trading_hours_template": {
+          "$ref": "#/$defs/hashed_artifact",
+          "properties": { "file_name": { "const": "trading_hours_template.xml" } }
+        },
+        "ninjatrader_config": {
+          "$ref": "#/$defs/hashed_artifact",
+          "properties": { "file_name": { "const": "NinjaTrader.Config.xml" } }
+        }
+      }
+    }
+  }
+}

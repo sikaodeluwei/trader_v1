@@ -1,0 +1,271 @@
+{
+  "schema": "MNQ_SCIENTIFIC_TOOLSET_V1",
+  "version": "1.0.0",
+  "cohort_id": "mnq-202609-5m-v2",
+  "source_freeze_manifest_sha256": "ce048e298e2eb0eb5f82cec2cb34ac14f5db277997b3399e27f910d4581dc6ac",
+  "production_scientific_base": "04a73e1401d44688660b211d9db6918113482856",
+  "action_scope": "TOOLS_ONLY; no real context/oracle/project execution",
+  "dependencies": [
+    {
+      "path": "docs/superpowers/specs/2026-08-28-market-structure-foundation-design.md",
+      "byte_length": 14976,
+      "sha256": "cfb8824ebf67e88a3a199c530a2f386663d78f7d113fc88a1824563b18109d91"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-29-bms-pullback-structure-design.md",
+      "byte_length": 21156,
+      "sha256": "2f22ed71d3503b8c96e5ae82e530afbb56fd27775e3613909dd11cf93debb120"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-30-cycle-and-level-framework-design.md",
+      "byte_length": 17785,
+      "sha256": "a60cac3294e9cdf4b6769c060c75d365a5f630d8b37ac0785fcf75234c67e6f4"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-30-short-term-structure-design.md",
+      "byte_length": 31396,
+      "sha256": "cc1d692a84f86746be988b7997ffec40db7f64098e8f2119b234937c625310ee"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-08-30-sms-reversal-structure-design.md",
+      "byte_length": 24692,
+      "sha256": "8ce56250b355a25bfa9384548ad5581ec6af7ff73adb8f28a8e40ce1c43b77f2"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-02-medium-term-structure-design.md",
+      "byte_length": 38135,
+      "sha256": "3ae02d3ba1d870adec82def3e4aa5fe67092ff16380ff8f467f4844adee8eff9"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-03-long-term-structure-design.md",
+      "byte_length": 33807,
+      "sha256": "0551674fa10b640bfb30a3d737de5e82a202ba640d935f2ce2f007abb3670c37"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-03-offline-market-structure-validation-design.md",
+      "byte_length": 39080,
+      "sha256": "dec7b268340ab356684bd6208538d672bee4505eab6a1a9404dda525b02fcc3c"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-10-short-term-pair-alignment-clarification-design.md",
+      "byte_length": 12808,
+      "sha256": "c30f99a2415a22ef6fa14653cd04cab42e36205c93972139916cb79ceb7433fd"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-13-mnq-5m-multiwindow-validation-design.md",
+      "byte_length": 29305,
+      "sha256": "d4e37bb292f36216376ae1fc06d3d8d5e26039342d1b4238fe0bd4b19b150947"
+    },
+    {
+      "path": "requirements-validation.txt",
+      "byte_length": 19,
+      "sha256": "44ff0dc2f1e40311b8239e83146749ab9d9cee2a650e699f5464755d552ee20d"
+    },
+    {
+      "path": "tests/test_mnq_5m_scientific_project_v2.py",
+      "byte_length": 13758,
+      "sha256": "ac6f41c9ef06890aff2d2804ad9d9ba685ffc2de2375a51af9373e1747c3a3af"
+    },
+    {
+      "path": "tests/test_mnq_5m_scientific_v2.py",
+      "byte_length": 11042,
+      "sha256": "8c512221aab26b6abb804e91d4316cc478a57cbb1cfb0aaf52fe630032f34c43"
+    },
+    {
+      "path": "tools/validation/mnq_5m_exact_compare.py",
+      "byte_length": 53962,
+      "sha256": "d53ddf91fa7eddc249b9e836b3fd908bf43a468e9766a0dea4b686c496a1bada"
+    },
+    {
+      "path": "tools/validation/mnq_5m_historical_intake_v2.py",
+      "byte_length": 20991,
+      "sha256": "a8aa76cbc6576c2c57a6aaf2153245f8a50b5ab4ff6b0ff2c60586faea023849"
+    },
+    {
+      "path": "tools/validation/mnq_5m_oracle_reproducer.py",
+      "byte_length": 14693,
+      "sha256": "1a2da8ebec5452c5529d39decb9c28e31d05e75bc3c0670209830d5496881137"
+    },
+    {
+      "path": "tools/validation/mnq_5m_scientific_project_v2.py",
+      "byte_length": 5305,
+      "sha256": "0e18b437f764e7934108499636cfd452951027423aed9f8de21933188413857e"
+    },
+    {
+      "path": "tools/validation/mnq_5m_scientific_v2.py",
+      "byte_length": 23853,
+      "sha256": "60acc58622a766189fa0bbf29e222be836c9d1ecf5f469d46157ceee41a7898c"
+    },
+    {
+      "path": "tools/validation/mnq_5m_source_freeze_v2.py",
+      "byte_length": 11463,
+      "sha256": "a60ce297bf4b6cb101fe37bd20a105a8718af4ab47253507bdba2a756df36ad9"
+    },
+    {
+      "path": "trading/analysis/__init__.py",
+      "byte_length": 75,
+      "sha256": "a49eb4056a599755cbc9d17cffe921adc1e0e9904a50fa7887b150845de3bc7d"
+    },
+    {
+      "path": "trading/analysis/candles.py",
+      "byte_length": 2548,
+      "sha256": "9a3a8c25a859a2f8c2a3b4910639b39e238f577ad0f262ec7d68423af4e8c762"
+    },
+    {
+      "path": "trading/analysis/hierarchy.py",
+      "byte_length": 1383,
+      "sha256": "5e743ee85ab5b0a88581ac02bf67ff62313c52a4799b5113286b210a5045cb06"
+    },
+    {
+      "path": "trading/analysis/isolated.py",
+      "byte_length": 1974,
+      "sha256": "301b1cb67251b16572595222d35d0633302ec73cef5e32f29e2bb74df6253a33"
+    },
+    {
+      "path": "trading/analysis/models.py",
+      "byte_length": 5556,
+      "sha256": "25ae31f67838ddbbbf8c8a47842c6198fe2527293190790e190c6b94d7881f15"
+    },
+    {
+      "path": "trading/analysis/offline.py",
+      "byte_length": 1470,
+      "sha256": "84b4b8ff043f44c8b6194cfc5819bbf3404e2b13f0730e35f6d58c03e05e2347"
+    },
+    {
+      "path": "trading/analysis/segments.py",
+      "byte_length": 10486,
+      "sha256": "7849780600601b369cd5d442864ee2c30da662b7aff6e04b180a794149d0c93c"
+    },
+    {
+      "path": "trading/data/__init__.py",
+      "byte_length": 55,
+      "sha256": "d43df2f534bd710c88572f092e48236a087d0d7836611129707c094dc1b40dc0"
+    },
+    {
+      "path": "trading/data/candles.py",
+      "byte_length": 4069,
+      "sha256": "8dbbba12fb07b6b842666aeb524721c6eeb3143ea8fca70f802341fa2f43efd6"
+    },
+    {
+      "path": "trading/data/csv_loader.py",
+      "byte_length": 2826,
+      "sha256": "1b2ea42436335d6bbd3609dd67c3102f5d63a83f394718a79b47cef42a43c084"
+    },
+    {
+      "path": "trading/data/events.py",
+      "byte_length": 604,
+      "sha256": "11b05a4d2db05197d310cbcee7cfe19ba571ebe3043372e417a430af47b98d57"
+    },
+    {
+      "path": "trading/data/ohlc_csv_loader.py",
+      "byte_length": 4336,
+      "sha256": "3247c8c81b81f190e0f2ef2c8e40013aa0cb76aeea1285b36538408c909d563d"
+    },
+    {
+      "path": "trading/definitions/__init__.py",
+      "byte_length": 35,
+      "sha256": "58646d3c93cdf270fbafa3b1964c03162569352ecbdac79ae2e08ddc8ec79ba7"
+    },
+    {
+      "path": "trading/definitions/analysis.py",
+      "byte_length": 2101,
+      "sha256": "646884c77a1f0149c530114328a70056b735cd5a3f70a8e22d65160be04f7b05"
+    },
+    {
+      "path": "trading/definitions/candles.py",
+      "byte_length": 7500,
+      "sha256": "efef7a8d07f35c5355d3b2d19d7f397be693c3709684a3be840971f6b764e6eb"
+    },
+    {
+      "path": "trading/definitions/dataset.py",
+      "byte_length": 3362,
+      "sha256": "000f5ebb0709902677beeb13370683afde5109a8f11fa9e78d5e587ef88af002"
+    },
+    {
+      "path": "trading/definitions/extremes.py",
+      "byte_length": 4588,
+      "sha256": "6675e0edbf2e48853bf3d74b060bd71149f4fe5b4e670c1b005dadf5f36b4df9"
+    },
+    {
+      "path": "trading/definitions/features.py",
+      "byte_length": 3113,
+      "sha256": "53c0a393956d6b0e79ce71f8a3647e0c5c88d27071b3961160bbf6fb4b4334bd"
+    },
+    {
+      "path": "trading/definitions/isolated_point_deformations.py",
+      "byte_length": 3971,
+      "sha256": "71256565eb8269c122177333e87811780e2b4449800127e8b09fcc7fd92e7e96"
+    },
+    {
+      "path": "trading/definitions/isolated_points.py",
+      "byte_length": 4322,
+      "sha256": "710ff82904b8bc30385df6f3e04bbcbf2de463c979454190f61579465a402ffc"
+    },
+    {
+      "path": "trading/definitions/key_levels.py",
+      "byte_length": 2042,
+      "sha256": "4af298e0cc764f6d36c61e0c0a8cc1d2e32b5d483e7a9058d0e93a8555d1715f"
+    },
+    {
+      "path": "trading/definitions/long_term_structure.py",
+      "byte_length": 10797,
+      "sha256": "acbe0df13cd05dfd1a68d1856ceb76a05af893441ece734b15b4466bbe163358"
+    },
+    {
+      "path": "trading/definitions/market_structure.py",
+      "byte_length": 5162,
+      "sha256": "63e66baf867a373f1bb3abcb24e08dbd4026cd09cb99f9c72d80ffe764706af4"
+    },
+    {
+      "path": "trading/definitions/medium_term_structure.py",
+      "byte_length": 10946,
+      "sha256": "4baaa3c3fb26157dbb5d8f3e3cc41a3585db0f6a9b8896491ea94f160e24fcdc"
+    },
+    {
+      "path": "trading/definitions/movements.py",
+      "byte_length": 4544,
+      "sha256": "8a5b20d27b861d3c786141631811f899302a03a766d7250e02dc39030aa643b7"
+    },
+    {
+      "path": "trading/definitions/pullback_structure.py",
+      "byte_length": 6299,
+      "sha256": "ba806a90194c54ef95e4d45a4d2d5a25dd23127e2b3f21d2b58455809fc2a6c0"
+    },
+    {
+      "path": "trading/definitions/short_term_structure.py",
+      "byte_length": 6346,
+      "sha256": "c2483df1f0a48dbee04680a7c1cdbc6b6eb26e09d4084712b4726b3a833f730f"
+    },
+    {
+      "path": "trading/definitions/sms_structure.py",
+      "byte_length": 5480,
+      "sha256": "a744278bf1241a4919e167f049bbfd8e3902f203c230a3db7cc15d11fc9fdb77"
+    },
+    {
+      "path": "trading/validation/__init__.py",
+      "byte_length": 67,
+      "sha256": "9ecb42d0201f7e1eba09d7592fc299d192c244e1ac3a8e5d85f38c6b7ed7129d"
+    },
+    {
+      "path": "trading/validation/ground_truth.py",
+      "byte_length": 38992,
+      "sha256": "c1256e83fca525e932d21069306c0edb91e39fb8c68b2126c4e030e2f45f2028"
+    },
+    {
+      "path": "trading/validation/scoring.py",
+      "byte_length": 22222,
+      "sha256": "ef239b8203a31dbbc3985674baff0a664d6613b36e063c06fb3732b0314571b6"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific/CONTEXT_SELECTION_V1.md",
+      "byte_length": 7193,
+      "sha256": "d285d31e3312f624c3d1d3e180521754d8ef0ead7d958d2df6f1c2d471ee2257"
+    },
+    {
+      "path": "validation/mnq_5m_successor_v2/scientific/PROTOCOL_V1.md",
+      "byte_length": 9189,
+      "sha256": "bb4986e3da6faa99132c2ebd19054d380ee5119f84361a67914ca0859905af58"
+    }
+  ],
+  "stage_separation": "Independent annotator: approved rules/source/schema only; production worker: approved code/source/numeric requests only. This inventory is not an execution authority or OS sandbox."
+}

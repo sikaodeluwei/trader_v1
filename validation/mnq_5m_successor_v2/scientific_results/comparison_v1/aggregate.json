@@ -1,0 +1,195 @@
+{
+  "cases": [
+    {
+      "case_id": "mnq-202609-5m-v2-w01",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "f33ba298076a0aea80850a7ea14b83ffe8c678ed391ee1bd30ba937313beeb73",
+      "source_valid": true,
+      "trading_date": "2026-06-22",
+      "unresolved_mismatch": false
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w02",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "71f981594885c668cedcd6369c2e72f5f44f89405605f4a3ad0bb4872edf7fc5",
+      "source_valid": true,
+      "trading_date": "2026-06-24",
+      "unresolved_mismatch": false
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w03",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "18b9dda6612c5cb06fb4c892717f6d3fc44bf639a754be591f312017b3f52131",
+      "source_valid": true,
+      "trading_date": "2026-06-26",
+      "unresolved_mismatch": false
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w04",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "5df0f0d3664f6ecf7c77a5796cadce2b05518bd7b4e558c6977ac69c32bdf5ce",
+      "source_valid": true,
+      "trading_date": "2026-06-30",
+      "unresolved_mismatch": false
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w05",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "fe8d526752a3163cb6dc97208c6695f7c4c169aedc8aa7700b8374e4cee4286f",
+      "source_valid": true,
+      "trading_date": "2026-07-06",
+      "unresolved_mismatch": false
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w06",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "4ef077baaf2fe26b9abb523e91efb2ccf9ce103090b490ed966907e57d14a956",
+      "source_valid": true,
+      "trading_date": "2026-07-08",
+      "unresolved_mismatch": false
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w07",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "d6850328d6f30704c572a0be1b0b05c047ffe947db5698d370926824162ef142",
+      "source_valid": true,
+      "trading_date": "2026-07-10",
+      "unresolved_mismatch": false
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w08",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "01bb7d48fe6f4f93c84837b2c4a01b448cc68723efcdffe8db78415b3215d908",
+      "source_valid": true,
+      "trading_date": "2026-07-15",
+      "unresolved_mismatch": false
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w09",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "d19046217bc6d1741a8cb724c3f3dd3e151d588128c3105c1b42f07b294da07d",
+      "source_valid": true,
+      "trading_date": "2026-07-17",
+      "unresolved_mismatch": false
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w10",
+      "classifications": [],
+      "completed": true,
+      "controls_passed": true,
+      "exact_match": true,
+      "source_sha256": "b08ccb338cf9c422db9502137fc57ea9904dbf55a7e8bb790ac798707c1044b7",
+      "source_valid": true,
+      "trading_date": "2026-07-21",
+      "unresolved_mismatch": false
+    }
+  ],
+  "gates": {
+    "blind_execution_verified": true,
+    "oracles_frozen_before_projects": true,
+    "regressions_passed": true,
+    "reproduction_verified": true,
+    "sources_accepted": true,
+    "toolset_unchanged": true
+  },
+  "result": {
+    "case_classifications": {
+      "mnq-202609-5m-v2-w01": [],
+      "mnq-202609-5m-v2-w02": [],
+      "mnq-202609-5m-v2-w03": [],
+      "mnq-202609-5m-v2-w04": [],
+      "mnq-202609-5m-v2-w05": [],
+      "mnq-202609-5m-v2-w06": [],
+      "mnq-202609-5m-v2-w07": [],
+      "mnq-202609-5m-v2-w08": [],
+      "mnq-202609-5m-v2-w09": [],
+      "mnq-202609-5m-v2-w10": []
+    },
+    "completed_cases": 10,
+    "incomplete_reasons": [],
+    "pass_cases": 10,
+    "reviewed_primary": null,
+    "selected_cases": 10,
+    "status": "COHORT_PASS"
+  },
+  "schema": "CHAPTER2_COHORT_AGGREGATE_V1",
+  "selected": [
+    {
+      "case_id": "mnq-202609-5m-v2-w01",
+      "source_sha256": "f33ba298076a0aea80850a7ea14b83ffe8c678ed391ee1bd30ba937313beeb73",
+      "trading_date": "2026-06-22"
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w02",
+      "source_sha256": "71f981594885c668cedcd6369c2e72f5f44f89405605f4a3ad0bb4872edf7fc5",
+      "trading_date": "2026-06-24"
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w03",
+      "source_sha256": "18b9dda6612c5cb06fb4c892717f6d3fc44bf639a754be591f312017b3f52131",
+      "trading_date": "2026-06-26"
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w04",
+      "source_sha256": "5df0f0d3664f6ecf7c77a5796cadce2b05518bd7b4e558c6977ac69c32bdf5ce",
+      "trading_date": "2026-06-30"
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w05",
+      "source_sha256": "fe8d526752a3163cb6dc97208c6695f7c4c169aedc8aa7700b8374e4cee4286f",
+      "trading_date": "2026-07-06"
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w06",
+      "source_sha256": "4ef077baaf2fe26b9abb523e91efb2ccf9ce103090b490ed966907e57d14a956",
+      "trading_date": "2026-07-08"
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w07",
+      "source_sha256": "d6850328d6f30704c572a0be1b0b05c047ffe947db5698d370926824162ef142",
+      "trading_date": "2026-07-10"
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w08",
+      "source_sha256": "01bb7d48fe6f4f93c84837b2c4a01b448cc68723efcdffe8db78415b3215d908",
+      "trading_date": "2026-07-15"
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w09",
+      "source_sha256": "d19046217bc6d1741a8cb724c3f3dd3e151d588128c3105c1b42f07b294da07d",
+      "trading_date": "2026-07-17"
+    },
+    {
+      "case_id": "mnq-202609-5m-v2-w10",
+      "source_sha256": "b08ccb338cf9c422db9502137fc57ea9904dbf55a7e8bb790ac798707c1044b7",
+      "trading_date": "2026-07-21"
+    }
+  ]
+}

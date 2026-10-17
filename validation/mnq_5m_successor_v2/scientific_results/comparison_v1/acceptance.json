@@ -1,0 +1,54 @@
+{
+  "aggregate_status": "COHORT_PASS",
+  "criteria_source": "scientific/PROTOCOL_V1.md + September13 completioncriteria, applied to authorized successor source profile2.1/freeze2.2",
+  "gates": [
+    {
+      "evidence": "stage-integrity.json; approved successor profile; ten disjoint fixed different dates; originalraw/providerstatusUNVERIFIED preserved",
+      "gate": "sources_accepted",
+      "passed": true
+    },
+    {
+      "evidence": "52originalpins + pre-first-oracle supplement addedcomponents andsynthetic hashes verified; unchangednormalization/comparators/production",
+      "gate": "toolset_unchanged",
+      "passed": true
+    },
+    {
+      "evidence": "Localoraclecommitf1fa413 parentofblindproductionaa33390; originalalltenexpectedstageandpre-runpinsverified",
+      "gate": "oracles_frozen_before_projects",
+      "passed": true
+    },
+    {
+      "evidence": "Preserved approvedblindreviewC0/I0/M0 and fullproductionstagehash4d9b281; not rerun",
+      "gate": "blind_execution_verified",
+      "passed": true
+    },
+    {
+      "evidence": "Frozen source/oracle/production priorrepeats + currentcomparison/controlrun01/run02 threefilesbyteexact",
+      "gate": "reproduction_verified",
+      "passed": true
+    },
+    {
+      "evidence": "Accepted165relevantregressions,69newsyntheticreview,65independentfixtures/review,26aggregator tests reused with verifiedbindings; no prohibitedrecognition/oraclererun",
+      "gate": "regressions_passed",
+      "passed": true
+    },
+    {
+      "evidence": "812/812 comparatorgroups,170richhierarchy+642selectedfields;10/10windows107/107contexts;0unexplainedmismatches",
+      "gate": "all_exact_fields_and_sequences",
+      "passed": true
+    },
+    {
+      "evidence": "103/103controls inbothruns;93semantic MISMATCH detections+10enumcase EXACT_MATCH; temporarycopiesonly",
+      "gate": "negative_and_representation_controls",
+      "passed": true
+    },
+    {
+      "evidence": "No actualmismatch/noinvalidcategory; approvedpureaggregatorCOHORT_PASS; no percentage threshold",
+      "gate": "classification_and_aggregate",
+      "passed": true
+    }
+  ],
+  "schema": "CHAPTER2_PREAPPROVED_ACCEPTANCE_V1",
+  "scientific_acceptance": "PASS",
+  "scope": "Fixedcohortretrospectiveimplementeddefinitions andexplicitcallercontexts. No automaticselector,raw16calibration,intrabarpathinference,streamingknown-at/finality,exchangeretrievalauthenticity,prediction or profitabilityclaim."
+}

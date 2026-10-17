@@ -1,0 +1,235 @@
+{
+  "capabilities": {
+    "anchor.nonnull": {
+      "compared": 20,
+      "matched": 20
+    },
+    "anchor.null": {
+      "compared": 87,
+      "matched": 87
+    },
+    "bms.available": {
+      "compared": 30,
+      "matched": 30
+    },
+    "bms.invalid": {
+      "compared": 8,
+      "matched": 8
+    },
+    "bms.requested": {
+      "compared": 41,
+      "matched": 41
+    },
+    "bms.unavailable": {
+      "compared": 3,
+      "matched": 3
+    },
+    "hierarchy.hierarchy": {
+      "compared": 10,
+      "matched": 10
+    },
+    "hierarchy.isolated": {
+      "compared": 20,
+      "matched": 20
+    },
+    "hierarchy.long": {
+      "compared": 40,
+      "matched": 40
+    },
+    "hierarchy.medium": {
+      "compared": 40,
+      "matched": 40
+    },
+    "hierarchy.short": {
+      "compared": 40,
+      "matched": 40
+    },
+    "hierarchy.source": {
+      "compared": 20,
+      "matched": 20
+    },
+    "market_state.available": {
+      "compared": 64,
+      "matched": 64
+    },
+    "market_state.unavailable": {
+      "compared": 43,
+      "matched": 43
+    },
+    "selected.bms": {
+      "compared": 107,
+      "matched": 107
+    },
+    "selected.market_state": {
+      "compared": 107,
+      "matched": 107
+    },
+    "selected.request": {
+      "compared": 107,
+      "matched": 107
+    },
+    "selected.selected_points": {
+      "compared": 107,
+      "matched": 107
+    },
+    "selected.sms": {
+      "compared": 107,
+      "matched": 107
+    },
+    "selected.trend_start_anchor": {
+      "compared": 107,
+      "matched": 107
+    },
+    "sms.available": {
+      "compared": 34,
+      "matched": 34
+    },
+    "sms.invalid": {
+      "compared": 8,
+      "matched": 8
+    },
+    "sms.requested": {
+      "compared": 45,
+      "matched": 45
+    },
+    "sms.unavailable": {
+      "compared": 3,
+      "matched": 3
+    }
+  },
+  "causal_vs_retrospective": "No retrospectivevalue/confirmationmismatch; no live known-at/streaming causality conclusion.",
+  "comparison_summary": {
+    "contexts_compared": 107,
+    "fully_matching_contexts": 107,
+    "fully_matching_windows": 10,
+    "hierarchy_check_groups": 170,
+    "matched_comparison_groups": 812,
+    "mismatch_count": 0,
+    "selected_field_groups": 642,
+    "total_comparison_groups": 812,
+    "windows_compared": 10
+  },
+  "contexts_by_structural_level": {
+    "long": {
+      "contexts": 21,
+      "matched": 21,
+      "mismatches": 0
+    },
+    "medium": {
+      "contexts": 38,
+      "matched": 38,
+      "mismatches": 0
+    },
+    "short": {
+      "contexts": 48,
+      "matched": 48,
+      "mismatches": 0
+    }
+  },
+  "earliest_divergence": null,
+  "hierarchy_normalization_rules": [
+    "canonical_point_source_geometry_projection",
+    "direct_count_projection",
+    "isolated_direct_projection",
+    "isolated_right_edge_projection",
+    "long_canonical_medium_vertex_projection",
+    "medium_canonical_short_vertex_projection",
+    "short_confirmation_join_projection",
+    "short_no_potential_projection",
+    "short_suppression_provenance_projection",
+    "source_clock_and_decimal_ohlc_projection",
+    "suppression_projection"
+  ],
+  "incomplete_required_comparisons": 0,
+  "mismatch_classifications": {
+    "COMPARATOR_DEFECT": 0,
+    "ORACLE_DEFECT": 0,
+    "PROJECT_DEFECT": 0,
+    "SOURCE_PROVENANCE_DEFECT": 0,
+    "SPECIFICATION_AMBIGUITY": 0,
+    "UNRESOLVED": 0
+  },
+  "per_window": [
+    {
+      "contexts": 20,
+      "contexts_matched": 20,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w01"
+    },
+    {
+      "contexts": 8,
+      "contexts_matched": 8,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w02"
+    },
+    {
+      "contexts": 9,
+      "contexts_matched": 9,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w03"
+    },
+    {
+      "contexts": 9,
+      "contexts_matched": 9,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w04"
+    },
+    {
+      "contexts": 10,
+      "contexts_matched": 10,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w05"
+    },
+    {
+      "contexts": 11,
+      "contexts_matched": 11,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w06"
+    },
+    {
+      "contexts": 10,
+      "contexts_matched": 10,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w07"
+    },
+    {
+      "contexts": 9,
+      "contexts_matched": 9,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w08"
+    },
+    {
+      "contexts": 10,
+      "contexts_matched": 10,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w09"
+    },
+    {
+      "contexts": 11,
+      "contexts_matched": 11,
+      "hierarchy_groups": 17,
+      "hierarchy_groups_matched": 17,
+      "mismatches": 0,
+      "window_id": "w10"
+    }
+  ],
+  "schema": "CHAPTER2_CAPABILITY_COUNTS_V1"
+}

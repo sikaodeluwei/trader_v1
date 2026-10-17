@@ -1,0 +1,21 @@
+{
+  "contract": "MNQ-202609",
+  "data_type": "Last",
+  "exchange": "CME Globex",
+  "export_method": "NinjaTrader8 Historical Data Export",
+  "export_time_precision": "exact",
+  "exported_at_utc": null,
+  "instrument": "MNQ 09-26",
+  "interval_minutes": 1,
+  "limitations": [],
+  "no_import_or_edit_confirmed": false,
+  "profile_id": "NT_LOCAL_HISTORY_MINUTE_LAST_UTC_V2",
+  "provider": "UNVERIFIED",
+  "requested_end_date": "2026-07-22",
+  "requested_start_date": "2026-06-21",
+  "source_origin": "NinjaTrader locally stored historical records",
+  "source_origin_confirmed": false,
+  "timestamp_semantics": "bar_close",
+  "timezone": "UTC",
+  "upstream_origin_status": "UNVERIFIED"
+}
