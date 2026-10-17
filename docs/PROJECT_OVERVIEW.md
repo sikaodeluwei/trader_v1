@@ -76,6 +76,18 @@ candles
 - Directional `MEDIUM` and `LONG` segment results may include a `trend_start_anchor`: the earliest relevant canonical short-term vertex inside the selected segment (`LOW` for an uptrend, `HIGH` for a downtrend).
 - The trend-start anchor is descriptive context only. It does not become a selected structural point, enter or alter the canonical hierarchy, get promoted upward, or affect market state, BMS, SMS, suppression, or potential-point recognition.
 
+### Chapter 3 Lesson 1: explicit trading-range foundations
+
+- Caller-supplied range type, boundary anchors and distinct boundary-event outcomes.
+- Conditional potential-range evidence after three relevant reactions; ordinary
+  formation confirmation requires two explicit unsuccessful attempts at each boundary.
+- Touches and unresolved events do not establish failures; `NON_TREND` alone does not establish a range.
+- No automatic boundary selection, failure judgment, slope/narrowness threshold or range detector.
+- This companion domain module leaves Chapter 1/2 analysis and scientific payloads unchanged.
+
+See [the lesson specification](lessons/chapter3-lesson1.md) for source availability,
+input semantics, deferred definitions and verification.
+
 ## Offline market-structure analyzer
 
 The offline analyzer accepts 1–250 closed candles, preserves their supplied chronological order, and carries generic instrument and timeframe metadata without assigning a structural level from the timeframe.
@@ -133,6 +145,7 @@ These boundaries are deliberate: the repository records approved course behavior
 | `trading/definitions/market_structure.py` | Explicit segments, structure-point relationships, and market-state classification |
 | `trading/definitions/pullback_structure.py` | Explicit pullback and BMS evaluation |
 | `trading/definitions/sms_structure.py` | Explicit SMS evaluation |
+| `trading/definitions/trading_ranges.py` | Explicit Chapter 3 range annotations and conditional formation evidence |
 | `trading/analysis/` | Offline candle, isolated-point, hierarchy, selected-segment, BMS/SMS, and trend-anchor composition |
 | `trading/validation/` | Frozen ground-truth models, deterministic comparison, scoring, and diagnostics |
 | `trading/data/` | Generic market-data models, intrabar grouping, tick CSV loading, and OHLC CSV loading |
@@ -157,11 +170,13 @@ These boundaries are deliberate: the repository records approved course behavior
 | Chapter 2 Lessons 1–8 | Implemented |
 | Offline analyzer and validation foundation | Implemented |
 | Real MNQ Case 1 hierarchy validation | Exact match with the independent oracle |
-| Additional real-data validation | Next checkpoint |
-| Chapter 3 | After the validation checkpoint |
+| Chapter 2 scientific checkpoint | Preserved COHORT_PASS, 812/812 exact comparisons |
+| Chapter 3 Lesson 1 | Explicit annotations and conditional formation rules |
 | Strategy and execution | Not implemented |
 
-Chapter 2 implementation is complete. Additional real-data validation continues before Chapter 3 begins.
+Chapter 2 implementation and its scientific checkpoint are complete. Chapter 3
+Lesson 1 develops course-defined range foundations separately; it does not
+restart historical validation or alter the preserved results.
 
 ## Testing
 

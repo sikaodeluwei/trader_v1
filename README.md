@@ -1,4 +1,10 @@
-# Trading System V1 — Chapter 2 preserved checkpoint
+# Trading System V1 — Chapter 3 Lesson 1 development
+
+This development branch starts at preserved Chapter 2 commit
+`164f438ec9339fff483dd9f0f9ceb486982cc963`. Chapter 3 Lesson 1 adds explicit
+trading-range annotations and conditional formation-evidence checks. See the
+[lesson specification and source limitations](docs/lessons/chapter3-lesson1.md).
+It does not automatically detect ranges or infer unsuccessful breakouts.
 
 This branch preserves the approved Chapter 1/2 implementation and Chapter 2 scientific-validation methodology. Chapter 2 recognizes frozen market-structure definitions; it does not claim a profitable or predictive trading system.
 
@@ -14,6 +20,6 @@ Project source, synthetic tests, specifications, reusable validation tools and s
 
 Use Python 3.12 and install `requirements-validation.txt` plus `validation/mnq_5m_successor_v2/requirements-test.txt` for validation tests. Core unit/integration tests use synthetic fixtures. Historical acquisition/checkpoint/reproduction commands may require deliberately withheld private artifacts; their presence on this branch is not a claim that full-cohort reproduction works without those artifacts. Keep any authorized restored data private and verify it against the original hashes.
 
-The source profile records upstream origin as **UNVERIFIED**. Live streaming, incremental availability/finality/retractions, automatic segment/creator selection, profitability and strategy behavior remain unproven or outside this checkpoint. Chapter 3 can start from the preserved code after separate scope/design authorization; no Chapter 3 implementation is included here.
+The source profile records upstream origin as **UNVERIFIED**. Live streaming, incremental availability/finality/retractions, automatic segment/creator selection, profitability and strategy behavior remain unproven or outside the preserved checkpoint. Chapter 3 additions on this branch are separate from the unchanged scientific artifacts.
 
 See [project overview](docs/PROJECT_OVERVIEW.md) and `docs/superpowers/specs/` for approved definitions. No merge to main or pull request accompanies this checkpoint.
