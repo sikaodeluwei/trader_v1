@@ -88,6 +88,16 @@ candles
 See [the lesson specification](lessons/chapter3-lesson1.md) for source availability,
 input semantics, deferred definitions and verification.
 
+### Chapter 3 Lesson 2: trading-range characteristics and interpretation
+
+[Lesson 2](lessons/chapter3-lesson2.md) records direct review of all 27 source
+slides and the complete transcript. It documents the six observational
+characteristics, the two boundary-drawing principles, geometry revision versus
+structural reinterpretation, and the time revised judgments become knowable.
+These observations add no mandatory confirmation conditions or detector
+parameters. Lesson 1 production behavior and the Chapter 2 checkpoint remain
+unchanged; this lesson adds documentation only.
+
 ## Offline market-structure analyzer
 
 The offline analyzer accepts 1–250 closed candles, preserves their supplied chronological order, and carries generic instrument and timeframe metadata without assigning a structural level from the timeframe.
@@ -172,10 +182,11 @@ These boundaries are deliberate: the repository records approved course behavior
 | Real MNQ Case 1 hierarchy validation | Exact match with the independent oracle |
 | Chapter 2 scientific checkpoint | Preserved COHORT_PASS, 812/812 exact comparisons |
 | Chapter 3 Lesson 1 | Explicit annotations and conditional formation rules |
+| Chapter 3 Lesson 2 | Source-reviewed characteristics and interpretation; documentation only |
 | Strategy and execution | Not implemented |
 
 Chapter 2 implementation and its scientific checkpoint are complete. Chapter 3
-Lesson 1 develops course-defined range foundations separately; it does not
+Lessons 1–2 develop course-defined range foundations separately; they do not
 restart historical validation or alter the preserved results.
 
 ## Testing
